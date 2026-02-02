@@ -2,6 +2,7 @@ import json
 import logging
 import math
 import os
+import secrets
 import threading
 import time
 import zipfile
@@ -12,9 +13,11 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import F, QuerySet
 from django.http import FileResponse
+from django.urls import reverse
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -23,7 +26,7 @@ from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRu
 from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, \
     ErrorResponseSerializer, GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer, GetLogStatusRequestSerializer, \
-    GetLogStatusResponseSerializer, GenericMessageWithIdResponseSerializer, GetZipStatusSerializer
+    GetLogStatusResponseSerializer, GenericMessageWithIdResponseSerializer, GetZipStatusSerializer, GetZipDownloadUrlResponseSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
 from calibration.views.calibration_forecast_views import get_forecast_log, get_cold_start_log
@@ -783,6 +786,229 @@ def get_zip_cache_key(calibration_run_id: int) -> str:
     return f'zip_status_{calibration_run_id}'
 
 
+def get_zip_download_token_cache_key(token: str) -> str:
+    return f'zip_download_token_{token}'
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: GetZipDownloadUrlResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        ),
+    },
+    description="Return a short-lived download URL for a prepared ZIP (the download itself does not require Authorization)."
+)
+@api_view(["GET", "POST"])
+@handle_exceptions
+def get_calibration_zip_download_url(request: Request) -> Response:
+    data = request.data if request.method == "POST" else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_response = validate_request(CalibrationRunSerializer, data)
+    if error_response:
+        return error_response
+
+    calibration_run_id = validator.get("calibration_run_id")
+    zip_cache_key = get_zip_cache_key(calibration_run_id)
+
+    cleanup_expired_zips()
+
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=downloadable_statuses)
+    if error_return:
+        return error_return
+
+    zip_status = cache.get(zip_cache_key)
+    if not zip_status:
+        return ResponseError(f"Zip job not found for Calibration Job {calibration_run_id}", http_status=status.HTTP_404_NOT_FOUND)
+
+    if zip_status.get("status") != "done":
+        return ResponseError(f"Zip file for Calibration Job {calibration_run_id} is not ready yet")
+
+    zip_path = zip_status.get("path")
+    if not zip_path or not os.path.exists(zip_path):
+        return ResponseError(f"Zip file is missing for Calibration Job {calibration_run_id}")
+
+    download_name = zip_status.get("download_name") or f"calibration_{calibration_run_id}.zip"
+
+    # The UI never calls the download endpoint directly.
+    # It calls this endpoint first to get a manufactured, short-lived URL containing a one-time token.
+    token = mint_one_time_download_token(
+        payload={
+            "user_id": request.user.id,
+            "zip_path": zip_path,
+            "download_name": download_name,
+            "calibration_run_id": calibration_run_id,
+        },
+        ttl_seconds=settings.ZIP_DOWNLOAD_URL_TTL_SECONDS,
+    )
+
+    # Build a URL relative to your API prefix (works behind nginx /api/)
+    # If you mount Django under /api/, the UI can just use the returned string.
+    download_url = reverse("downloadCalibrationZipToken") + f"?token={token}"
+
+    response = {
+        "calibration_run_id": calibration_run_id,
+        "download_url": download_url,
+        "expires_in_seconds": settings.ZIP_DOWNLOAD_URL_TTL_SECONDS,
+    }
+
+    response_validator, error_response = validate_response(GetZipDownloadUrlResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    responses={
+        200: OpenApiResponse(
+            description="ZIP file stream (token-based download)"
+        ),
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Missing token"
+        ),
+        401: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Invalid or expired token"
+        ),
+        404: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Zip file not found"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        ),
+    },
+    description=(
+            "Token-based ZIP download (short-lived, single-use).\n\n"
+            "- Does NOT require Authorization header\n"
+            "- Streams ZIP file as an attachment\n"
+            "- Token is invalidated after first use\n"
+            "- Token expires after a short TTL\n"
+            "- Intended to be called using the URL returned by get_calibration_zip_download_url"
+    )
+)
+@api_view(["GET"])
+@handle_exceptions
+@permission_classes([AllowAny])
+def download_calibration_zip_token(request: Request) -> FileResponse | Response:
+    """
+    INTERNAL DOWNLOAD ENDPOINT — NOT CALLED DIRECTLY BY THE UI.
+
+    The UI must first call `get_calibration_zip_download_url`, which:
+    - Validates the user and job state
+    - Mints a short-lived, single-use token
+    - Returns a manufactured download URL containing that token
+
+    The browser then navigates to that returned URL, which resolves to this
+    endpoint. This endpoint:
+    - Does NOT require an Authorization header
+    - Trusts the short-lived token + cache TTL + single-use delete for access control
+    - Streams the ZIP file directly to the client
+
+    Direct calls to this endpoint without a token are rejected.
+
+    """
+    token = request.query_params.get("token")
+    if not token:
+        return ResponseError("Missing token", http_status=status.HTTP_400_BAD_REQUEST)
+
+    token_cache_key = get_zip_download_token_cache_key(token)
+    token_data = cache.get(token_cache_key)
+    if not token_data:
+        return ResponseError("Invalid or expired token", http_status=status.HTTP_401_UNAUTHORIZED)
+
+    # Make sure token remains valid.  Chrome may retry/resume large downloads
+    cache.touch(token_cache_key, timeout=settings.ZIP_DOWNLOAD_URL_TTL_SECONDS)
+
+    # token_data was written by get_calibration_zip_download_url()
+    # It contains:
+    #   - user_id            (for optional same-user enforcement)
+    #   - zip_path          (absolute path to the prepared ZIP file)
+    #   - download_name    (canonical filename presented to the client)
+    #   - calibration_run_id (for logging and user-facing error messages)
+    #
+    # This endpoint only *consumes* that cached record. It does not
+    # look up the run or ZIP status in the DB or zip_status cache.
+    calibration_run_id = token_data.get("calibration_run_id")
+
+    zip_path = token_data.get("zip_path")
+    download_name = token_data.get("download_name") or (
+        f"calibration_{calibration_run_id}.zip" if calibration_run_id else "download.zip"
+    )
+
+    cleanup_expired_zips()
+
+    if not zip_path or not os.path.exists(zip_path):
+        return ResponseError(
+            f"Zip file is missing for Calibration Job {calibration_run_id}" if calibration_run_id else "Zip file is missing",
+            http_status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Mark as "in use" by bumping mtime. Cleanup uses mtime, so this postpones TTL deletion.
+    try:
+        os.utime(zip_path, None)
+    except Exception:
+        logger.debug(f"Failed to utime(zip_path): {zip_path}", exc_info=True)
+
+    zip_size = os.path.getsize(zip_path)
+    if calibration_run_id:
+        logger.info(
+            f"Serving Calibration zip for Job {calibration_run_id} — "
+            f"size: {zip_size / 1024 / 1024:.2f} MB"
+        )
+    else:
+        logger.info(f"Serving tokenized zip — size: {zip_size / 1024 / 1024:.2f} MB")
+
+    zip_file = None
+    try:
+        zip_file = open(zip_path, "rb")
+        response = FileResponse(zip_file, content_type="application/zip")
+
+        # Add Content-Length so the browser knows exactly how many bytes to expect.
+        # This can reduce Chrome "restart" behavior on large downloads.
+        response["Content-Length"] = str(zip_size)
+
+        apply_zip_download_headers(response, download_name, origin=request.headers.get("Origin"))
+
+        logger.debug(
+            f"Returning tokenized zip"
+            f"{f' for Calibration Job {calibration_run_id}' if calibration_run_id else ''} "
+            f"from {get_caller_name()}(){get_elapsed_str(request)}"
+        )
+        return response
+
+    except Exception as e:
+        if zip_file is not None:
+            try:
+                zip_file.close()
+            except Exception:
+                logger.debug("Failed to close file handle", exc_info=True)
+
+        logger.exception(
+            f"Failed to serve zip file"
+            f"{f' for Calibration Job {calibration_run_id}' if calibration_run_id else ''}: {e}"
+        )
+        return ResponseError(
+            f"Failed to read zip file for Calibration Job {calibration_run_id}" if calibration_run_id else "Failed to read zip file"
+        )
+
+
+def mint_one_time_download_token(payload: dict, ttl_seconds: int) -> str:
+    token = secrets.token_urlsafe(32)
+    cache.set(get_zip_download_token_cache_key(token), payload, timeout=ttl_seconds)
+    return token
+
+
 downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED, StatusEnum.SUBMITTED, StatusEnum.RUNNING}]
 
 
@@ -860,6 +1086,10 @@ def get_calibration_job_zip(request: Request) -> FileResponse | Response:
     try:
         zip_file = open(zip_path, "rb")
         response = FileResponse(zip_file, content_type="application/zip")
+
+        zip_size = os.path.getsize(zip_path)
+        response["Content-Length"] = str(zip_size)
+
         apply_zip_download_headers(response, download_name)
 
         return response
@@ -1097,94 +1327,95 @@ def get_zip_status(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-@extend_schema(
-    request=CalibrationRunSerializer,
-    responses={
-        200: OpenApiResponse(description="ZIP file ready for download"),
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Returns the zipped calibration job if ready."
-)
-@api_view(['GET', 'POST'])
-@handle_exceptions
-def download_calibration_zip(request: Request) -> FileResponse | Response:
-    """
-    Downloads the ZIP produced by start_zip_for_calibration_job() once it is ready.
-
-    - Validates that the cached zip status is "done".
-    - Streams the ZIP file at the cached path as a FileResponse attachment.
-    - Does not delete the ZIP immediately after returning (cleanup is handled separately by cleanup_expired_zips()).
-    - Touches the ZIP mtime via os.utime() to extend its on-disk TTL window.
-
-    :param request: HTTP request containing calibration_run_id (POST body or query params).
-    :return: FileResponse streaming the ZIP, or a formatted error Response.
-    """
-    data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_response = validate_request(CalibrationRunSerializer, data)
-    if error_response:
-        return error_response
-
-    calibration_run_id = validator.get("calibration_run_id")
-    cache_key = get_zip_cache_key(calibration_run_id)
-
-    cleanup_expired_zips()  # opportunistically delete old ZIPs (lazy TTL cleanup)
-
-    zip_status = cache.get(cache_key)
-
-    if not zip_status:
-        return ResponseError(f"Zip job not found for Calibration Job {calibration_run_id}", http_status=status.HTTP_404_NOT_FOUND)
-
-    if zip_status.get("status") != "done":
-        return ResponseError(f"Zip file for Calibration Job {calibration_run_id} is not ready yet")
-
-    zip_path = zip_status.get("path")
-    if not zip_path or not os.path.exists(zip_path):
-        return ResponseError(f"Zip file is missing for Calibration Job {calibration_run_id}")
-
-    # Mark as "in use" by bumping mtime. Cleanup uses mtime, so this postpones TTL deletion.
-    try:
-        os.utime(zip_path, None)
-    except Exception:
-        # Not fatal; cleanup is best-effort.
-        logger.debug(f"Failed to utime(zip_path): {zip_path}", exc_info=True)
-
-    zip_size = os.path.getsize(zip_path)
-    logger.info(f"Serving zip file for Calibration Job {calibration_run_id} — size: {zip_size / 1024 / 1024:.2f} MB")
-
-    zip_file = None
-    try:
-        zip_file = open(zip_path, 'rb')
-        response = FileResponse(zip_file, content_type='application/zip')
-
-        origin = request.headers.get("Origin")
-
-        # Friendly filename for the browser (canonical), not the unique on-disk name
-        download_name = zip_status.get("download_name") or f"calibration_{calibration_run_id}.zip"
-        apply_zip_download_headers(response, download_name, origin=origin)
-        logger.debug(
-            f'Returning zip for Calibration Job {calibration_run_id} to {get_user_email(request)} '
-            f'from {get_caller_name()}(){get_elapsed_str(request)}'
-        )
-        return response
-
-    except Exception as e:
-        # If we opened the file but didn't hand it off successfully, close it here.
-        if zip_file is not None:
-            try:
-                zip_file.close()
-            except Exception:
-                logger.debug("Failed to close file handle", exc_info=True)
-        logger.exception(f"Failed to serve zip file for Calibration Job {calibration_run_id}: {e}")
-        return ResponseError(f"Failed to read zip file for Calibration Job {calibration_run_id}")
+#
+# @extend_schema(
+#     request=CalibrationRunSerializer,
+#     responses={
+#         200: OpenApiResponse(description="ZIP file ready for download"),
+#         400: OpenApiResponse(
+#             response=ErrorResponseSerializer,
+#             description="Validation error or parsing error"
+#         ),
+#         500: OpenApiResponse(
+#             response=ErrorResponseSerializer,
+#             description="Internal server error"
+#         )
+#     },
+#     description="Returns the zipped calibration job if ready."
+# )
+# @api_view(['GET', 'POST'])
+# @handle_exceptions
+# def download_calibration_zip(request: Request) -> FileResponse | Response:
+#     """
+#     Downloads the ZIP produced by start_zip_for_calibration_job() once it is ready.
+#
+#     - Validates that the cached zip status is "done".
+#     - Streams the ZIP file at the cached path as a FileResponse attachment.
+#     - Does not delete the ZIP immediately after returning (cleanup is handled separately by cleanup_expired_zips()).
+#     - Touches the ZIP mtime via os.utime() to extend its on-disk TTL window.
+#
+#     :param request: HTTP request containing calibration_run_id (POST body or query params).
+#     :return: FileResponse streaming the ZIP, or a formatted error Response.
+#     """
+#     data = request.data if request.method == 'POST' else request.query_params.dict()
+#     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+#
+#     validator, error_response = validate_request(CalibrationRunSerializer, data)
+#     if error_response:
+#         return error_response
+#
+#     calibration_run_id = validator.get("calibration_run_id")
+#     cache_key = get_zip_cache_key(calibration_run_id)
+#
+#     cleanup_expired_zips()  # opportunistically delete old ZIPs (lazy TTL cleanup)
+#
+#     zip_status = cache.get(cache_key)
+#
+#     if not zip_status:
+#         return ResponseError(f"Zip job not found for Calibration Job {calibration_run_id}", http_status=status.HTTP_404_NOT_FOUND)
+#
+#     if zip_status.get("status") != "done":
+#         return ResponseError(f"Zip file for Calibration Job {calibration_run_id} is not ready yet")
+#
+#     zip_path = zip_status.get("path")
+#     if not zip_path or not os.path.exists(zip_path):
+#         return ResponseError(f"Zip file is missing for Calibration Job {calibration_run_id}")
+#
+#     # Mark as "in use" by bumping mtime. Cleanup uses mtime, so this postpones TTL deletion.
+#     try:
+#         os.utime(zip_path, None)
+#     except Exception:
+#         # Not fatal; cleanup is best-effort.
+#         logger.debug(f"Failed to utime(zip_path): {zip_path}", exc_info=True)
+#
+#     zip_size = os.path.getsize(zip_path)
+#     logger.info(f"Serving zip file for Calibration Job {calibration_run_id} — size: {zip_size / 1024 / 1024:.2f} MB")
+#
+#     zip_file = None
+#     try:
+#         zip_file = open(zip_path, 'rb')
+#         response = FileResponse(zip_file, content_type='application/zip')
+#
+#         origin = request.headers.get("Origin")
+#
+#         # Friendly filename for the browser (canonical), not the unique on-disk name
+#         download_name = zip_status.get("download_name") or f"calibration_{calibration_run_id}.zip"
+#         apply_zip_download_headers(response, download_name, origin=origin)
+#         logger.debug(
+#             f'Returning zip for Calibration Job {calibration_run_id} to {get_user_email(request)} '
+#             f'from {get_caller_name()}(){get_elapsed_str(request)}'
+#         )
+#         return response
+#
+#     except Exception as e:
+#         # If we opened the file but didn't hand it off successfully, close it here.
+#         if zip_file is not None:
+#             try:
+#                 zip_file.close()
+#             except Exception:
+#                 logger.debug("Failed to close file handle", exc_info=True)
+#         logger.exception(f"Failed to serve zip file for Calibration Job {calibration_run_id}: {e}")
+#         return ResponseError(f"Failed to read zip file for Calibration Job {calibration_run_id}")
 
 
 _CLEANUP_LAST_RUN_KEY = "zip_cleanup_last_run"

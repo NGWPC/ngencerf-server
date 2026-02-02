@@ -1448,6 +1448,11 @@ class GetZipStatusSerializer(CalibrationRunSerializer):
     path = serializers.CharField(required=True,  allow_null=True, allow_blank=False)
 
 
+class GetZipDownloadUrlResponseSerializer(CalibrationRunSerializer):
+    download_url = serializers.CharField()
+    expires_in_seconds = serializers.IntegerField()
+
+
 class ParameterDataByIteration(BaseSerializer):
     parameter_name = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     parameter_value = serializers.FloatField(required=True, allow_null=False)

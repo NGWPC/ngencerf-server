@@ -93,7 +93,8 @@ urlpatterns = [
     path('calibration/get_calibration_job_zip/', calibration_evaluation_views.get_calibration_job_zip, name="getCalibrationJobZip"),
     path('calibration/start_zip_for_calibration_job/', calibration_evaluation_views.start_zip_for_calibration_job, name="startZipForCalibrationJob"),
     path('calibration/get_zip_status/', calibration_evaluation_views.get_zip_status, name="getZipStatus"),
-    path('calibration/download_calibration_zip/', calibration_evaluation_views.download_calibration_zip, name="downloadCalibrationZip"),
+    path('calibration/download_calibration_zip_token/', calibration_evaluation_views.download_calibration_zip_token, name="downloadCalibrationZipToken"),
+    path("calibration/get_calibration_zip_download_url/", calibration_evaluation_views.get_calibration_zip_download_url, name="getCalibrationZipDownloadUrl"),
 
 
     ##################################
