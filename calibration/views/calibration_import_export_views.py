@@ -27,7 +27,7 @@ from calibration.views.calibration_formulation_views import get_sloth_parameters
 from calibration.views.calibration_gage_views import save_gage, get_data_files_status
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
-from calibration.views.calibration_run_views import resolve_job_data_dir, normalize_failure_messages
+from calibration.views.calibration_run_views import map_path_to_host, normalize_failure_messages
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
     save_parameters, has_user_selected_tuning_parameters, compute_time_range, persist_time_range
 from calibration.views.called_from import get_caller_name
@@ -93,7 +93,7 @@ def import_calibration_run_data(request: Request,
     logging_config = calibration_run_data.get('logging_config')
 
     geopackage_source_name = calibration_run_data.get('geopackage_source')
-    forcing_source_reuqested_name = calibration_run_data.get('forcing_source')
+    forcing_source_requested_name = calibration_run_data.get('forcing_source')
     observational_source_name = calibration_run_data.get('observational_source')
 
     # Prepared (read-only) outputs
@@ -242,17 +242,17 @@ def import_calibration_run_data(request: Request,
         # TODO his code is duplicaed form calibration_gage_views.  Need to re-factor once we are fully on BMI
         # Determine forcing forcing source
         forcing_source_requested = (
-            ForcingSourceEnum.get_instance(forcing_source_reuqested_name)
-            if forcing_source_reuqested_name
+            ForcingSourceEnum.get_instance(forcing_source_requested_name)
+            if forcing_source_requested_name
             else None
         )
 
         # Decide whether we need to fetch BEFORE mutating the run
         needs_forcing_fetch = (
-                forcing_source_reuqested_name
+                forcing_source_requested_name
                 and (
                         not run.forcing_source_requested
-                        or run.forcing_source_requested.name != forcing_source_reuqested_name
+                        or run.forcing_source_requested.name != forcing_source_requested_name
                 )
         )
 
@@ -270,12 +270,12 @@ def import_calibration_run_data(request: Request,
                     'status_code': e.status_code if e.status_code else None
                 })
 
-        elif not forcing_source_reuqested_name:
+        elif not forcing_source_requested_name:
             # No forcing requested → clear any existing forcing state
             run.forcing_eds_dir_path = None
             run.forcing_source_actual = None
 
-        run.forcing_source_requested = ForcingSourceEnum.get_instance(forcing_source_reuqested_name) if forcing_source_reuqested_name else None
+        run.forcing_source_requested = ForcingSourceEnum.get_instance(forcing_source_requested_name) if forcing_source_requested_name else None
 
         # -----------------------------
         # Observational data
@@ -486,7 +486,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             'last_updated_on': format_datetime(run.updated_at),
             'source_status': run.status.name,
             'time_range': serialized_time_range,
-            'job_data_dir': resolve_job_data_dir(run),
+            'job_data_dir': map_path_to_host(run.job_data_dir),
             'num_catchments': run.num_catchments,
             'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None,
         }
@@ -508,7 +508,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     # UI Display Mode (Non-Export)
     #############################
     else:
-        calibration_run_data['job_data_dir'] = resolve_job_data_dir(run)
+        calibration_run_data['job_data_dir'] = map_path_to_host(run.job_data_dir)
 
         calibration_run_data['last_updated_on'] = run.updated_at
 
