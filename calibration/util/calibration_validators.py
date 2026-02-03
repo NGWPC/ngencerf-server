@@ -1095,6 +1095,7 @@ class GetStatusForValidationResponseSerializer(CommonStatusFieldsMixin, Validati
 
 class GetStatusColdStartSerializer(BaseSerializer):
     cold_start_run_id = serializers.IntegerField(required=True)
+    cold_start_date = serializers.DateTimeField(required=True)
     status = serializers.CharField(required=True)
     submit_date = serializers.DateTimeField(required=False, allow_null=True)
     sent_date = serializers.DateTimeField(required=False, allow_null=True)
@@ -1109,7 +1110,6 @@ class GetStatusForForecastResponseSerializer(CommonStatusFieldsMixin, ForecastRu
     message = serializers.CharField(required=False)
     configuration = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=True, allow_null=False)
-    cold_start_date = serializers.DateTimeField(required=False, allow_null=True)
     cold_start_run = GetStatusColdStartSerializer(required=False, allow_null=True)
 
 
@@ -1448,6 +1448,11 @@ class GetZipStatusSerializer(CalibrationRunSerializer):
     path = serializers.CharField(required=True,  allow_null=True, allow_blank=False)
 
 
+class GetZipDownloadUrlResponseSerializer(CalibrationRunSerializer):
+    download_url = serializers.CharField()
+    expires_in_seconds = serializers.IntegerField()
+
+
 class ParameterDataByIteration(BaseSerializer):
     parameter_name = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     parameter_value = serializers.FloatField(required=True, allow_null=False)
@@ -1505,7 +1510,8 @@ class GetLogRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVeri
 
 
 class GetLogStatusRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
-    log_path = serializers.CharField(required=True)
+    log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory)])
+    log_name = serializers.CharField(required=True, validators=[enum_validator(LogName)])
     byte_offset = serializers.IntegerField(required=True, min_value=0)
 
 
