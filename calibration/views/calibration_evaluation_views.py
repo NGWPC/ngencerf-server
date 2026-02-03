@@ -112,7 +112,6 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         row['metric_value'] = normalize_float(row.get('metric_value'))
     retrospective_data = [{'name': 'NWM 3.0', 'data': nwm_retrospective_data}]
 
-
     iterations = list(get_iterations_for_calibration_job(run))
     iteration_ids = [it.id for it in iterations]
 
@@ -237,6 +236,155 @@ def get_iterations_for_calibration_job(calibration_run: CalibrationRun, worker_n
     )
 
 
+def resolve_log_context(
+        *,
+        calibration_run_id: int | None,
+        validation_run_id: int | None,
+        forecast_run_id: int | None,
+        verification_run_id: int | None,
+        user,
+):
+    """
+    Shared run-resolution logic for get_log and get_log_status.
+
+    Returns:
+        (ctx, error_return)
+
+    ctx keys:
+        - calibration_run
+        - validation_run
+        - forecast_run
+        - cold_start_run
+        - verification_run
+    """
+    ACTIVE_STATUSES = [
+        StatusEnum.RUNNING,
+        StatusEnum.SUBMITTED,
+        StatusEnum.DONE,
+        StatusEnum.FAILED,
+        StatusEnum.CANCELLED,
+        StatusEnum.SERVER_ERROR,
+    ]
+
+    validation_run = None
+    forecast_run = None
+    cold_start_run = None
+    verification_run = None
+
+    if validation_run_id:
+        validation_run, error_return = get_validation_run(
+            validation_run_id,
+            user,
+            run_status=ACTIVE_STATUSES,
+        )
+        if error_return:
+            return None, error_return
+        calibration_run = validation_run.calibration_run
+
+    elif forecast_run_id:
+        forecast_run, error_return = get_forecast_run(
+            forecast_run_id,
+            user,
+            # Allow SAVED in case we are looking for cold start logs
+            run_status=[*ACTIVE_STATUSES, StatusEnum.SAVED],
+        )
+        if error_return:
+            return None, error_return
+        calibration_run = forecast_run.calibration_run
+        cold_start_run = forecast_run.cold_start_run
+
+    elif verification_run_id:
+        verification_run, error_return = get_verification_run(
+            verification_run_id,
+            user,
+            run_status=ACTIVE_STATUSES,
+        )
+        if error_return:
+            return None, error_return
+        calibration_run = verification_run.forecast_run.calibration_run
+
+    else:
+        calibration_run, error_return = get_calibration_run(
+            calibration_run_id,
+            user,
+            run_status=ACTIVE_STATUSES,
+        )
+        if error_return:
+            return None, error_return
+
+    return {
+        "calibration_run": calibration_run,
+        "validation_run": validation_run,
+        "forecast_run": forecast_run,
+        "cold_start_run": cold_start_run,
+        "verification_run": verification_run,
+    }, None
+
+
+def resolve_log_path(ctx: dict, log_category: LogCategory, log_name: LogName) -> str:
+    """
+    Shared match/case mapping (category, name, ctx) -> filesystem path.
+    """
+    calibration_run = ctx["calibration_run"]
+    validation_run = ctx["validation_run"]
+    forecast_run = ctx["forecast_run"]
+    cold_start_run = ctx["cold_start_run"]
+    verification_run = ctx["verification_run"]
+
+    match log_category:
+        case LogCategory.CALIBRATION:
+            return get_calibration_log(calibration_run, log_name)
+
+        case LogCategory.VALIDATION:
+            if not validation_run:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for validation run")
+            return get_validation_log(validation_run, log_name)
+
+        case LogCategory.FORECAST:
+            if not forecast_run:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for forecast run")
+            return get_forecast_log(forecast_run, log_name)
+
+        case LogCategory.COLD_START:
+            if not (forecast_run and cold_start_run):
+                raise CerfException(f"Log category '{log_category.value}' not applicable for cold start run")
+            return get_cold_start_log(cold_start_run, log_name)
+
+        case LogCategory.VERIFICATION:
+            if not verification_run:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for verification run")
+            return get_verification_log(verification_run, log_name)
+
+        case LogCategory.GLOBAL:
+            return get_global_log(validation_run or calibration_run, log_name)
+
+
+def get_status_name_for_log(ctx: dict, log_category: LogCategory) -> str:
+    """
+    Centralizes the 'status' you return.
+
+    Preserves your current behavior:
+      - COLD_START status comes from cold_start_run.status, not forecast_run.status.
+    """
+    calibration_run = ctx["calibration_run"]
+    validation_run = ctx["validation_run"]
+    forecast_run = ctx["forecast_run"]
+    cold_start_run = ctx["cold_start_run"]
+    verification_run = ctx["verification_run"]
+
+    match log_category:
+        case LogCategory.VALIDATION:
+            return (validation_run or calibration_run).status.name
+        case LogCategory.FORECAST:
+            return (forecast_run or calibration_run).status.name
+        case LogCategory.COLD_START:
+            return (cold_start_run or calibration_run).status.name
+        case LogCategory.VERIFICATION:
+            return (verification_run or calibration_run).status.name
+        case _:
+            return calibration_run.status.name
+
+
 @extend_schema(
     request=CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer,
     responses={
@@ -303,11 +451,17 @@ def get_log_names(request: Request) -> Response:
         cold_start_run = forecast_run.cold_start_run
 
         # Define available log categories and names
-        log_names = []
+        shared_logs = ['ngen', 'ngen stdout', 'mswm']
+        log_names: list[dict[str, list[str]]] = []
+
+        # Forecast logs are available if there's no cold-start, or cold-start finished successfully.
         if not cold_start_run or cold_start_run.status == StatusEnum.DONE.db_instance:
-            log_names.append({LogCategory.FORECAST.value: ['ngen', 'ngen stdout', 'mswm', 'forecast stdout']})
+            log_names.append({LogCategory.FORECAST.value: [*shared_logs, 'forecast stdout']})
+
+        # Cold-start logs are available whenever a cold-start exists (regardless of status).
         if cold_start_run:
-            log_names.append({LogCategory.COLD_START.value: ['ngen', 'ngen stdout', 'mswm', 'cold start stdout']})
+            log_names.append({LogCategory.COLD_START.value: [*shared_logs, 'cold start stdout']})
+
     elif verification_run_id:
         verification_run, error_return = get_verification_run(
             verification_run_id,
@@ -419,84 +573,21 @@ def get_log(request: Request) -> Response:
     limit = validator.get('limit')
 
     # Validate log category and log name
-    try:
-        validate_log_name(log_category, log_name)
-    except ValueError as e:
-        raise CerfException(str(e))
+    validate_log_name(log_category, log_name)
 
-    validation_run = None
-    forecast_run = None
-    cold_start_run = None
-    verification_run = None
+    # Resolve run context (calibration/validation/forecast/cold-start/verification)
+    ctx, error_return = resolve_log_context(
+        calibration_run_id=calibration_run_id,
+        validation_run_id=validation_run_id,
+        forecast_run_id=forecast_run_id,
+        verification_run_id=verification_run_id,
+        user=request.user,
+    )
+    if error_return:
+        return error_return
 
-    if validation_run_id:
-        validation_run, error_return = get_validation_run(
-            validation_run_id,
-            request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
-        calibration_run = validation_run.calibration_run
-    elif forecast_run_id:
-        forecast_run, error_return = get_forecast_run(
-            forecast_run_id,
-            request.user,
-            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED,
-                        StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
-        calibration_run = forecast_run.calibration_run
-        cold_start_run = forecast_run.cold_start_run
-    elif verification_run_id:
-        verification_run, error_return = get_verification_run(
-            verification_run_id,
-            request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
-        calibration_run = verification_run.forecast_run.calibration_run
-    else:
-        calibration_run, error_return = get_calibration_run(
-            calibration_run_id,
-            request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
-        validation_run = None
-
-    log_path = None
-    match log_category:
-        case LogCategory.CALIBRATION:
-            log_path = get_calibration_log(calibration_run, log_name)
-        case LogCategory.VALIDATION:
-            if validation_run:
-                log_path = get_validation_log(validation_run, log_name)
-            else:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for validation run")
-        case LogCategory.FORECAST:
-            if forecast_run:
-                log_path = get_forecast_log(forecast_run, log_name)
-            else:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for forecast run")
-        case LogCategory.COLD_START:
-            if forecast_run and cold_start_run:
-                log_path = get_cold_start_log(cold_start_run, log_name)
-            else:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for cold start run")
-        case LogCategory.VERIFICATION:
-            if verification_run:
-                log_path = get_verification_log(verification_run, log_name)
-            else:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for verification run")
-        case LogCategory.GLOBAL:
-            if validation_run:
-                log_path = get_global_log(validation_run, log_name)
-            else:
-                log_path = get_global_log(calibration_run, log_name)
+    # Resolve log path from category/name/context
+    log_path = resolve_log_path(ctx, log_category, log_name)
 
     # Check if the log file exists
     if log_path and not os.path.exists(log_path):
@@ -530,19 +621,9 @@ def get_log(request: Request) -> Response:
         'log_data': paginated_lines,
         'log_path': log_path,
         'byte_offset': file_size,
-        'pagination_metadata': pagination_metadata
+        'pagination_metadata': pagination_metadata,
+        'status': get_status_name_for_log(ctx, log_category),
     }
-    match log_category:
-        case LogCategory.VALIDATION:
-            response['status'] = validation_run.status.name
-        case LogCategory.FORECAST:
-            response['status'] = forecast_run.status.name
-        case LogCategory.COLD_START:
-            response['status'] = forecast_run.cold_start_run.status.name
-        case LogCategory.VERIFICATION:
-            response['status'] = verification_run.status.name
-        case _:
-            response['status'] = calibration_run.status.name
 
     response_validator, error_response = validate_response(GetLogsResponseSerializer, response, fields_to_truncate=['log_data'], max_length=10)
     if error_response:
@@ -597,100 +678,30 @@ def get_log_status(request: Request) -> Response:
     byte_offset = validator.get('byte_offset')
 
     # Validate log category and log name
-    try:
-        validate_log_name(log_category, log_name)
-    except ValueError as e:
-        raise CerfException(str(e))
+    validate_log_name(log_category, log_name)
 
-    validation_run = None
-    forecast_run = None
-    verification_run = None
+    # Resolve run context (calibration/validation/forecast/cold-start/verification)
+    ctx, error_return = resolve_log_context(
+        calibration_run_id=calibration_run_id,
+        validation_run_id=validation_run_id,
+        forecast_run_id=forecast_run_id,
+        verification_run_id=verification_run_id,
+        user=request.user,
+    )
+    if error_return:
+        return error_return
 
-    if validation_run_id:
-        validation_run, error_return = get_validation_run(
-            validation_run_id,
-            request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
-        calibration_run = validation_run.calibration_run
-    elif forecast_run_id:
-        forecast_run, error_return = get_forecast_run(
-            forecast_run_id,
-            request.user,
-            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED,
-                        StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
-        calibration_run = forecast_run.calibration_run
-        cold_start_run = forecast_run.cold_start_run
-    elif verification_run_id:
-        verification_run, error_return = get_verification_run(
-            verification_run_id,
-            request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
-        calibration_run = verification_run.forecast_run.calibration_run
-    else:
-        calibration_run, error_return = get_calibration_run(
-            calibration_run_id,
-            request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
-
-    # Check if the log file exists
-    # TO DO: Get this from the cache if it's already been cached
-    log_path = None
-    match log_category:
-        case LogCategory.CALIBRATION:
-            log_path = get_calibration_log(calibration_run, log_name)
-        case LogCategory.VALIDATION:
-            if validation_run:
-                log_path = get_validation_log(validation_run, log_name)
-            else:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for validation run")
-        case LogCategory.FORECAST:
-            if forecast_run:
-                log_path = get_forecast_log(forecast_run, log_name)
-            else:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for forecast run")
-        case LogCategory.COLD_START:
-            if forecast_run and cold_start_run:
-                log_path = get_cold_start_log(cold_start_run, log_name)
-            else:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for cold start run")
-        case LogCategory.VERIFICATION:
-            if verification_run:
-                log_path = get_verification_log(verification_run, log_name)
-            else:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for verification run")
-        case LogCategory.GLOBAL:
-            if validation_run:
-                log_path = get_global_log(validation_run, log_name)
-            else:
-                log_path = get_global_log(calibration_run, log_name)
+    # Resolve log path from category/name/context
+    log_path = resolve_log_path(ctx, log_category, log_name)
 
     # Get the file size in bytes
     file_size = os.path.getsize(log_path) if os.path.exists(log_path) else 0
 
     response = {
         'message': f"log file {log_path} has " + ("changed" if file_size != byte_offset else "not changed"),
-        'file_updated': True if file_size != byte_offset else False
+        'file_updated': (file_size != byte_offset),
+        'status': get_status_name_for_log(ctx, log_category)
     }
-    if validation_run_id:
-        response['status'] = validation_run.status.name
-    elif forecast_run_id:
-        response['status'] = forecast_run.status.name
-    elif verification_run_id:
-        response['status'] = verification_run.status.name
-    else:
-        response['status'] = calibration_run.status.name
 
     response_validator, error_response = validate_response(GetLogStatusResponseSerializer, response)
     if error_response:
