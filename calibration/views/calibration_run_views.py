@@ -422,6 +422,7 @@ def get_status_for_forecast(forecast_run: ForecastRun, include_performance_metri
     if cold_start_run:
         cold_start_data = {
             'cold_start_run_id': cold_start_run.id,
+            'cold_start_date': cold_start_run.cold_start_date,
             'status': cold_start_run.status.name,
             'submit_date': cold_start_run.submit_date,
             'sent_date': cold_start_run.sent_date,
