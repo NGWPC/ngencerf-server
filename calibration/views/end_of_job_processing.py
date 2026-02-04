@@ -7,6 +7,7 @@ from collections import deque
 from datetime import timedelta
 from itertools import groupby
 from operator import attrgetter
+from typing import SupportsFloat
 
 import pandas as pd
 from django.db import transaction
@@ -695,7 +696,7 @@ def process_iterations_for_a_worker(
 # Function to process a single metrics row
 def process_metrics_row_for_calibration(
         iteration: Iteration,
-        metrics_row: dict[str, object],
+        metrics_row: dict[str, SupportsFloat | None],
         metrics_to_create: list[IterationMetric],
         job_description: str
 ) -> None:
