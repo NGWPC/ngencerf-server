@@ -7,7 +7,7 @@ from collections import deque
 from datetime import timedelta
 from itertools import groupby
 from operator import attrgetter
-from typing import SupportsFloat
+from typing import cast, Any
 
 import pandas as pd
 from django.db import transaction
@@ -32,6 +32,34 @@ from calibration.views.common import CerfException, get_job_description, find_va
 logger = logging.getLogger(__name__)
 
 BULK_CREATE_BATCH_SIZE = 1000  # Define a reasonable batch size
+
+
+def to_float_or_nan(value: object) -> float:
+    """
+    Convert arbitrary CSV/pandas values to a float.
+
+    Missing, blank, or NA-like values are converted to NaN (not None) so
+    FloatField(null=False) constraints are satisfied.
+    """
+    # Fast-path for Python None
+    if value is None:
+        return float("nan")
+
+    # Handle pandas/numpy scalar NA safely (NaN, NA, NaT, etc.).
+    # cast(Any, ...) is for the type checker only; pd.isna accepts arbitrary objects at runtime.
+    try:
+        if pd.isna(cast(Any, value)):
+            return float("nan")
+    except Exception:
+        # Non-scalar / unexpected object; fall through to float(), which will raise if invalid
+        pass
+
+    # Treat blank or whitespace-only strings as missing
+    if isinstance(value, str) and not value.strip():
+        return float("nan")
+
+    # Normal numeric conversion (raises if invalid)
+    return float(value)
 
 
 def read_validation_output(validation_run: ValidationRun, failed_so_far: bool) -> None:
@@ -207,7 +235,8 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
         return
 
     # Read the metrics file using pandas
-    metrics_df = pd.read_csv(metrics_file)
+    # Treat common "blank"/string-missing tokens as NA so they become NaN in pandas
+    metrics_df = pd.read_csv(metrics_file, na_values=['', ' ', 'null', 'None'])
 
     metrics_to_create = []  # List to accumulate metrics to be created
 
@@ -235,7 +264,7 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
             if not metric:
                 raise CerfException(f"Could not find metric '{metric_name}' in MetricEnum")
 
-            metric_value = float(value) if value is not None else float('nan')
+            metric_value = to_float_or_nan(value)
 
             # Create the Metric object (ValidationMetrics or NWMRetrospectiveMetrics)
             metric_obj = MetricModel(
@@ -253,7 +282,14 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
 
     # Bulk create the metrics in the database
     if metrics_to_create:
-        MetricModel.objects.bulk_create(metrics_to_create, batch_size=BULK_CREATE_BATCH_SIZE)
+        bad = [m for m in metrics_to_create if m.metric_value is None]
+        if bad:
+            raise CerfException(f"BUG: metric_value None before bulk_create (count={len(bad)})")
+
+        MetricModel.objects.bulk_create(
+            metrics_to_create,
+            batch_size=BULK_CREATE_BATCH_SIZE
+        )
 
 
 def process_validation_for_validation_run(validation_run: ValidationRun) -> None:
@@ -580,7 +616,9 @@ def process_iterations_for_a_worker(
     best_iteration_found = False
 
     # Process metrics file
-    metrics_df = pd.read_csv(metrics_iteration_file)
+    # Treat common "blank"/string-missing tokens as NA so they become NaN in pandas
+    metrics_df = pd.read_csv(metrics_iteration_file, na_values=["", " ", "null", "None"])
+
     if not have_LSTM_flag:
         update_objective_function_values(metrics_iteration_file, calibration_run, worker_name)
 
@@ -606,7 +644,6 @@ def process_iterations_for_a_worker(
             iterations_to_update_best_flag.append(iteration)  # buffer update
 
     # Process parameters file
-    # xxx
     if not have_LSTM_flag:
         params_df = pd.read_csv(params_iteration_file)
 
@@ -654,15 +691,23 @@ def process_iterations_for_a_worker(
                 job_description
             )
 
-    # Bulk create IterationMetric and IterationParameter objects in chunks
+    # Bulk create IterationMetric and IterationParameter objects with Django batching
     if metrics_to_create:
-        for i in range(0, len(metrics_to_create), BULK_CREATE_BATCH_SIZE):
-            IterationMetric.objects.bulk_create(metrics_to_create[i:i + BULK_CREATE_BATCH_SIZE])
+        bad = [m for m in metrics_to_create if m.metric_value is None]
+        if bad:
+            raise CerfException(f"BUG: metric_value None before bulk_create (count={len(bad)})")
+
+        IterationMetric.objects.bulk_create(
+            metrics_to_create,
+            batch_size=BULK_CREATE_BATCH_SIZE
+        )
 
     # Bulk create parameters
     if params_to_create:
-        for i in range(0, len(params_to_create), BULK_CREATE_BATCH_SIZE):
-            IterationParameter.objects.bulk_create(params_to_create[i:i + BULK_CREATE_BATCH_SIZE])
+        IterationParameter.objects.bulk_create(
+            params_to_create,
+            batch_size=BULK_CREATE_BATCH_SIZE
+        )
 
     # Single bulk update for best_params instead of thousands of saves
     if iterations_to_update_best_flag:
@@ -696,7 +741,7 @@ def process_iterations_for_a_worker(
 # Function to process a single metrics row
 def process_metrics_row_for_calibration(
         iteration: Iteration,
-        metrics_row: dict[str, SupportsFloat | None],
+        metrics_row: dict[str, object],
         metrics_to_create: list[IterationMetric],
         job_description: str
 ) -> None:
@@ -723,8 +768,7 @@ def process_metrics_row_for_calibration(
         if not metric:
             raise CerfException(f"Could not find metric '{metric_name}'")
 
-        # Set metric_value to NaN if missing
-        metric_value = float(value) if value is not None else float('nan')
+        metric_value = to_float_or_nan(value)
 
         metric_obj = IterationMetric(
             iteration=iteration,
