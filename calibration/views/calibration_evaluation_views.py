@@ -3,6 +3,7 @@ import logging
 import math
 import os
 from collections import defaultdict
+from numbers import Real
 
 from django.db.models import F, QuerySet
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -32,24 +33,30 @@ def normalize_float(value):
     """
     Normalize numeric values for JSON serialization.
 
-    - JSON does NOT support NaN or +/-Infinity.
-    - Django/DRF will happily pass these through until serialization,
-      where they can cause hard failures or invalid JSON.
-    - This helper converts any non-finite float (NaN, +inf, -inf) to None.
-    - Non-float values (ints, strings, dicts, lists, etc.) are returned unchanged.
+    Behavior:
+    - None -> None
+    - Any real numeric type (float, int, numpy floats/ints, Decimal):
+        - Converted to float
+        - If non-finite (NaN, +inf, -inf) -> None
+        - Otherwise -> finite float
+    - All non-numeric values (str, dict, list, etc.) pass through unchanged
 
-    This is intentionally lightweight and meant to be applied ONLY at the
-    points where floating-point values originate (metrics, objective values),
-    instead of recursively walking the entire response payload.
+    Rationale:
+    - PostgreSQL can store NaN/±Infinity in float columns.
+    - JSON cannot represent NaN/±Infinity.
+    - This function is applied ONLY at API response construction time,
+      not at DB write time, to preserve raw numeric fidelity in storage
+      while guaranteeing JSON-safe output.
     """
 
     # Preserve None as-is
     if value is None:
         return None
 
-    # Only floats can be NaN or Infinity; ints are always safe
-    if isinstance(value, float) and not math.isfinite(value):
-        return None
+    # bool is a subclass of int; don't treat it as numeric here
+    if isinstance(value, Real) and not isinstance(value, bool):
+        f = float(value)
+        return f if math.isfinite(f) else None
 
     # All other values pass through unchanged
     return value
@@ -144,8 +151,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
     ):
         params_by_iter[p['iteration_id']].append({
             'parameter_name': p['calibration_parameter__name'],
-            'parameter_value': normalize_float(p['tuned_value']),
-
+            'parameter_value': p['tuned_value']
         })
 
     metrics_by_iter = defaultdict(list)
@@ -163,7 +169,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         metrics_by_iter[m['iteration_id']].append({
             'metric_name': m['metric__name'],
             'metric_display_name': m['metric__display_name'],
-            'metric_value': normalize_float(m['metric_value']),
+            'metric_value': m['metric_value']
         })
 
     # Construct iteration data with parameters, metrics, and validation reference
@@ -171,14 +177,30 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
     for iteration in iterations:
         validation_run = validation_runs_by_iteration.get(iteration.id)
 
+        raw_params = params_by_iter.get(iteration.id, [])
+        raw_metrics = metrics_by_iter.get(iteration.id, [])
+
         iteration_element = {
             'iteration_num': iteration.iteration_num,
             'iteration_id': iteration.id,
             'worker_name': iteration.worker_name,
             'best_params': iteration.best_params,
             'objective_function_value': normalize_float(iteration.objective_function_value),
-            'parameters': params_by_iter.get(iteration.id, []),
-            'metrics': metrics_by_iter.get(iteration.id, []),
+            'parameters': [
+                {
+                    'parameter_name': p['parameter_name'],
+                    'parameter_value': normalize_float(p['parameter_value']),
+                }
+                for p in raw_params
+            ],
+            'metrics': [
+                {
+                    'metric_name': m['metric_name'],
+                    'metric_display_name': m['metric_display_name'],
+                    'metric_value': normalize_float(m['metric_value']),
+                }
+                for m in raw_metrics
+            ],
         }
 
         if validation_run:
