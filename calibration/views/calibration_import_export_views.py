@@ -172,6 +172,16 @@ def import_calibration_run_data(request: Request,
     # ---------------------------------------------------------------------
     # WRITE PHASE: perform DB mutations & keep IO where it was
     # ---------------------------------------------------------------------
+    gage = None
+    if gage_id:
+        # Check cache first to confirm the gage exists and is active
+        gage_dict = get_gage_by_id(gage_id)
+        if not gage_dict:
+            raise Gage.DoesNotExist(f"Gage '{gage_id}' does not exist or is not active")
+
+        # Fetch the actual DB object to assign to the FK
+        gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
+
     with transaction.atomic():
         # -----------------------------
         # Gage
@@ -179,7 +189,7 @@ def import_calibration_run_data(request: Request,
         if gage_id:
             # Persist the gage on the run
             try:
-                save_gage(run, gage_id)
+                save_gage(run, gage)
             except Gage.DoesNotExist:
                 return None, None, ResponseError(
                     f"Gage '{gage_id}' does not exist or is not active",
