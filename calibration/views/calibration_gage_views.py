@@ -215,9 +215,19 @@ def save_gage_tab(request: Request):
 
     geopackage_image_url = None
 
-    if gage_id:
+    # Check cache first to confirm the gage exists and is active
+    gage_dict = get_gage_by_id(gage_id)
+    if not gage_dict:
+        raise Gage.DoesNotExist(f"Gage '{gage_id}' does not exist or is not active")
+
+    # Fetch the actual DB object to assign to the FK
+    gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
+
+    gage_is_new_or_changed = (run.gage is None) or (run.gage != gage)
+
+    if gage_is_new_or_changed:
         try:
-            eds_errors_entry = save_gage(run, gage_id)
+            eds_errors_entry = save_gage(run, gage)
             if eds_errors_entry:
                 eds_errors.append(eds_errors_entry)
         except Gage.DoesNotExist:
@@ -265,30 +275,58 @@ def save_gage_tab(request: Request):
             else:
                 raise CerfException("Invalid observational source")
         else:
-            run.observational_eds_dir_path = None
+            run.observational_eds_file_path = None
+            clear_times(run)
 
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
         # Get Forcing data
 
         # Determine requested forcing source
-        fource_source_requested = (
+        forcing_source_requested = (
             ForcingSourceEnum.get_instance(forcing_source_requested_name)
             if forcing_source_requested_name
             else None
         )
 
-        # Decide whether we need to fetch BEFORE mutating the run
-        needs_forcing_fetch = (
-                forcing_source_requested_name
-                and (
-                        not run.forcing_source_requested
-                        or run.forcing_source_requested.name != forcing_source_requested_name
-                )
+        # Must be set before get_forcing_data_from_s3() because should_use_bmi_forcing() reads it
+        run.forcing_source_requested = forcing_source_requested
+
+        if forcing_source_requested_name:
+            try:
+                get_forcing_data_from_s3(run, forcing_source_requested_name)
+            except DataServicesException as e:
+                logger.exception("Error retrieving forcing data from Data Services")
+                eds_errors.append({
+                    'name': 'forcing',
+                    'message': str(e),
+                    'status_code': e.status_code if e.status_code else None
+                })
+        else:
+            # No forcing_source_requested → clear any existing forcing state
+            run.forcing_eds_dir_path = None
+            run.forcing_source_actual = None
+
+    else:
+        # Get Forcing data
+        # Gage unchanged → refetch only if requested source changed
+
+        forcing_source_requested = (
+            ForcingSourceEnum.get_instance(forcing_source_requested_name)
+            if forcing_source_requested_name
+            else None
         )
 
-        # Must be set before get_forcing_data_from_s3() because should_use_bmi_forcing() reads it
-        run.forcing_source_requested = fource_source_requested
+        needs_forcing_fetch = (
+            forcing_source_requested_name
+            and (
+                not run.forcing_source_requested
+                or run.forcing_source_requested.name != forcing_source_requested_name
+            )
+        )
+
+        # Persist the requested source selection even if we don't refetch
+        run.forcing_source_requested = forcing_source_requested
 
         if needs_forcing_fetch:
             try:
@@ -301,11 +339,10 @@ def save_gage_tab(request: Request):
                     'status_code': e.status_code if e.status_code else None
                 })
         elif not forcing_source_requested_name:
-            # No forcing fource_source_requested → clear any existing forcing state
+            # No forcing_source_requested → clear any existing forcing state
             run.forcing_eds_dir_path = None
             run.forcing_source_actual = None
-
-        run.forcing_source_requested = ForcingSourceEnum.get_instance(forcing_source_requested_name) if forcing_source_requested_name else None
+            clear_times(run)
 
     # -------------------------
     # Write phase
@@ -323,7 +360,7 @@ def save_gage_tab(request: Request):
                 'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None}
     should_use_bmi = should_use_bmi_forcing(run)
     if not should_use_bmi:
-        if run.forcing_source_requested != run.forcing_source_actual:
+        if run.forcing_source_requested and run.forcing_source_requested != run.forcing_source_actual:
             response['warnings'] = [
                 f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name if run.forcing_source_actual else None}'
             ]
@@ -398,7 +435,7 @@ def update_and_get_gage_status(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def get_geopackage_image_url(geopackage_path: str) -> str | None:
+def get_geopackage_image_url(geopackage_path: str | None) -> str | None:
     """
     Convert a GeoPackage file to a PNG image URL if available.
 
@@ -422,53 +459,50 @@ def get_geopackage_image_url(geopackage_path: str) -> str | None:
         return None
 
 
-def save_gage(run: CalibrationRun, gage_id: str) -> dict | None:
+def save_gage(run: CalibrationRun, gage: Gage) -> dict | None:
     """
-    Update the calibration run with a new gage a
+    Apply a gage to a calibration run (initial set or change).
 
-    If the gage for the calibration run changes, this function clears any existing
-    EDS files and updates initial parameter values via data services.
+    - If the run already had a gage, clear any gage-dependent EDS paths (forcing/observational/geopackage)
+      and clear derived time fields so they will be recalculated.
+    - Set run.gage to the provided gage.
+    - Refresh module metadata/initial parameter values via Data Services.
 
-    :param run: The calibration run instance to update.
-    :param gage_id: The gage_id of the new gage.
-    :return: A dictionary with error details if an error occurs; otherwise, None.
-    :raises: Gage.DoesNotExist if the specified gage does not exist or is not active.
+    Caller:
+    - Should call when the gage is being set for the first time or when it has changed.
+    - Should not call when the gage is unchanged (to preserve existing EDS paths and time fields).
+
+    :param run: The CalibrationRun instance to update (not saved here).
+    :param gage: The gage being applied.
+    :return: Error dict for Data Services failures; otherwise None.
     """
-    # Check cache first to confirm the gage exists and is active
-    gage_dict = get_gage_by_id(gage_id)
-    if not gage_dict:
-        raise Gage.DoesNotExist(f"Gage '{gage_id}' does not exist or is not active")
 
-    # Fetch the actual DB object to assign to the FK
-    gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
+    # We only get here when the gage is new or changed, but we may have existing state from the prior gage.
+    if run.gage:
+        # Clear any EDS-derived file paths associated with the prior gage.
+        # TODO Need to delete anything in the geopackage_original directory
+        run.geopackage_eds_file_path = None
+        run.forcing_eds_dir_path = None
+        run.observational_eds_file_path = None
 
-    # Only update if the gage has changed
-    if run.gage != gage:
-        if run.gage:
-            # Delete any EDS files associated with the previous gage
+        clear_times(run)
 
-            # TODO Need to delete anything in the geopackage_original directory
-            run.geopackage_eds_file_path = None
-            run.forcing_eds_dir_path = None
-            run.observational_eds_file_path = None
+    run.gage = gage
 
-            clear_times(run)
+    # Compute once and reuse
+    my_formulations = CalibrationFormulation.objects.filter(calibration_run_id=run.id)
 
-        run.gage = gage
+    if my_formulations.exists():
+        try:
+            get_module_metadata_from_data_services(run, my_formulations, gage_changed=True)  # type: ignore
+        except DataServicesException as e:
+            logger.exception("Error retrieving module parameter data from Data Services")
+            return {
+                'name': 'parameters',
+                'message': str(e),
+                'status_code': e.status_code if e.status_code else None
+            }
 
-        # Compute once and reuse
-        my_formulations = CalibrationFormulation.objects.filter(calibration_run_id=run.id)
-
-        if my_formulations.exists():
-            try:
-                get_module_metadata_from_data_services(run, my_formulations, gage_changed=True)  # type: ignore
-            except DataServicesException as e:
-                logger.exception("Error retrieving module parameter data from Data Services")
-                return {
-                    'name': 'parameters',
-                    'message': str(e),
-                    'status_code': e.status_code if e.status_code else None
-                }
     return None
 
 

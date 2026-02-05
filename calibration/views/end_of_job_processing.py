@@ -17,16 +17,16 @@ from calibration.enums import OptimizationEnum, ValidationMetricPeriod, Validati
 from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, ValidationRun, \
     PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ColdStartRun, ForecastRun, \
-    VerificationRun
+    VerificationRun, CalibrationFormulation
 from calibration.models.base_run import BaseRun
-from calibration.util.caching import have_LSTM
+from calibration.util.caching import have_LSTM, get_cached_modules_by_id
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
     get_objective_log_best_file, get_calibration_worker_path, get_global_best_params_file, get_validation_metrics_valid_control_file, \
     get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
     get_validation_special_performance_file, get_forecast_performance_file, get_verification_performance_file, \
     get_params_iteration_file, get_cold_start_performance_file
-from calibration.views.calibration_secondary_data_views import generate_secondary_ts_data
+from calibration.views.calibration_secondary_data_views import generate_secondary_ts_data, should_generate_swe, should_generate_soil_moisture
 from calibration.views.common import CerfException, get_job_description, find_validation_worker_with_matching_id
 
 logger = logging.getLogger(__name__)
@@ -343,19 +343,36 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
             expected_run_type=expected_run_type
         )
 
-    logger.info('Generating SWE timeseries data')
-    try:
-        generate_secondary_ts_data(validation_run, SecondaryDataEnum.SWE)
-    except Exception as e:
-        logger.error(f'Failed to generate SWE timeseries data: {e}')
-        traceback.print_exc()
+    # ------------------------------------------------------------------
+    # Secondary timeseries (SWE / Soil Moisture) — conditional by modules
+    # ------------------------------------------------------------------
+    modules_by_id = get_cached_modules_by_id()
+    modules_by_name = {m.name: m for m in modules_by_id.values()}
 
-    logger.info('Generating Soil Moisture timeseries data')
-    try:
-        generate_secondary_ts_data(validation_run, SecondaryDataEnum.SOIL_MOISTURE)
-    except Exception as e:
-        logger.error(f'Failed to generate Soil Moisture timeseries data: {e}')
-        traceback.print_exc()
+    formulations = (
+        CalibrationFormulation.objects
+        .filter(calibration_run=validation_run.calibration_run)
+        .only("module_id")
+    )
+
+    module_names_for_job = {modules_by_id[f.module_id].name for f in formulations}
+    modules_by_name_for_job = {name: modules_by_name[name] for name in module_names_for_job}
+
+    if should_generate_swe(modules_by_name_for_job):
+        logger.info("Generating SWE timeseries data")
+        try:
+            generate_secondary_ts_data(validation_run, SecondaryDataEnum.SWE)
+        except Exception as e:
+            logger.error(f"Failed to generate SWE timeseries data: {e}")
+            traceback.print_exc()
+
+    if should_generate_soil_moisture(modules_by_name_for_job):
+        logger.info("Generating Soil Moisture timeseries data")
+        try:
+            generate_secondary_ts_data(validation_run, SecondaryDataEnum.SOIL_MOISTURE)
+        except Exception as e:
+            logger.error(f"Failed to generate Soil Moisture timeseries data: {e}")
+            traceback.print_exc()
 
 
 def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:

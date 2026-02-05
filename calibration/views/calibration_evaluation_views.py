@@ -20,6 +20,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ca
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
 from calibration.views.calibration_forecast_views import get_forecast_log, get_cold_start_log
+from calibration.views.calibration_run_views import map_path_to_host
 from calibration.views.calibration_verification_views import get_verification_log
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
@@ -641,7 +642,7 @@ def get_log(request: Request) -> Response:
     response = {
         'message': f"{log_category.value.capitalize()} {log_name.value} log file retrieved",
         'log_data': paginated_lines,
-        'log_path': log_path,
+        'log_path': map_path_to_host(log_path),
         'byte_offset': file_size,
         'pagination_metadata': pagination_metadata,
         'status': get_status_name_for_log(ctx, log_category),
@@ -720,7 +721,7 @@ def get_log_status(request: Request) -> Response:
     file_size = os.path.getsize(log_path) if os.path.exists(log_path) else 0
 
     response = {
-        'message': f"log file {log_path} has " + ("changed" if file_size != byte_offset else "not changed"),
+        'message': f"log file {map_path_to_host(log_path)} has " + ("changed" if file_size != byte_offset else "not changed"),
         'file_updated': (file_size != byte_offset),
         'status': get_status_name_for_log(ctx, log_category)
     }

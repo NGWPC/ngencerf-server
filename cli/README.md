@@ -429,7 +429,7 @@ Here is an example of exported data:
         "CFE-S",
         "Noah-OWP-Modular"
     ],
-    "formulation_name": "noah_cfes_troute_01055000_clone",
+    "job_name": "noah_cfes_troute_01055000_clone",
     "use_sloth": false,
     "sloth_parameters": [],
     "automatic_validation": true,
@@ -474,32 +474,32 @@ Here is an example of exported data:
 The format for exported and imported data is the same.  The metadata section on export contains data that, while useful, is not needed for import.
 You can also use the metadata section for your own information, such as comments.  It will be ignored on import.
 
-| Field                     | Description                                                                                                                                                            |
-|---------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| source_calibration_run_id | Metadata: ID of the job that was exported.                                                                                                                             |
-| time_range                | Metadata: Intersection of time range from the forcing data and observation data, constraining calibration and validation.                                              |
-| errors                    | Metadata: Shows any outstanding errors in the job that would prevent it from running.                                                                                  |
-| run_after_import          | Flag indicating whether to submit the job immediately provided all required information is available and there are no errors. Can be overridden by the `--run` option. |
-| gage_id                   | The gage_id associated with the calibration job.                                                                                                                       |
-| forcing_source            | The source of the forcing data.  (e.g., AORC or NWM Retrospective)                                                                                          |
-| observational_source                 | The source of the observational data (e.g., Historical)                                              | |
-| geopackage_source                    | The source of the geopackage data (e.g., Hydrofabric).                                                  | |
-| modules                              | The list of modules used for this calibration.                                                                         |
-| formulation_name                     | User-supplied formulation name that has no effect on the job.                                                          |
-| use_sloth                            | Flag indicating whether the SLoTH model is used. If true, `sloth_parameters` must be provided.                         |
-| sloth_parameters                     | Required if `use_sloth` is true. The SLoTH parameter definitions. All fields are required for each SLoTH variable.     |
-| automatic_validation                 | If true, then a validation is run automatically after the calibration run.      (Should we still be exporting this?)   |
-| calibration_times                    | The time ranges to use for calibration.                                                                                |
-| validation_times                     | The time ranges to use for validation (required if `automatic_validation` is true). Must be outside the calibration times. |
-| stream_flow_threshold                | Required if a categorical objective function is specified. If empty, ngen-cal will not calculate categorical metric.   |
-| peak_flow_threshold                  | Required if an event-based objective function is specified. If empty, ngen-cal will not calculate event-based metric.  |
-| parameters                           | Module parameters to use for calibration tuning including name, min, max, and module. All fields are required.         |
-| objective_function                   | Metric to use for the objective function.                                                                              |
-| optimization                         | Optimization algorithm (DDS, GWO, PSO).                                                                                |
-| optimization_inputs                  | Inputs for the selected optimization.                                                                                  |
-| save_plot_iteration_frequency        | How often ngen-cal will generate plots during the calibration.                                                         |
-| save_output_iteration                | If true, output for each iteration is saved in separate files (not supported by UI).                                   |
-| stop_criteria                        | Number of worker iterations to run.                                                                                    |
+| Field                         | Description                                                                                                                                                            |
+|-------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| source_calibration_run_id     | Metadata: ID of the job that was exported.                                                                                                                             |
+| time_range                    | Metadata: Intersection of time range from the forcing data and observation data, constraining calibration and validation.                                              |
+| errors                        | Metadata: Shows any outstanding errors in the job that would prevent it from running.                                                                                  |
+| run_after_import              | Flag indicating whether to submit the job immediately provided all required information is available and there are no errors. Can be overridden by the `--run` option. |
+| gage_id                       | The gage_id associated with the calibration job.                                                                                                                       |
+| forcing_source                | The source of the forcing data.  (e.g., AORC or NWM Retrospective)                                                                                                     |
+| observational_source          | The source of the observational data (e.g., Historical)                                                                                                                | |
+| geopackage_source             | The source of the geopackage data (e.g., Hydrofabric).                                                                                                                 | |
+| modules                       | The list of modules used for this calibration.                                                                                                                         |
+| job_name                      | User-supplied job_name that has no effect on the job.                                                                                                             |
+| use_sloth                     | Flag indicating whether the SLoTH model is used. If true, `sloth_parameters` must be provided.                                                                         |
+| sloth_parameters              | Required if `use_sloth` is true. The SLoTH parameter definitions. All fields are required for each SLoTH variable.                                                     |
+| automatic_validation          | If true, then a validation is run automatically after the calibration run.      (Should we still be exporting this?)                                                   |
+| calibration_times             | The time ranges to use for calibration.                                                                                                                                |
+| validation_times              | The time ranges to use for validation (required if `automatic_validation` is true). Must be outside the calibration times.                                             |
+| stream_flow_threshold         | Required if a categorical objective function is specified. If empty, ngen-cal will not calculate categorical metric.                                                   |
+| peak_flow_threshold           | Required if an event-based objective function is specified. If empty, ngen-cal will not calculate event-based metric.                                                  |
+| parameters                    | Module parameters to use for calibration tuning including name, min, max, and module. All fields are required.                                                         |
+| objective_function            | Metric to use for the objective function.                                                                                                                              |
+| optimization                  | Optimization algorithm (DDS, GWO, PSO).                                                                                                                                |
+| optimization_inputs           | Inputs for the selected optimization.                                                                                                                                  |
+| save_plot_iteration_frequency | How often ngen-cal will generate plots during the calibration.                                                                                                         |
+| save_output_iteration         | If true, output for each iteration is saved in separate files (not supported by UI).                                                                                   |
+| stop_criteria                 | Number of worker iterations to run.                                                                                                                                    |
 
 
 ---
