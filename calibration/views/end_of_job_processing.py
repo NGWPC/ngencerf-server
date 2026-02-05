@@ -7,6 +7,7 @@ from collections import deque
 from datetime import timedelta
 from itertools import groupby
 from operator import attrgetter
+from typing import cast, Any
 
 import pandas as pd
 from django.db import transaction
@@ -33,23 +34,32 @@ logger = logging.getLogger(__name__)
 BULK_CREATE_BATCH_SIZE = 1000  # Define a reasonable batch size
 
 
-def sanitize_metric_value(value) -> float | None:
+def to_float_or_nan(value: object) -> float:
     """
-    Ensure metric values are JSON-safe later by preventing NaN/±Inf from ever
-    being stored in the DB. Return None for non-finite values.
+    Convert arbitrary CSV/pandas values to a float.
+
+    Missing, blank, or NA-like values are converted to NaN (not None) so
+    FloatField(null=False) constraints are satisfied.
     """
+    # Fast-path for Python None
     if value is None:
-        return None
+        return float("nan")
 
+    # Handle pandas/numpy scalar NA safely (NaN, NA, NaT, etc.).
+    # cast(Any, ...) is for the type checker only; pd.isna accepts arbitrary objects at runtime.
     try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
+        if pd.isna(cast(Any, value)):
+            return float("nan")
+    except Exception:
+        # Non-scalar / unexpected object; fall through to float(), which will raise if invalid
+        pass
 
-    if not math.isfinite(f):
-        return None
+    # Treat blank or whitespace-only strings as missing
+    if isinstance(value, str) and not value.strip():
+        return float("nan")
 
-    return f
+    # Normal numeric conversion (raises if invalid)
+    return float(value)
 
 
 def read_validation_output(validation_run: ValidationRun, failed_so_far: bool) -> None:
@@ -225,7 +235,8 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
         return
 
     # Read the metrics file using pandas
-    metrics_df = pd.read_csv(metrics_file)
+    # Treat common "blank"/string-missing tokens as NA so they become NaN in pandas
+    metrics_df = pd.read_csv(metrics_file, na_values=['', ' ', 'null', 'None'])
 
     metrics_to_create = []  # List to accumulate metrics to be created
 
@@ -253,7 +264,7 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
             if not metric:
                 raise CerfException(f"Could not find metric '{metric_name}' in MetricEnum")
 
-            metric_value = sanitize_metric_value(value)
+            metric_value = to_float_or_nan(value)
 
             # Create the Metric object (ValidationMetrics or NWMRetrospectiveMetrics)
             metric_obj = MetricModel(
@@ -271,7 +282,14 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
 
     # Bulk create the metrics in the database
     if metrics_to_create:
-        MetricModel.objects.bulk_create(metrics_to_create, batch_size=BULK_CREATE_BATCH_SIZE)
+        bad = [m for m in metrics_to_create if m.metric_value is None]
+        if bad:
+            raise CerfException(f"BUG: metric_value None before bulk_create (count={len(bad)})")
+
+        MetricModel.objects.bulk_create(
+            metrics_to_create,
+            batch_size=BULK_CREATE_BATCH_SIZE
+        )
 
 
 def process_validation_for_validation_run(validation_run: ValidationRun) -> None:
@@ -343,8 +361,13 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
 def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
     """
     Process all Iteration objects for the workers of a given CalibrationRun.
-    It uses prefetching to optimize database queries and processes the iterations
+    It loads all Iteration rows once, groups them by worker, and processes the iterations
     for each worker based on their metrics and parameters.
+
+    NOTE ON NUMERIC VALUES
+    ----------------------
+    We intentionally store raw DB values (including NaN/±Inf if they occur).
+    Any normalization for JSON safety happens at API response time.
 
     :param calibration_run: The CalibrationRun instance.
     """
@@ -359,7 +382,7 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
     #     * Verifying that exactly one best iteration exists
     # ------------------------------------------------------------
     # Compute best_params_dict once, outside the loop
-    best_params_dict: dict[str, float | None] = {}
+    best_params_dict: dict[str, float] = {}
 
     have_LSTM_flag = have_LSTM(calibration_run)
 
@@ -396,8 +419,11 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
 
             df = pd.read_csv(global_best_params_file, names=['value', 'name', 'model'], skiprows=1)
 
+            # IMPORTANT:
+            # - params_match_best() expects numeric values (float/None) so it can use math.isclose.
+            # - We do NOT "sanitize" (NaN/±Inf -> None) here; we just coerce to float.
             best_params_dict = {
-                str(name): sanitize_metric_value(value)
+                str(name): float(value)
                 for name, value in zip(df['name'], df['value'])
             }
 
@@ -495,7 +521,7 @@ def process_iterations_for_a_worker(
         calibration_run: CalibrationRun,
         worker_name: str,
         iterations: list[Iteration],
-        best_params_dict: dict[str, float | None],
+        best_params_dict: dict[str, float],
         have_LSTM_flag: bool,
         params_lookup: dict[str, CalibrationParameter]
 ) -> None:
@@ -503,6 +529,18 @@ def process_iterations_for_a_worker(
     Process all iterations for a specific worker in a CalibrationRun.
     It reads the metrics and parameters files for the worker and processes each
     iteration for metrics and parameters creation.
+
+    Best-iteration rules:
+      - DDS: best iteration number is read from objective_log_best_file
+      - GWO/PSO: best iteration is determined by matching parameters against global_best_params_file
+      - LSTM: only one iteration exists and is always best
+
+    NOTE ON NUMERIC VALUES
+    ----------------------
+    We store the numeric values as given (including NaN/±Inf if present).
+    We still coerce parameter values to float so matching (math.isclose) works.
+    This may raise if the parameters CSV contains non-numeric values.
+    JSON-safety normalization happens at API response construction time.
 
     :param calibration_run: The CalibrationRun instance.
     :param worker_name: The name of the worker. This is the middle part of the worker name.
@@ -568,32 +606,36 @@ def process_iterations_for_a_worker(
     # Prefetch Iteration objects for efficiency
     iteration_dict = {it.iteration_num: it for it in iterations}
 
-    metrics_to_create = []  # List to accumulate metrics to be created
-    params_to_create = []  # List to accumulate parameters to be created
+    metrics_to_create: list[IterationMetric] = []
+    params_to_create: list[IterationParameter] = []
 
     # Collect best_params updates instead of saving per-iteration
-    iterations_to_update_best_flag = []
+    iterations_to_update_best_flag: list[Iteration] = []
 
     # Track whether a best iteration was set
     best_iteration_found = False
 
     # Process metrics file
-    metrics_df = pd.read_csv(metrics_iteration_file)
+    # Treat common "blank"/string-missing tokens as NA so they become NaN in pandas
+    metrics_df = pd.read_csv(metrics_iteration_file, na_values=["", " ", "null", "None"])
+
     if not have_LSTM_flag:
         update_objective_function_values(metrics_iteration_file, calibration_run, worker_name)
 
     for _, row in metrics_df.iterrows():
         iteration_num = int(row['iteration'])
 
-        row_dict: dict[str, float | None] = {
-            str(k): sanitize_metric_value(v)
-            for k, v in row.items()
+        # Raw values (no NaN/Inf cleanup). Keep as-is for DB write.
+        row_dict = {
+            str(k): row[k]
+            for k in row.index
             if k != 'iteration'
         }
 
         iteration = iteration_dict.get(iteration_num)
         if not iteration:
             raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name}")
+
         process_metrics_row_for_calibration(iteration, row_dict, metrics_to_create, job_description)
 
         if have_LSTM_flag:
@@ -602,7 +644,6 @@ def process_iterations_for_a_worker(
             iterations_to_update_best_flag.append(iteration)  # buffer update
 
     # Process parameters file
-    # xxx
     if not have_LSTM_flag:
         params_df = pd.read_csv(params_iteration_file)
 
@@ -619,10 +660,12 @@ def process_iterations_for_a_worker(
             if not iteration:
                 raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name}")
 
-            # Determine if best iteration
-            params_row: dict[str, float | None] = {
-                str(k): sanitize_metric_value(v)
-                for k, v in row.items()
+            # IMPORTANT:
+            # - params_match_best() uses math.isclose, so we must coerce to float.
+            # - We do NOT sanitize (NaN/±Inf -> None); we just float() the value.
+            params_row = {
+                str(k): float(row[k])
+                for k in row.index
                 if k != 'iteration'
             }
 
@@ -648,17 +691,23 @@ def process_iterations_for_a_worker(
                 job_description
             )
 
-    # Bulk create IterationMetric and IterationParameter objects in chunks
+    # Bulk create IterationMetric and IterationParameter objects with Django batching
     if metrics_to_create:
-        for i in range(0, len(metrics_to_create), BULK_CREATE_BATCH_SIZE):
-            batch = metrics_to_create[i:i + BULK_CREATE_BATCH_SIZE]
-            IterationMetric.objects.bulk_create(batch)
+        bad = [m for m in metrics_to_create if m.metric_value is None]
+        if bad:
+            raise CerfException(f"BUG: metric_value None before bulk_create (count={len(bad)})")
+
+        IterationMetric.objects.bulk_create(
+            metrics_to_create,
+            batch_size=BULK_CREATE_BATCH_SIZE
+        )
 
     # Bulk create parameters
     if params_to_create:
-        for i in range(0, len(params_to_create), BULK_CREATE_BATCH_SIZE):
-            batch = params_to_create[i:i + BULK_CREATE_BATCH_SIZE]
-            IterationParameter.objects.bulk_create(batch)
+        IterationParameter.objects.bulk_create(
+            params_to_create,
+            batch_size=BULK_CREATE_BATCH_SIZE
+        )
 
     # Single bulk update for best_params instead of thousands of saves
     if iterations_to_update_best_flag:
@@ -692,12 +741,17 @@ def process_iterations_for_a_worker(
 # Function to process a single metrics row
 def process_metrics_row_for_calibration(
         iteration: Iteration,
-        metrics_row: dict[str, float | None],
+        metrics_row: dict[str, object],
         metrics_to_create: list[IterationMetric],
         job_description: str
 ) -> None:
     """
     Process a single row from the metrics file and create IterationMetric objects.
+
+     NOTE ON NUMERIC VALUES
+    ----------------------
+    This function does not sanitize numeric values; it stores what it is given.
+    Any JSON-safety normalization (NaN/±Inf -> None) is done later at API response time.
 
     :param iteration: The Iteration object for the current iteration.
     :param metrics_row: The row of metrics data from the file.
@@ -714,7 +768,7 @@ def process_metrics_row_for_calibration(
         if not metric:
             raise CerfException(f"Could not find metric '{metric_name}'")
 
-        metric_value = sanitize_metric_value(value)
+        metric_value = to_float_or_nan(value)
 
         metric_obj = IterationMetric(
             iteration=iteration,
@@ -728,7 +782,7 @@ def process_metrics_row_for_calibration(
 # Function to process a single parameters row
 def process_params_row(
         iteration: Iteration,
-        params_row: dict[str, float | None],
+        params_row: dict[str, float],
         params_to_create: list[IterationParameter],
         params_lookup: dict[str, CalibrationParameter],
         job_description: str
@@ -743,6 +797,11 @@ def process_params_row(
 
     Best-iteration selection is handled in process_iterations_for_a_worker().
 
+    NOTE ON NUMERIC VALUES
+    ----------------------
+    This function does not sanitize numeric values; it stores what it is given.
+    Any JSON-safety normalization (NaN/±Inf -> None) is done later at API response time.
+
     :param iteration: The Iteration object for the current iteration.
     :param params_row: The row of parameter data from the file (excluding 'iteration').
     :param params_to_create: Accumulator list for IterationParameter objects.
@@ -753,13 +812,11 @@ def process_params_row(
     # ----------------------------------------------------------------------
     # Create IterationParameter objects
     # ----------------------------------------------------------------------
-    for param_name, value in params_row.items():
+    for param_name, tuned_value in params_row.items():
         # Perform case-insensitive lookup for the parameter
         parameter = params_lookup.get(param_name.lower())
         if not parameter:
             raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
-
-        tuned_value = sanitize_metric_value(value)
 
         param_obj = IterationParameter(
             iteration=iteration,
@@ -798,7 +855,7 @@ def update_objective_function_values(metrics_iteration_file: str, calibration_ru
     # Iterate over rows in the DataFrame
     for _, row in metrics_df.iterrows():
         iteration_num = int(row['iteration'])  # type: ignore[arg-type]
-        obj_fun_val = sanitize_metric_value(row['objFunVal'])
+        obj_fun_val = row['objFunVal']
 
         # Retrieve the iteration object from the dictionary
         iteration = iterations_dict.get(iteration_num)
@@ -969,20 +1026,18 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
     return None
 
 
-def params_match_best(params_row: dict[str, float | None], best_params_dict: dict[str, float | None]) -> bool:
+def params_match_best(params_row: dict[str, float], best_params_dict: dict[str, float]) -> bool:
     """
     Determine whether a row of tuned parameters exactly matches the known global-best parameters.
 
-    NOTES:
+    Rules:
     - Used only for GWO/PSO jobs. DDS never uses parameter matching.
-    - best_params_dict comes from global_best_params_file.
-    - A match requires:
-        1. The row contains all global-best parameters
-        2. Same parameter names (case-insensitive).
-        3. Values matching within floating-point tolerance,
-           treating None as an exact match to None.
-    - This check is used for actual best-iteration selection in
-      process_iterations_for_a_worker().
+    - Parameter names must match exactly (case-insensitive).
+    - Value comparison:
+        * NaN matches NaN
+        * +Inf matches +Inf
+        * -Inf matches -Inf
+        * otherwise values must match within math.isclose tolerance.
     """
     # If we have no global best params (DDS or missing file), never match.
     if not best_params_dict:
@@ -1006,13 +1061,19 @@ def params_match_best(params_row: dict[str, float | None], best_params_dict: dic
     for name, b in best.items():
         v = row[name]
 
-        # None matches None only.
-        if v is None or b is None:
-            if v is b:
+        # NaN matches NaN only
+        if math.isnan(v) or math.isnan(b):
+            if math.isnan(v) and math.isnan(b):
                 continue
             return False
 
-        # Float match within tolerance.
+        # +Inf/-Inf must match exactly (including sign)
+        if math.isinf(v) or math.isinf(b):
+            if v == b:
+                continue
+            return False
+
+        # Normal finite float compare
         if not math.isclose(v, b, rel_tol=1e-9, abs_tol=0.0):
             return False
 

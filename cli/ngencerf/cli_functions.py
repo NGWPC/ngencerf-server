@@ -524,7 +524,7 @@ def list_jobs(output_path: str | None = None, filters: dict | None = None, sort:
             job.get("status") or "-",
             (job.get("calibration_start_period") or "-").replace("T", " ").split(".")[0],
             (job.get("calibration_end_period") or "-").replace("T", " ").split(".")[0],
-            job.get("formulation_name") or "-",
+            job.get("job_name") or "-",
             job.get("objective_function") or "-",
             job.get("optimization_algorithm") or "-",
             (job.get("created_at") or "-").replace("T", " ").split(".")[0],
@@ -819,7 +819,7 @@ def _pretty_print_job(calibration_run_id: int, data: dict) -> None:
     print(data.get("description", "").strip())
     print()
 
-    print(f"Formulation Name: {data.get('formulation_name')}")
+    print(f"Job Name: {data.get('job_name')}")
     print(f"Modules: {', '.join(data.get('modules', []))}")
     print()
 

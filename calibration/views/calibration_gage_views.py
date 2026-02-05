@@ -203,10 +203,13 @@ def save_gage_tab(request: Request):
     forcing_source_requested_name = validator.get('forcing_source_requested')
     observational_source_name = validator.get('observational_source')
     geopackage_source_name = validator.get('geopackage_source')
+    job_name = validator.get('job_name')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
+
+    run.job_name = job_name
 
     eds_errors = []
 

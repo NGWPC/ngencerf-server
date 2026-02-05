@@ -20,7 +20,7 @@
         "CFE-S",
         "T-Route"
     ],
-    "formulation_name": "my-cfe-noah",
+    "job_name": "my-cfe-noah",
     "use_sloth": true,
     "sloth_parameters": [
         {

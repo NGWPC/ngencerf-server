@@ -975,7 +975,7 @@ def get_jobs(
         calibration_runs_qs = (
             ordered_qs.values(
                 "id", "gage__gage_id", "gage__domain__name", "submit_date", "updated_at",
-                "user_formulation_name", "calibration_start_period", "calibration_end_period",
+                "job_name", "calibration_start_period", "calibration_end_period",
                 "status__name", "combined_status", "job_genesis", "created_at",
                 "objective_function__name", "optimization__name",
                 "is_archived", "is_locked"
@@ -1051,7 +1051,7 @@ def get_jobs(
                 'is_locked': run['is_locked'],
                 'is_lstm': run_id in lstm_run_ids,
                 'submit_date': run['submit_date'],
-                'formulation_name': run['user_formulation_name'],
+                'job_name': run['job_name'],
                 'calibration_start_period': run['calibration_start_period'],
                 'calibration_end_period': run['calibration_end_period'],
                 'job_genesis': run['job_genesis'],
