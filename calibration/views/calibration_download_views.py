@@ -128,7 +128,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
             job_data_dir = run.job_data_dir
 
             # Canonical download name (NO timestamp)
-            zip_base_name = f"{os.path.basename(job_data_dir)}_{run.user_formulation_name}"
+            zip_base_name = f"{os.path.basename(job_data_dir)}_{run.job_name}"
             download_name = f"{zip_base_name}.zip"
 
             # Unique on-disk filename includes timestamp to avoid collisions
@@ -606,7 +606,7 @@ def get_calibration_job_zip(request: Request) -> FileResponse | Response:
     job_data_dir = calibration_run.job_data_dir
 
     # Canonical download name (no timestamp)
-    zip_base_name = f"{os.path.basename(job_data_dir)}_{calibration_run.user_formulation_name}"
+    zip_base_name = f"{os.path.basename(job_data_dir)}_{calibration_run.job_name}"
     download_name = f"{zip_base_name}.zip"
 
     # Unique on-disk name (avoid collisions)
