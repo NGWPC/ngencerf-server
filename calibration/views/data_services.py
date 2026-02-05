@@ -139,7 +139,12 @@ def get_geopackage_from_data_services(run: CalibrationRun):
         logger.info('Retrieving geopackage from Data Services')
         original_geopackage_dir = get_geopackage_dir_for_job(run) + '_original'
         os.makedirs(original_geopackage_dir, exist_ok=True)
-        geopackage_path = call_icefabric_gpkg(run.gage.gage_id, run.gage.domain.name, original_geopackage_dir, 'test')
+        geopackage_path = call_icefabric_gpkg(
+            run.gage.gage_id,
+            run.gage.domain.name,
+            original_geopackage_dir,
+            settings.ENTERPRISE_DATA_ENV
+        )
 
         run.geopackage_eds_file_path = geopackage_path
         logger.info(f'Setting run.geopackage_eds_file_path to {run.geopackage_eds_file_path}')

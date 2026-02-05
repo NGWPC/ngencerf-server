@@ -212,6 +212,7 @@ ENTERPRISE_DATA_OBSERVATION_DATA_INFO_ENDPOINT = 'v1/streamflow_observations/{ga
 ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = 'v1/streamflow_observations/{gage_id}/csv'
 
 ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL')
+ENTERPRISE_DATA_ENV = os.getenv('ENTERPRISE_DATA_ENV')
 
 # Due to circular imports, can't use the enums as keys.  But the values must match exactly
 FORCING_DATA_DIRS_AORC = {
