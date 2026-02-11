@@ -1,5 +1,11 @@
 #! /bin/bash
 
+# Branches/tags for git repos
+#MSWM_BRANCH='jwade_NGWPC-7589_add_aet_rootzone'
+MSWM_BRANCH='development'
+DATA_ASSIMILATION_BRANCH='development'
+NGEN_FORCING_TAG='development'
+
 #=======================================================================
 # Script must be sourced for 'activate' mode
 #=======================================================================
@@ -427,40 +433,148 @@ if [ "$IN_DOCKER" = false ]; then
     if [ -n "${CERF_VENV}" ]; then
         ensure_virtualenv  # Activates and creates virtualenv if needed
 
+        echo
+        echo --------------------------------------------------------
         # Install all requirements
         echo "Upgrading pip"
         pip install --upgrade pip
         pip --version
+
+        echo
+        echo --------------------------------------------------------
         echo "Installing requirements.txt"
         pip install -r "$SCRIPT_DIR/requirements.txt"
 
-        # Doing a pip install with requirements.txt does not reliably pick up changes to the other repos, so we have to force a re-install every time
-        #MSWM_BRANCH='jwade_NGWPC-7589_add_aet_rootzone'
-        MSWM_BRANCH='development'
-        DATA_ASSIMILATION_BRANCH='development'
-        NGEN_FORCING_TAG='development'
+        #-----------------------------------------------------------------------
+        # Git branch tip SHA caching
+        #   - Resolve branch → exact commit SHA using git ls-remote
+        #   - Store last installed SHA in marker files under RUN_CERF_FLAG_DIRECTORY
+        #   - Reinstall only if SHA changed (or FORCE_REINSTALL_VCS=1)
+        #-----------------------------------------------------------------------
+        FORCE_REINSTALL_VCS="${FORCE_REINSTALL_VCS:-0}"
+
+        resolve_branch_sha() {
+            local repo_url="$1"
+            local branch="$2"
+
+            local sha
+            sha="$(git ls-remote "$repo_url" "refs/heads/${branch}" | awk '{print $1}')"
+            if [ -z "$sha" ]; then
+                echo "WARNING: Could not resolve SHA for $repo_url branch $branch (will reinstall as fallback)"
+                return 1
+            fi
+            echo "$sha"
+        }
+
+        should_reinstall_git_pkg() {
+            local pkg_name="$1"
+            local desired_sha="$2"
+            local sha_marker="$3"
+
+            if [ "$FORCE_REINSTALL_VCS" != "0" ]; then
+                echo "FORCE_REINSTALL_VCS=1; will reinstall $pkg_name"
+                return 0
+            fi
+
+            if ! pip show "$pkg_name" >/dev/null 2>&1; then
+                echo "$pkg_name not installed; will install"
+                return 0
+            fi
+
+            if [ ! -f "$sha_marker" ]; then
+                echo "No SHA marker for $pkg_name; will reinstall"
+                return 0
+            fi
+
+            if ! grep -qx "$desired_sha" "$sha_marker"; then
+                echo "$pkg_name SHA changed; will reinstall"
+                return 0
+            fi
+
+            echo "$pkg_name already at $desired_sha; skipping reinstall"
+            return 1
+        }
+
+        record_sha_marker() {
+            local sha="$1"
+            local sha_marker="$2"
+            echo "$sha" > "$sha_marker"
+        }
+
+
+        # requirements.txt does not reliably pick up changes in the git-installed repos.
+        # With SHA caching, we only reinstall when the branch tip SHA changes (or FORCE_REINSTALL_VCS=1).
 
         echo
-        echo "Installing mswm"
-        if pip show "mswm" > /dev/null 2>&1; then
-            # Package is installed, reinstall without dependencies
-            pip install --force-reinstall --no-deps --no-cache-dir "git+https://github.com/NGWPC/nwm-msw-mgr.git@${MSWM_BRANCH}"
+        echo --------------------------------------------------------
+        echo "Installing mswm from branch '$MSWM_BRANCH'"
+        MSWM_REPO="https://github.com/NGWPC/nwm-msw-mgr.git"
+        MSWM_SHA_MARKER="${RUN_CERF_FLAG_DIRECTORY}/.mswm.sha"
+        if MSWM_SHA="$(resolve_branch_sha "$MSWM_REPO" "$MSWM_BRANCH")"; then
+            echo "mswm ${MSWM_BRANCH} -> ${MSWM_SHA}"
+            if should_reinstall_git_pkg "mswm" "$MSWM_SHA" "$MSWM_SHA_MARKER"; then
+                pip install --force-reinstall --no-deps --no-cache-dir "git+${MSWM_REPO}@${MSWM_BRANCH}"
+                record_sha_marker "$MSWM_SHA" "$MSWM_SHA_MARKER"
+            fi
         else
-            # Package is not installed, install with dependencies
-            pip install "git+https://github.com/NGWPC/nwm-msw-mgr.git@${MSWM_BRANCH}"
+            # Fallback: could not resolve the branch SHA; revert to branch-based install behavior.
+            if pip show "mswm" > /dev/null 2>&1; then
+                # Already installed → force reinstall without dependencies.
+                # If upstream added new deps, you may need to run this *before* rerunning this script:
+                #   pip uninstall -y mswm
+                # Not an issue in production (fresh Docker image).
+                pip install --force-reinstall --no-deps --no-cache-dir "git+${MSWM_REPO}@${MSWM_BRANCH}"
+            else
+                # Not installed → normal install (allow pip to resolve dependencies).
+                pip install "git+${MSWM_REPO}@${MSWM_BRANCH}"
+            fi
         fi
 
         echo
-        echo "Installing data_assimilation"
-        if pip show "data_assimilation" > /dev/null 2>&1; then
-            # Package is installed, reinstall without dependencies
-            pip install --force-reinstall --no-deps --no-cache-dir "git+https://github.com/NGWPC/data-assimilation-engine.git@${DATA_ASSIMILATION_BRANCH}"
+        echo --------------------------------------------------------
+        echo "Installing data_assimilation_engine from branch '$DATA_ASSIMILATION_BRANCH'"
+        DATA_ASSIM_REPO="https://github.com/NGWPC/data-assimilation-engine.git"
+        DATA_ASSIM_SHA_MARKER="${RUN_CERF_FLAG_DIRECTORY}/.data_assimilation_engine.sha"
+        if DATA_ASSIM_SHA="$(resolve_branch_sha "$DATA_ASSIM_REPO" "$DATA_ASSIMILATION_BRANCH")"; then
+            echo "data_assimilation_engine ${DATA_ASSIMILATION_BRANCH} -> ${DATA_ASSIM_SHA}"
+            if should_reinstall_git_pkg "data_assimilation_engine" "$DATA_ASSIM_SHA" "$DATA_ASSIM_SHA_MARKER"; then
+                pip install --force-reinstall --no-deps --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_BRANCH}"
+                record_sha_marker "$DATA_ASSIM_SHA" "$DATA_ASSIM_SHA_MARKER"
+            fi
         else
-            # Package is not installed, install with dependencies
-            pip install "git+https://github.com/NGWPC/data-assimilation-engine.git@${DATA_ASSIMILATION_BRANCH}"
-
+            # Fallback: could not resolve the branch SHA; revert to branch-based install behavior.
+            if pip show "data_assimilation_engine" > /dev/null 2>&1; then
+                # Already installed → force reinstall without dependencies.
+                # If upstream added new deps, you may need to run this *before* rerunning this script:
+                #   pip uninstall -y data_assimilation_engine
+                # Not an issue in production (fresh Docker image).
+                pip install --force-reinstall --no-deps --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_BRANCH}"
+            else
+                # Not installed → normal install (allow pip to resolve dependencies).
+                pip install "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_BRANCH}"
+            fi
         fi
 
+        echo
+        echo --------------------------------------------------------
+        echo "Running pip check..."
+        if ! pip check; then
+            echo
+            echo "######################################################################"
+            echo "##############################  WARNING  #############################"
+            echo "######################################################################"
+            echo "# pip check found broken requirements. Continuing startup anyway."
+            echo "# You may see runtime import errors or unexpected behavior until deps are fixed."
+            echo "# To diagnose: run 'pip check' and reinstall the missing/conflicting packages."
+            echo "# If you suspect the git-installed packages are in a bad state, uninstall them and rerun this script:"
+            echo "#   pip uninstall -y data_assimilation_engine"
+            echo "#   pip uninstall -y mswm"
+            echo "######################################################################"
+            echo
+        fi
+
+        echo
+        echo --------------------------------------------------------
         generate_git_info
 
         echo
