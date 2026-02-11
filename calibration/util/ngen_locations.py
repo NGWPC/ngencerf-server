@@ -431,7 +431,7 @@ def get_ngen_logging_file(run: CalibrationRun | ValidationRun | ForecastRun | Co
     return os.path.join(calibration_run.job_data_dir, file_name)
 
 
-def get_swe_timeseries_png_filename(validation_run: ValidationRun) -> str:
+def get_swe_timeseries_png_filepath(validation_run: ValidationRun) -> str:
     """
     Returns the full file path for the SWE timeseries PNG image.
 
@@ -441,7 +441,7 @@ def get_swe_timeseries_png_filename(validation_run: ValidationRun) -> str:
     return os.path.join(get_secondary_plot_dir(validation_run, SecondaryDataEnum.SWE), 'swe_timeseries.png')
 
 
-def get_swe_timeseries_data_filename(validation_run: ValidationRun) -> str:
+def get_swe_timeseries_data_filepath(validation_run: ValidationRun) -> str:
     """
     Returns the full file path for the SWE timeseries CSV data file.
 
@@ -456,17 +456,21 @@ def get_swe_timeseries_data_filename(validation_run: ValidationRun) -> str:
     return os.path.join(get_output_validation_run_dir(validation_run.calibration_run), filename)
 
 
-def get_soil_moisture_timeseries_png_filename(validation_run: ValidationRun) -> str:
+def get_soil_moisture_timeseries_png_filepath(validation_run: ValidationRun) -> str:
     return os.path.join(get_secondary_plot_dir(validation_run, SecondaryDataEnum.SOIL_MOISTURE), 'soil_moisture_timeseries.png')
 
 
-def get_soil_moisture_timeseries_data_filename(validation_run: ValidationRun) -> str:
+def get_soil_moisture_timeseries_data_filepath(validation_run: ValidationRun) -> str:
     filename = (
         'soil_moisture_timeseries_best.csv'
         if validation_run.validation_type == ValidationType.VALID_BEST.value
         else f'soil_moisture_timeseries_{validation_run.worker_name}_iter{validation_run.iteration_num}'
     )
     return os.path.join(get_output_validation_run_dir(validation_run.calibration_run), filename)
+
+
+def get_precipitation_timeseries_data_filepath(calibration_run: CalibrationRun) -> str:
+    return os.path.join(get_output_calibration_run_dir(calibration_run), 'precipitation_timeseries.csv')
 
 
 def get_secondary_plot_dir(run: ValidationRun, data_type: SecondaryDataEnum) -> str:

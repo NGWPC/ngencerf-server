@@ -916,12 +916,22 @@ def get_job_description(run: BaseRun) -> str:
 worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
-def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Callable[[str, CalibrationRun | ValidationRun], None]) -> None:
+def process_worker_dirs(
+        run: CalibrationRun | ValidationRun,
+        worker_lambda: Callable[[str, CalibrationRun | ValidationRun], bool]
+) -> None:
     """
-    Processes worker directories in a given calibration or validation run.
+    Iterate over worker directories for a calibration or validation run.
+
+    The callback is invoked once per worker directory.
+
+    Return semantics:
+    - Return True to stop iterating immediately.
+    - Return False to continue scanning remaining workers.
 
     :param run: The CalibrationRun or ValidationRun instance.
     :param worker_lambda: A callback function applied to each worker directory.
+                         Return True to stop iterating, False to continue.
     """
 
     if isinstance(run, CalibrationRun):
@@ -940,8 +950,11 @@ def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Call
         worker_dir = os.path.join(output_run_dir, item)
         # Check if the item is a directory and matches the pattern
         if os.path.isdir(worker_dir) and worker_directory_pattern.match(item):
-            logger.debug(f'{job_description} Processing worker directory: {worker_dir}')
-            worker_lambda(worker_dir, run)
+            logger.debug(f"Processing worker directory: {worker_dir} for {job_description}")
+            should_stop = worker_lambda(worker_dir, run)
+            # Stop only on an explicit True; any other value continues iteration
+            if should_stop is True:  # noqa
+                break
 
 
 def find_validation_worker_with_matching_id(
@@ -974,7 +987,7 @@ def find_validation_worker_with_matching_id(
         raise ValueError(f"Unsupported validation type: {validation_type}")
 
     # Custom function to check worker directories for the ngen.log file
-    def check_worker(worker_dir: str, _run: ValidationRun):
+    def check_worker(worker_dir: str, _run: ValidationRun) -> bool:
         nonlocal matching_worker_name
         worker_id_filename = 'worker_id.txt'
         worker_id_path = os.path.join(worker_dir, worker_id_filename)
@@ -985,17 +998,28 @@ def find_validation_worker_with_matching_id(
             with open(worker_id_path, 'r') as file:
                 first_line = file.readline().strip()
 
-            # Check if the line matches the expected format
+            logger.debug(f"check_worker: {worker_id_path} -> '{first_line}' (expected '{expected_first_line}')")
+
+            # Check if the line matches the expected format (case-insensitive)
             if first_line.casefold() == expected_first_line.casefold():
                 matching_worker_name = os.path.basename(worker_dir)
+                return True  # stop searching
         else:
             logger.error(f"Could not find {worker_id_filename} file in {worker_dir}")
+
+        return False  # keep searching
 
     # Call process_worker_dirs to iterate through the worker directories
     process_worker_dirs(validation_run, check_worker)
 
     if not matching_worker_name:
         logger.error(f"Could not find worker corresponding to {validation_run}")
+    else:
+        logger.info(
+            f"Matched worker directory '{matching_worker_name}' for Validation Job {validation_run.id} "
+            f"(type: {ValidationType(validation_run.validation_type).value})"
+        )
+
     return matching_worker_name
 
 

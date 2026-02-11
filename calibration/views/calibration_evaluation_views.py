@@ -818,13 +818,16 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
     ngen_log_path = None
 
     # Custom function to check worker directories for the ngen log file
-    def check_worker(worker_dir: str, _run: CalibrationRun | ValidationRun):
+    def check_worker(worker_dir: str, _run: CalibrationRun | ValidationRun) -> bool:
         nonlocal ngen_log_path
         potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
 
         # Check if ngen stdout file exists in the current worker directory
         if potential_log_path and os.path.isfile(potential_log_path):
             ngen_log_path = potential_log_path
+            return True  # stop searching
+
+        return False # keep searching
 
     # Call process_worker_dirs to iterate through the worker directories
     process_worker_dirs(run, check_worker)

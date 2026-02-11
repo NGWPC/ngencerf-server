@@ -25,12 +25,12 @@ from calibration.util.calibration_validators import EmptySerializer, GetPlotName
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir, get_output_iteration_file, \
     get_output_last_iteration_file, get_output_best_iteration_file, get_observational_file_for_job, get_cost_hist_file, \
     NWM_RETROSPECTIVE_DIR, get_output_valid_control_file, get_output_valid_best_file, get_output_validation_iteration_plot_dir, \
-    get_output_valid_iteration_file, get_forecast_output_dir
+    get_output_valid_iteration_file, get_forecast_output_dir, get_precipitation_timeseries_data_filepath
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
     ResponseError, truncate_large_fields, get_validation_run, get_job_description, \
-     png_to_base64_url,     process_worker_dirs, get_user_email, get_elapsed_str
+    png_to_base64_url, process_worker_dirs, get_user_email, get_elapsed_str
 from calibration.views.get_jobs_views import get_validation_jobs_internal
 
 logger = logging.getLogger(__name__)
@@ -584,14 +584,6 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
     """
     plot_enum = PlotDefinitionsEnum(plot_definition['name'])
 
-    # Initialize calibration_run to None
-    calibration_run = None
-
-    # Ensure ForecastRun only processes FORECAST_HYDROGRAPH
-    # if isinstance(run, ForecastRun):
-    #     if plot_enum != PlotDefinitionsEnum.FORECAST_HYDROGRAPH:
-    #         raise CerfException(f"Invalid plot type '{plot_enum}' requested for ForecastRun {run.id}.")
-    # else:
     if not isinstance(run, (CalibrationRun, ValidationRun)):
         raise CerfException(f"Invalid plot type '{plot_enum}' requested for {type(run).__name__} {run.id}.")
     calibration_run = run.calibration_run if isinstance(run, ValidationRun) else run
@@ -599,18 +591,6 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
     worker_dir = None  # Cache worker directory to avoid multiple lookups
 
     match plot_enum:
-        # case PlotDefinitionsEnum.FORECAST_HYDROGRAPH:
-        #     # Ensure only ForecastRun can access this plot type
-        #     if not isinstance(run, ForecastRun):
-        #         raise CerfException(f"'{plot_enum}' is only valid for ForecastRun.")
-
-        #     # Read the forecast output data from file and paginate the result
-        #     forecast_output = get_forecast_output_file(run)
-        #     if not os.path.exists(forecast_output):
-        #         raise FileNotFoundError(f"File not found: {forecast_output}")
-        #     data, total_count = count_and_read_file_in_chunks(forecast_output, start, limit)
-        #     return {'data': data, 'total_count': total_count}
-
         case PlotDefinitionsEnum.OBJECTIVE_FUNCTION_EVOLUTION:
             # Only get iterations for a specific worker
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
@@ -631,9 +611,10 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
                 get_observational_file_for_job(calibration_run),  # Observation
                 get_output_iteration_file(calibration_run, 0, worker_dir),  # Iteration
                 get_output_last_iteration_file(calibration_run, worker_dir),  # Last Iteration
-                get_output_best_iteration_file(calibration_run, worker_dir)  # Best Iteration
+                get_output_best_iteration_file(calibration_run, worker_dir),  # Best Iteration
+                get_precipitation_timeseries_data_filepath(calibration_run),
             ]
-            column_names = ["Observation", "Control Run", "Last Run", "Best Run"]
+            column_names = ["Observation", "Control Run", "Last Run", "Best Run", "Precipitation"]
             # Get paginated data and total count
             data, total_count = load_and_merge_hydrograph_files_with_pagination_and_count(file_paths, column_names, start, limit)
             return {'data': data, 'total_count': total_count}
@@ -715,15 +696,17 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             # 2. NWM retrospective data file
             # 3. Valid Control hydrograph data file
             # 4. Valid Best hydrograph data file
-            # 5. (Optional) Hydrograph data file for a specific iteration if this is a ValidationRun of type "VALID_ITERATION"
+            # 5. Precipitation data
+            # 6. (Optional) Hydrograph data file for a specific iteration if this is a ValidationRun of type "VALID_ITERATION"
 
             file_paths = [
                 get_observational_file_for_job(calibration_run),  # Observation
                 os.path.join(NWM_RETROSPECTIVE_DIR, f'{calibration_run.gage.gage_id}.csv'),  # NWM Retro
                 get_output_valid_control_file(calibration_run),  # Valid Control
-                get_output_valid_best_file(calibration_run)  # Valid Best
+                get_output_valid_best_file(calibration_run),  # Valid Best
+                get_precipitation_timeseries_data_filepath(calibration_run)
             ]
-            column_names = ["Observation", "NWM Retro", "Valid Control", "Valid Best"]
+            column_names = ["Observation", "NWM Retro", "Valid Control", "Valid Best", "Precipitation"]
 
             if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
                 # Add hydrograph data for the specific iteration
@@ -948,13 +931,16 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
     found_worker_dir = None
 
     # Custom function to check worker directories
-    def check_worker(worker_dir: str, _run: CalibrationRun):
+    def check_worker(worker_dir: str, _run: CalibrationRun) -> bool:
         nonlocal found_worker_dir
-        plot_iteration_dir = os.path.join(worker_dir, 'Plot_Iteration')
+        plot_iteration_dir = os.path.join(worker_dir, "Plot_Iteration")
 
         # Check if 'Plot_Iteration' exists and is non-empty
         if os.path.isdir(plot_iteration_dir) and any(os.scandir(plot_iteration_dir)):
             found_worker_dir = worker_dir
+            return True  # stop searching
+
+        return False  # keep searching
 
     # Call process_worker_dirs to iterate through the worker directories
     process_worker_dirs(calibration_run, check_worker)
