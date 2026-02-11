@@ -175,9 +175,12 @@ def save_optimization_tab(request) -> Response:
     if optimization_inputs and not optimization_name:
         return ResponseError('Optimization inputs cannot be specified without an optimization name')
 
-    optimization, prepared_inputs, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
-    if error_message:
-        return ResponseError(error_message)
+    prepared_inputs: list[CalibrationOptimizationInput] | None = None
+
+    if optimization_name:
+        optimization, prepared_inputs, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
+        if error_message:
+            return ResponseError(error_message)
 
     error_message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
     if error_message:
