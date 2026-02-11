@@ -181,6 +181,9 @@ def save_optimization_tab(request) -> Response:
         optimization, prepared_inputs, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
         if error_message:
             return ResponseError(error_message)
+    else:
+        # No optimization specified → clear optimization and inputs
+        run.optimization = None
 
     error_message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
     if error_message:
@@ -195,13 +198,13 @@ def save_optimization_tab(request) -> Response:
     run.streamflow_threshold = streamflow_threshold
     run.peak_flow_threshold = peak_flow_threshold
 
-    keep_ids = {obj.optimization_input_id for obj in prepared_inputs} if prepared_inputs else set()
+    # keep_ids = {obj.optimization_input_id for obj in prepared_inputs} if prepared_inputs else set()
     with transaction.atomic():
         if stop_criteria is not None:
             # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
             CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
 
-        write_optimization_inputs(run, prepared_inputs, keep_ids)
+        write_optimization_inputs(run, prepared_inputs)
 
         run.save()
 
@@ -317,15 +320,14 @@ def validate_objective_function(run: CalibrationRun, objective_function_name: st
     return None
 
 
-def write_optimization_inputs(run: CalibrationRun, prepared_inputs: list[CalibrationOptimizationInput] | None,
-                              keep_ids: set[int] | None = None) -> None:
+def write_optimization_inputs(run: CalibrationRun, prepared_inputs: list[CalibrationOptimizationInput] | None) -> None:
     """
     Write or update optimization input records for a calibration run.
 
     This function synchronizes the database state of `CalibrationOptimizationInput`
     entries for the given run with the provided validated inputs:
-      - Deletes any existing inputs not present in `keep_ids`.
-      - Inserts or updates the provided inputs
+      - Deletes any existing inputs not present in `prepared_inputs`.
+      - Inserts or updates the provided inputs.
       - If `prepared_inputs` is empty or None, removes all existing inputs for the run.
 
     This function does not manage transactions; callers modifying multiple related
@@ -334,15 +336,14 @@ def write_optimization_inputs(run: CalibrationRun, prepared_inputs: list[Calibra
     :param run: The CalibrationRun instance whose optimization inputs are being updated.
     :param prepared_inputs: A list of prepared `CalibrationOptimizationInput` objects,
                             typically produced by `validate_optimizations()`.
-    :param keep_ids: Optional set of optimization_input IDs to retain. If not provided,
-                     inferred from `prepared_inputs`.
     :return: None
     """
     # If there are no inputs, this means the run should have none — delete and exit.
     if not prepared_inputs:
         CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
         return
-    keep_ids = keep_ids or {obj.optimization_input_id for obj in prepared_inputs}
+
+    keep_ids = {obj.optimization_input_id for obj in prepared_inputs}
 
     (CalibrationOptimizationInput.objects
      .filter(calibration_run=run)
