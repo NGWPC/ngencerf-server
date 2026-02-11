@@ -4,6 +4,7 @@ import logging
 import os
 import time
 
+from data_assimilation_engine.precip.timeseries.timeseries import precip_ts
 from data_assimilation_engine.soil_moisture.mapping.mapper import map_soil_moisture_data
 from data_assimilation_engine.soil_moisture.timeseries.timeseries import soil_moisture_ts
 from data_assimilation_engine.swe.mapping.mapper import map_swe_data
@@ -17,14 +18,14 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType
 from calibration.enums_vanilla import SecondaryDataEnum
-from calibration.models import ValidationRun, Module
+from calibration.models import ValidationRun, Module, CalibrationRun
 from calibration.util.calibration_validators import GetImagesByDateResponseSerializer, \
     ErrorResponseSerializer, ValidationRunSerializer, GetTimeseriesDataResponseSerializer, GetSoilMoistureImagesByDateRequestSerializer, \
     GetSWEImagesByDateRequestSerializer
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_geopackage_dir_for_job, get_swe_netcdf_file, get_validation_output_valid, \
-    get_swe_timeseries_png_filename, get_swe_timeseries_data_filename, get_soil_moisture_timeseries_png_filename, \
-    get_soil_moisture_timeseries_data_filename, get_soil_moisture_netcdf_file, get_secondary_plot_dir
+    get_swe_timeseries_png_filepath, get_swe_timeseries_data_filepath, get_soil_moisture_timeseries_png_filepath, \
+    get_soil_moisture_timeseries_data_filepath, get_soil_moisture_netcdf_file, get_secondary_plot_dir, get_precipitation_timeseries_data_filepath
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, get_validation_run, png_to_base64_url, get_job_description, \
     validate_response, ResponseError, truncate_large_fields, find_validation_worker_with_matching_id, get_user_email, get_elapsed_str, CerfException
@@ -64,7 +65,7 @@ def get_or_create_secondary_plots(run: ValidationRun, date: str, data_type: Seco
     """
     Generic function to create or retrieve secondary data plots (SWE or Soil Moisture).
 
-    Automatically determines the appropriate output directory via get_plot_dir().
+    Automatically determines the appropriate output directory via get_secondary_plot_Dir().
 
     :param run: The ValidationRun object.
     :param date: Date or timestamp string identifying the plot time.
@@ -161,45 +162,63 @@ def get_or_create_secondary_plots(run: ValidationRun, date: str, data_type: Seco
 
 def generate_secondary_ts_data(validation_run: ValidationRun, data_type: SecondaryDataEnum) -> None:
     """
-    Generates secondary (SWE or Soil Moisture) timeseries images and CSV data
+    Generates secondary timeseries images (SWE, Soil Moisture) and CSV data (SWE/Soil Moisture/Precipitation)
     if the validation run is not of type VALID_CONTROL.
 
     :param validation_run: The ValidationRun object.
     :param data_type: The SecondaryDataEnum indicating which dataset to process.
     :return: None
     """
-    if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
-        logger.info(f"Skipping data generation for {ValidationType.VALID_CONTROL.value}")
-        return
-
     # Generate timeseries images.
     inputs = derive_secondary_data_file_inputs(validation_run)
     if not inputs:
         logger.warning("No inputs returned from derive_secondary_data_file_inputs; skipping.")
         return
 
-    ts_csv_location = inputs['ts_csv_location']
-    gpkg = inputs['gpkg']
+    ts_csv_location = inputs["ts_csv_location"]
+    gpkg = inputs["gpkg"]
 
     # Select appropriate timeseries function and file generators
     if data_type == SecondaryDataEnum.SWE:
         ts_func = swe_ts
-        png_file = get_swe_timeseries_png_filename(validation_run)
-        csv_file = get_swe_timeseries_data_filename(validation_run)
+        png_file = get_swe_timeseries_png_filepath(validation_run)
+        csv_file = get_swe_timeseries_data_filepath(validation_run)
+
+        args = [
+            ts_csv_location,
+            gpkg,
+            "--plot_output", png_file,
+            "--csv_output", csv_file,
+            "--direct_s3",
+        ]
+
     elif data_type == SecondaryDataEnum.SOIL_MOISTURE:
         ts_func = soil_moisture_ts
-        png_file = get_soil_moisture_timeseries_png_filename(validation_run)
-        csv_file = get_soil_moisture_timeseries_data_filename(validation_run)
+        png_file = get_soil_moisture_timeseries_png_filepath(validation_run)
+        csv_file = get_soil_moisture_timeseries_data_filepath(validation_run)
+
+        args = [
+            ts_csv_location,
+            gpkg,
+            "--plot_output", png_file,
+            "--csv_output", csv_file,
+            "--direct_s3",
+        ]
+
+    elif data_type == SecondaryDataEnum.PRECIPITATION:
+        ts_func = precip_ts
+        # Although we get the precipitation data at the end of a validation run, it is really calibration level data that doesn't change
+        csv_file = get_precipitation_timeseries_data_filepath(validation_run.calibration_run)
+
+        if os.path.exists(csv_file):
+            logger.info(f"Precipitation file {csv_file} already exists; skipping generation")
+            return
+
+        # precip_ts uses positional args only
+        args = [ts_csv_location, csv_file]
+
     else:
         raise CerfException(f"Unsupported data_type: {data_type}")
-
-    args = [
-        ts_csv_location,
-        gpkg,
-        '--plot_output', png_file,
-        '--csv_output', csv_file,
-        '--direct_s3'
-    ]
 
     logger.info(f"Calling {ts_func.__name__} with arguments: {args}")
     start_time = time.perf_counter()
@@ -377,15 +396,15 @@ def _get_secondary_timeseries_data(
     # Map function dispatch by data_type
     data_config = {
         SecondaryDataEnum.SWE: {
-            "csv_func": get_swe_timeseries_data_filename,
-            "png_func": get_swe_timeseries_png_filename,
+            "csv_func": get_swe_timeseries_data_filepath,
+            "png_func": get_swe_timeseries_png_filepath,
             "label": "SWE",
         },
         SecondaryDataEnum.SOIL_MOISTURE: {
-            "csv_func": get_soil_moisture_timeseries_data_filename,
-            "png_func": get_soil_moisture_timeseries_png_filename,
+            "csv_func": get_soil_moisture_timeseries_data_filepath,
+            "png_func": get_soil_moisture_timeseries_png_filepath,
             "label": "Soil Moisture",
-        },
+        }
     }
 
     if data_type not in data_config:
@@ -478,6 +497,28 @@ def get_soil_moisture_timeseries_data(request: Request) -> Response:
     :return: A Response object with Soil Moisture timeseries image and data or an error message.
     """
     return _get_secondary_timeseries_data(request, SecondaryDataEnum.SOIL_MOISTURE)
+
+
+# def get_precipitation_timeseries_data(calibration_run: CalibrationRun) -> list[dict[str, str]]:
+#     """
+#     Load precipitation timeseries data for a calibration run.
+#
+#     This function reads the precipitation timeseries CSV (generated elsewhere) for the
+#     given calibration run and returns it as a list of row dictionaries.
+#
+#     Notes:
+#     - This is calibration-level output (i.e., not validation-run specific).
+#     - The CSV is expected to already exist at the path returned by
+#       get_precipitation_timeseries_data_filepath(calibration_run).
+#     - Any file I/O errors (missing file, unreadable CSV, etc.) will propagate unless
+#       caught by the caller.
+#
+#     :param calibration_run: CalibrationRun used to locate the precipitation timeseries CSV.
+#     :return: List of dictionaries, one per CSV row, keyed by the CSV header columns.
+#     """
+#     csv_filepath = get_precipitation_timeseries_data_filepath(calibration_run)
+#     ts_data = read_csv_as_json(csv_filepath)
+#     return ts_data
 
 
 def read_csv_as_json(csv_filepath: str, keys: list[str] | None = None) -> list[dict[str, str]]:

@@ -343,36 +343,49 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
             expected_run_type=expected_run_type
         )
 
-    # ------------------------------------------------------------------
-    # Secondary timeseries (SWE / Soil Moisture) — conditional by modules
-    # ------------------------------------------------------------------
-    modules_by_id = get_cached_modules_by_id()
-    modules_by_name = {m.name: m for m in modules_by_id.values()}
-
-    formulations = (
-        CalibrationFormulation.objects
-        .filter(calibration_run=validation_run.calibration_run)
-        .only("module_id")
-    )
-
-    module_names_for_job = {modules_by_id[f.module_id].name for f in formulations}
-    modules_by_name_for_job = {name: modules_by_name[name] for name in module_names_for_job}
-
-    if should_generate_swe(modules_by_name_for_job):
-        logger.info("Generating SWE timeseries data")
+    if validation_run.validation_type == ValidationType.VALID_BEST.value:
+        # ------------------------------------------------------------------
+        # Unconditionally get Precipitation data for Validation best
+        # ------------------------------------------------------------------
+        logger.info(f"Generating {SecondaryDataEnum.PRECIPITATION.value} timeseries data")
         try:
-            generate_secondary_ts_data(validation_run, SecondaryDataEnum.SWE)
+            generate_secondary_ts_data(validation_run, SecondaryDataEnum.PRECIPITATION)
         except Exception as e:
-            logger.error(f"Failed to generate SWE timeseries data: {e}")
+            logger.error(f"Failed to generate {SecondaryDataEnum.PRECIPITATION.value} timeseries data: {e}")
             traceback.print_exc()
 
-    if should_generate_soil_moisture(modules_by_name_for_job):
-        logger.info("Generating Soil Moisture timeseries data")
-        try:
-            generate_secondary_ts_data(validation_run, SecondaryDataEnum.SOIL_MOISTURE)
-        except Exception as e:
-            logger.error(f"Failed to generate Soil Moisture timeseries data: {e}")
-            traceback.print_exc()
+    # Get SWE and Soil Moisture for all validations except control
+    if validation_run.validation_type != ValidationType.VALID_CONTROL.value:
+        # ------------------------------------------------------------------
+        # Secondary timeseries (SWE / Soil Moisture) — conditional by modules
+        # ------------------------------------------------------------------
+        modules_by_id = get_cached_modules_by_id()
+        modules_by_name = {m.name: m for m in modules_by_id.values()}
+
+        formulations = (
+            CalibrationFormulation.objects
+            .filter(calibration_run=validation_run.calibration_run)
+            .only("module_id")
+        )
+
+        module_names_for_job = {modules_by_id[f.module_id].name for f in formulations}
+        modules_by_name_for_job = {name: modules_by_name[name] for name in module_names_for_job}
+
+        if should_generate_swe(modules_by_name_for_job):
+            logger.info(f"Generating {SecondaryDataEnum.SWE.value} timeseries data")
+            try:
+                generate_secondary_ts_data(validation_run, SecondaryDataEnum.SWE)
+            except Exception as e:
+                logger.error(f"Failed to generate {SecondaryDataEnum.SWE.value} timeseries data: {e}")
+                traceback.print_exc()
+
+        if should_generate_soil_moisture(modules_by_name_for_job):
+            logger.info(f"Generating {SecondaryDataEnum.SOIL_MOISTURE.value} timeseries data")
+            try:
+                generate_secondary_ts_data(validation_run, SecondaryDataEnum.SOIL_MOISTURE)
+            except Exception as e:
+                logger.error(f"Failed to generate {SecondaryDataEnum.SOIL_MOISTURE.value} timeseries data: {e}")
+                traceback.print_exc()
 
 
 def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
