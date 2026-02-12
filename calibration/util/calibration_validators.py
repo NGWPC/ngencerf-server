@@ -962,7 +962,7 @@ class S3FileValidator(BaseSerializer):
     uri = S3UriField(allow_null=True)
 
 
-class ValidateFormulationRequestSerializer(BaseSerializer):
+class ValidateFormulationRequestSerializer(CalibrationRunSerializer):
     modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
 
 

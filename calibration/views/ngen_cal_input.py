@@ -307,7 +307,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             general['models'] = ', '.join(module_names_for_job)
 
             # Validate using only modules actually present in this job
-            formulation_errors, _, _ = validate_formulation(module_names_for_job)
+            formulation_errors, _, _ = validate_formulation(module_names_for_job, run.geopackage_eds_file_path)
             for f in formulation_errors:
                 error_object.add_error(f)
 

@@ -3,9 +3,11 @@ import logging
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
+from mswm.build_inputs import validate_topoflow_glacier
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from calibration.enums import StatusEnum
 from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, \
     CalibrationStopCriteria
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups, get_cached_modules_by_id
@@ -139,9 +141,14 @@ def validate_formulation_tab(request) -> Response:
     if error_return:
         return error_return
 
+    calibration_run_id = validator.get('calibration_run_id')
     new_module_names = set(validator.get('modules'))
 
-    formulation_errors, formulation_warnings, formulation_messages = validate_formulation(new_module_names)
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+    if error_return:
+        return error_return
+
+    formulation_errors, formulation_warnings, formulation_messages = validate_formulation(new_module_names, run.geopackage_eds_file_path)
 
     response = {}
     if formulation_warnings:
@@ -228,7 +235,7 @@ def save_formulation_tab(request) -> Response:
     if run.is_aet_rootzone and not any(cfe in new_module_names for cfe in ('CFE-S', 'CFE-X')):
         return ResponseError('AET Rootzone cannot be True for formulations not using CFE.')
 
-    formulation_errors, formulation_warnings, _ = validate_formulation(new_module_names)
+    formulation_errors, formulation_warnings, _ = validate_formulation(new_module_names, run.geopackage_eds_file_path)
 
     if not use_sloth and sloth_parameters:
         return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
@@ -270,7 +277,6 @@ def save_formulation_tab(request) -> Response:
         )
         # Add modules that already exist but have no parameters, limited to the current selection to avoid refetching for soon-to-be-deleted modules
         to_be_added.update(set(formulations_without_params) & new_module_names)
-
 
     # TODO for dev only
     #####################
@@ -423,13 +429,14 @@ formulation_validations = {
 }
 
 
-def validate_formulation(module_names: set[str], return_group_info: bool = False) -> tuple[list[str], list[str], list[str]]:
+def validate_formulation(module_names: set[str], geopackage_path: str | None, return_group_info: bool = False) -> tuple[list[str], list[str], list[str]]:
     """
     Validate formulation rules based on group requirements and exclusions.
 
     Uses cached modules/groups to avoid repeated DB hits.
 
     :param module_names: A set of module names to validate.
+    :param geopackage_path: Path to geopackage file used if Topoflow is specified
     :param return_group_info: If true, then include a message about the groups in Info messages
     :return: A tuple of lists (fatal_errors, nonfatal_errors, info_messages).
              Each list contains validation messages of the corresponding severity.
@@ -542,7 +549,13 @@ def validate_formulation(module_names: set[str], return_group_info: bool = False
     # 3) Check for completeness
     check_completeness(module_names, fatal_errors, nonfatal_errors, info_messages)
 
-    # 4) If no fatal errors, indicate that the formulation is Calibratable
+    # 4) Special case for Topoflow
+    if 'Topoflow-Glacier' in module_names and geopackage_path:
+        glacier_status = validate_topoflow_glacier(geopackage_path)
+        if not glacier_status.get('result'):
+            nonfatal_errors.append(glacier_status.get('message'))
+
+    # 5) If no fatal errors, indicate that the formulation is Calibratable
     if not fatal_errors:
         info_messages.append('Formulation is Calibratable.')
 

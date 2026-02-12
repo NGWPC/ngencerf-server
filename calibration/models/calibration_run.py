@@ -31,7 +31,6 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     forcing_source_actual = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT, related_name='+', related_query_name='+')
     forcing_eds_dir_path = models.TextField(null=True)
     observational_source = models.ForeignKey('ObservationalSource', null=True, on_delete=models.RESTRICT)
-    # observational_eds_file_path = models.TextField(null=True)
     user_parameter_filename = models.TextField(null=True)
     realization_file_path = models.TextField(null=True)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)

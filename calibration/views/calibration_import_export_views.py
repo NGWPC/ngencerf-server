@@ -113,7 +113,7 @@ def import_calibration_run_data(request: Request,
         if module_names:
 
             # Formulation-level checks (read-only)
-            f_errors, f_warnings, f_info = validate_formulation(module_names, return_group_info=is_cli)
+            f_errors, f_warnings, f_info = validate_formulation(module_names, geopackage_path=None, return_group_info=is_cli)
             formulation_errors.extend(f_errors or [])
             formulation_warnings.extend(f_warnings or [])
             formulation_info.extend(f_info or [])
@@ -584,7 +584,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     calibration_run_data['is_aet_rootzone'] = run.is_aet_rootzone
 
     # Validation warnings
-    formulation_errors, formulation_warnings, _ = validate_formulation(module_names)
+    formulation_errors, formulation_warnings, _ = validate_formulation(module_names, run.geopackage_eds_file_path)
     if formulation_warnings and not export:
         calibration_run_data['formulation_warnings'] = formulation_warnings
     if formulation_errors and not export:

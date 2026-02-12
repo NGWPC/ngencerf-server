@@ -472,58 +472,11 @@ def reset_gage_dependent_state_on_change(run: CalibrationRun, new_gage: Gage, *,
     # TODO Need to delete anything in the geopackage_original directory
     run.geopackage_eds_file_path = None
     run.forcing_eds_dir_path = None
-    # run.observational_eds_file_path = None
 
     clear_times(run, cli=cli)
     run.gage = new_gage
     return True
 
-#
-# def save_gage(run: CalibrationRun, gage: Gage) -> dict | None:
-#     """
-#     Apply a gage to a calibration run (initial set or change).
-#
-#     - If the run already had a gage, clear any gage-dependent EDS paths (forcing/observational/geopackage)
-#       and clear derived time fields so they will be recalculated.
-#     - Set run.gage to the provided gage.
-#     - Refresh module metadata/initial parameter values via Data Services.
-#
-#     Caller:
-#     - Should call when the gage is being set for the first time or when it has changed.
-#     - Should not call when the gage is unchanged (to preserve existing EDS paths and time fields).
-#
-#     :param run: The CalibrationRun instance to update (not saved here).
-#     :param gage: The gage being applied.
-#     :return: Error dict for Data Services failures; otherwise None.
-#     """
-#
-#     # We only get here when the gage is new or changed, but we may have existing state from the prior gage.
-#     if run.gage:
-#         # Clear any EDS-derived file paths associated with the prior gage.
-#         # TODO Need to delete anything in the geopackage_original directory
-#         run.geopackage_eds_file_path = None
-#         run.forcing_eds_dir_path = None
-#         # run.observational_eds_file_path = None
-#
-#         clear_times(run)
-#
-#     run.gage = gage
-#
-#     my_formulations = (
-#         CalibrationFormulation.objects
-#         .filter(calibration_run_id=run.id)
-#         .select_related("module")
-#     )
-#     module_names = set(my_formulations.values_list("module__name", flat=True))
-#
-#     if module_names:
-#         module_metadata, module_eds_errors = get_module_metadata_from_data_services(run, module_names)  # type: ignore
-#         if module_eds_errors:
-#             return module_eds_errors[0]  # or extend/return as your current contract expects
-#         update_parameters(run, module_metadata, gage_changed=True)
-#
-#     return None
-#
 
 def get_data_files_status(run: CalibrationRun) -> dict:
     """
@@ -534,8 +487,6 @@ def get_data_files_status(run: CalibrationRun) -> dict:
     :param run: The calibration run instance to check.
     :return: A dictionary with boolean values indicating the presence of observational, forcing, and geopackage files.
     """
-    # observation_path = get_valid_path(run.observational_eds_file_path, lambda: get_observational_file_for_job(run))
-
     forcing_path = True if should_use_bmi_forcing(run) else get_valid_path(run.forcing_eds_dir_path, lambda: get_forcing_dir_for_job(run))
 
     geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
