@@ -1,10 +1,14 @@
 #! /bin/bash
 
+MSWM_REPO="https://github.com/NGWPC/nwm-msw-mgr.git"
+DATA_ASSIM_REPO="https://github.com/NGWPC/data-assimilation-engine.git"
+
 # Branches/tags for git repos
 #MSWM_BRANCH='jwade_NGWPC-7589_add_aet_rootzone'
 MSWM_BRANCH='development'
 DATA_ASSIMILATION_BRANCH='development'
 NGEN_FORCING_TAG='development'
+
 
 #=======================================================================
 # Script must be sourced for 'activate' mode
@@ -17,22 +21,32 @@ fi
 
 #=======================================================================
 # Resolve script directory
+#   Ordering prerequisite:
+#     - SCRIPT_DIR must be defined before any code/function that references
+#       files relative to the repo (manage.py, requirements.txt, templates, etc.)
 #=======================================================================
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
+# Use the same directory variable for cerfServer (needed by ensure_virtualenv)
+cerfServer="$SCRIPT_DIR"
+
 #=======================================================================
 # Load environment variables
-#   - cerfserver.env is ALWAYS loaded
-#   - .env and .env-override are loaded ONLY when NOT in Docker
+#   Ordering prerequisites:
+#     - Must happen before:
+#         * IN_DOCKER detection (uses CERF_VENV)
+#         * ensure_virtualenv (uses CERF_VENV + IN_DOCKER)
+#         * ensure_superuser (reads DJANGO_SUPERUSER_* vars)
+#         * RUN_CERF_FLAG_DIRECTORY validation (comes from env)
 #=======================================================================
 set -a  # auto-export
 
 # Always load cerfserver.env
+# Prerequisite: must exist at $SCRIPT_DIR/cerfserver.env
 source "$SCRIPT_DIR/cerfserver.env"
 
-#-----------------------------------------------------------------------
 # Detect Docker (AFTER cerfserver.env is loaded)
-#-----------------------------------------------------------------------
+# Prerequisite: CERF_VENV is defined (or empty) by cerfserver.env
 IN_DOCKER=false
 if [ "${CERF_VENV}" = "Docker" ]; then
     IN_DOCKER=true
@@ -41,9 +55,8 @@ readonly IN_DOCKER
 
 echo "IN_DOCKER=$IN_DOCKER"
 
-#-----------------------------------------------------------------------
-# Load optional local-only env files
-#-----------------------------------------------------------------------
+# Load optional local-only env files (non-Docker only)
+# Prerequisite: optional; missing files are not fatal
 if [ "$IN_DOCKER" = false ]; then
     echo "Non-Docker environment: checking for local env files"
 
@@ -57,7 +70,6 @@ if [ "$IN_DOCKER" = false ]; then
         echo "WARNING: env file not found: $ENV_FILE"
     fi
 
-    # When running locally, the override file usually will not exist, so we won't issue an error
     if [ -f "$ENV_OVERRIDE_FILE" ]; then
         echo "Loaded env override file: $ENV_OVERRIDE_FILE"
         source "$ENV_OVERRIDE_FILE"
@@ -70,20 +82,22 @@ set +a
 
 #=======================================================================
 # Validate RUN_CERF_FLAG_DIRECTORY
+#   Ordering prerequisite:
+#     - Must happen before any code that writes marker files into it:
+#         * SHA markers (.mswm.sha, .data_assimilation_engine.sha)
+#         * gage flags/fingerprints (.load_gages, .gages_fingerprint)
 #=======================================================================
 if [ -z "${RUN_CERF_FLAG_DIRECTORY}" ]; then
     echo "WARNING: RUN_CERF_FLAG_DIRECTORY is not set in cerfserver.env; defaulting to ./"
     RUN_CERF_FLAG_DIRECTORY="./"
 fi
-
-# Normalize: remove any trailing slash so we don't end up with // in paths
 RUN_CERF_FLAG_DIRECTORY="${RUN_CERF_FLAG_DIRECTORY%/}"
 
-# Use the same directory variable for cerfServer
-cerfServer="$SCRIPT_DIR"
-
 #=======================================================================
-# Bootstrap logging
+# Bootstrap logging (MUST happen before any run_manage_command calls)
+#   Ordering prerequisite:
+#     - Must happen before the "manage" fast-path, migrations, init_sql, etc.
+#     - Defines LOGFILE_DEV and saves FD 3/4 used by run_manage_command.
 #=======================================================================
 mkdir -p "$cerfServer/logs"
 LOGFILE_DEV="$cerfServer/logs/ngencerf.log"
@@ -95,12 +109,22 @@ exec 3>&1 4>&2
 exec > >(tee -a "$LOGFILE_DEV") 2>&1
 
 #=======================================================================
+# Fingerprint globals (RUN_CERF_FLAG_DIRECTORY must already be valid)
+#   Ordering prerequisite:
+#     - Must be defined before store_gages_fingerprint is ever called.
+#=======================================================================
+CERF_GAGES_FPRINT="${RUN_CERF_FLAG_DIRECTORY}/.gages_fingerprint"
+echo "Gages fingerprint $CERF_GAGES_FPRINT"
+[ -e "$CERF_GAGES_FPRINT" ] && ls -al "$CERF_GAGES_FPRINT"
+
+#=======================================================================
 # Function: ensure_virtualenv
 #   - If CERF_VENV is empty or “Docker”, do nothing
 #   - If the directory "$cerfServer/$CERF_VENV" does not exist, create it
 #   - Activate that venv so “python3” and “pip” later refer to the venv
 #=======================================================================
 ensure_virtualenv() {
+    # Requires: CERF_VENV loaded, IN_DOCKER set, cerfServer set
     if [ -n "${CERF_VENV}" ] && [ "$IN_DOCKER" = false ]; then
         VENV_PATH="$cerfServer/${CERF_VENV}"
 
@@ -115,6 +139,7 @@ ensure_virtualenv() {
     fi
 }
 
+
 #=======================================================================
 # Function: check_aws_credentials_early
 #   - Uses AWS CLI (STS) for a fast sanity check
@@ -122,6 +147,9 @@ ensure_virtualenv() {
 #   - Skips if aws CLI is not installed
 #   - Fails startup if credentials are invalid/expired
 #   - Logs the resolved identity ARN on success
+#
+#   Prerequisites:
+#     - IN_DOCKER has been set
 #=======================================================================
 check_aws_credentials_early() {
     # Skip in Docker.  We'll rely on the server check
@@ -150,7 +178,7 @@ check_aws_credentials_early() {
     else
         echo "ERROR: AWS credentials are missing, expired, or invalid"
 
-         # If this script is being sourced, don't kill the caller's shell.
+        # If this script is being sourced, don't kill the caller's shell.
         if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
             return 2
         fi
@@ -162,9 +190,18 @@ check_aws_credentials_early() {
 
 #=======================================================================
 # Function: run_manage_command
-#   - Temporarily un-redirect stdout/stderr for interactive output
-#   - Runs “python manage.py <args…>”
-#   - Then re-redirects stdout/stderr back to the logfile
+#
+# PREREQUISITES (must be true before calling this function):
+#   - Logging must already be initialized
+#   - LOGFILE_DEV must be defined
+#   - FD 3 and 4 must contain the original stdout/stderr:
+#         exec 3>&1 4>&2
+#   - stdout/stderr must currently be redirected to LOGFILE_DEV
+#
+# REASON:
+#   This function temporarily restores the original stdout/stderr for
+#   interactive Django output, then re-applies the logfile redirection.
+#   If those file descriptors or variables are missing, output will break.
 #=======================================================================
 run_manage_command() {
     echo "Running manage.py $*"
@@ -183,52 +220,11 @@ run_manage_command() {
     return $status
 }
 
-#=======================================================================
-# Special case: if the first argument is “manage”, just run manage.py <args>
-#=======================================================================
-if [ "$1" == "manage" ]; then
-    shift
-    ensure_virtualenv  # Activates and creates virtualenv if needed
-    run_manage_command "$@"
-    exit $?
-fi
 
-#=======================================================================
-# Special case: if the first argument is "activate", just activate the venv and return
-#=======================================================================
-if [ "$1" == "activate" ]; then
-    ensure_virtualenv  # Activates and creates virtualenv if needed
-    echo "Virtual environment activated. You can now run Python commands in this environment."
-    # Return to stop further execution but not exit the terminal
-    return 0
-fi
-
-check_aws_credentials_early
-echo
-echo --------------------------------------------------------
-
-
-#=======================================================================
-# Parse flags
-#   --load-gages
-#   auto_reload   (enables Django auto-reloader; disables --noreload)
-#=======================================================================
-LOAD_GAGE_DATA=false
-AUTO_RELOAD=false
-
-for arg in "$@"; do
-  case $arg in
-    --load-gages)
-      LOAD_GAGE_DATA=true
-      ;;
-    auto_reload)
-      AUTO_RELOAD=true
-      ;;
-  esac
-done
 
 #=======================================================================
 # Function: generate_git_info
+#
 #   - Writes <repo>_git_info.json with commit metadata similar to how the Dockerfile does it
 #=======================================================================
 generate_git_info() {
@@ -256,13 +252,11 @@ generate_git_info() {
 # Fingerprint logic for init_gages inputs
 #   - Computes a stable SHA256 for init_gages.py + files in gage_data/
 #   - Stores/compares to decide whether to re-run init_gages
+#
+#   Prerequisites:
+#     - SCRIPT_DIR must be set (paths are relative to it)
+#     - CERF_GAGES_FPRINT must be set before store_gages_fingerprint is called
 #=======================================================================
-CERF_GAGES_FPRINT="${RUN_CERF_FLAG_DIRECTORY}/.gages_fingerprint"
-echo "Gages fingerprint $CERF_GAGES_FPRINT"
-[ -e "$CERF_GAGES_FPRINT" ] && ls -al "$CERF_GAGES_FPRINT"
-
-
-# Compute a stable combined SHA256 of init_gages.py + all files in gage_data
 compute_gages_fingerprint() {
     set -o pipefail
     local base="$SCRIPT_DIR/calibration/management/commands"
@@ -287,6 +281,7 @@ compute_gages_fingerprint() {
 }
 
 store_gages_fingerprint() {
+    # Prerequisite: CERF_GAGES_FPRINT is set to a writable path
     local fp="$1"
     if [ -z "$fp" ]; then
         echo "store_gages_fingerprint: empty fingerprint" >&2
@@ -296,8 +291,12 @@ store_gages_fingerprint() {
     echo "Saved gage fingerprint: ${fp:0:12}… -> $CERF_GAGES_FPRINT"
 }
 
+
 #=======================================================================
 # Helper: run init_gages and store a provided fingerprint (or recompute if empty)
+#   Ordering prerequisites:
+#     - run_manage_command must be usable (logging bootstrapped + FD 3/4 saved)
+#     - CERF_GAGES_FPRINT must be set before calling store_gages_fingerprint
 #=======================================================================
 run_init_gages_and_store() {
     local fp="$1"
@@ -403,6 +402,7 @@ ensure_superuser() {
     fi
 }
 
+
 #=======================================================================
 # Function: run_migrate_with_showmigrations
 #   - Always runs 'showmigrations' immediately after 'migrate'.
@@ -425,17 +425,88 @@ run_migrate_with_showmigrations() {
     fi
 }
 
+validate_git_ref_or_exit() {
+    local repo_url="$1"
+    local ref="$2"
+    local label="$3"  # just for nicer error messages
+
+    # Allow exact commit SHA refs (7-40 hex chars)
+    if [[ "$ref" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+        return 0
+    fi
+
+    # Check for branch or tag on the remote
+    if git ls-remote --exit-code --heads "$repo_url" "$ref" >/dev/null 2>&1; then
+        return 0
+    fi
+    if git ls-remote --exit-code --tags "$repo_url" "$ref" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo "ERROR: Invalid git ref for ${label}: '${ref}'"
+    echo "ERROR: Not found as branch or tag on: ${repo_url}"
+    exit 2
+}
+
+#=======================================================================
+# Validate git refs early so we fail before any installs or setup work
+#=======================================================================
+validate_git_ref_or_exit "$MSWM_REPO" "$MSWM_BRANCH" "mswm"
+validate_git_ref_or_exit "$DATA_ASSIM_REPO" "$DATA_ASSIMILATION_BRANCH" "data_assimilation_engine"
+
+#=======================================================================
+# Special case: if the first argument is “manage”, just run manage.py <args>
+#=======================================================================
+if [ "$1" == "manage" ]; then
+    shift
+    ensure_virtualenv  # Activates and creates virtualenv if needed
+    run_manage_command "$@"
+    exit $?
+fi
+
+#=======================================================================
+# Special case: if the first argument is "activate", just activate the venv and return
+#=======================================================================
+if [ "$1" == "activate" ]; then
+    ensure_virtualenv  # Activates and creates virtualenv if needed
+    echo "Virtual environment activated. You can now run Python commands in this environment."
+    # Return to stop further execution but not exit the terminal
+    return 0
+fi
+
+check_aws_credentials_early
+echo
+echo --------------------------------------------------------
+
+
+#=======================================================================
+# Parse flags
+#   --load-gages
+#   auto_reload   (enables Django auto-reloader; disables --noreload)
+#=======================================================================
+LOAD_GAGE_DATA=false
+AUTO_RELOAD=false
+
+for arg in "$@"; do
+  case $arg in
+    --load-gages)
+      LOAD_GAGE_DATA=true
+      ;;
+    auto_reload)
+      AUTO_RELOAD=true
+      ;;
+  esac
+done
+
 #=======================================================================
 # Non-Docker environment setup (packages, deps, git info)
 #=======================================================================
 if [ "$IN_DOCKER" = false ]; then
-    # Docker takes care of installing dependencies in the Dockerfile
     if [ -n "${CERF_VENV}" ]; then
-        ensure_virtualenv  # Activates and creates virtualenv if needed
+        ensure_virtualenv
 
         echo
         echo --------------------------------------------------------
-        # Install all requirements
         echo "Upgrading pip"
         pip install --upgrade pip
         pip --version
@@ -445,18 +516,11 @@ if [ "$IN_DOCKER" = false ]; then
         echo "Installing requirements.txt"
         pip install -r "$SCRIPT_DIR/requirements.txt"
 
-        #-----------------------------------------------------------------------
-        # Git branch tip SHA caching
-        #   - Resolve branch → exact commit SHA using git ls-remote
-        #   - Store last installed SHA in marker files under RUN_CERF_FLAG_DIRECTORY
-        #   - Reinstall only if SHA changed (or FORCE_REINSTALL_VCS=1)
-        #-----------------------------------------------------------------------
         FORCE_REINSTALL_VCS="${FORCE_REINSTALL_VCS:-0}"
 
         resolve_branch_sha() {
             local repo_url="$1"
             local branch="$2"
-
             local sha
             sha="$(git ls-remote "$repo_url" "refs/heads/${branch}" | awk '{print $1}')"
             if [ -z "$sha" ]; then
@@ -508,7 +572,6 @@ if [ "$IN_DOCKER" = false ]; then
         echo
         echo --------------------------------------------------------
         echo "Installing mswm from branch '$MSWM_BRANCH'"
-        MSWM_REPO="https://github.com/NGWPC/nwm-msw-mgr.git"
         MSWM_SHA_MARKER="${RUN_CERF_FLAG_DIRECTORY}/.mswm.sha"
         if MSWM_SHA="$(resolve_branch_sha "$MSWM_REPO" "$MSWM_BRANCH")"; then
             echo "mswm ${MSWM_BRANCH} -> ${MSWM_SHA}"
@@ -533,7 +596,6 @@ if [ "$IN_DOCKER" = false ]; then
         echo
         echo --------------------------------------------------------
         echo "Installing data_assimilation_engine from branch '$DATA_ASSIMILATION_BRANCH'"
-        DATA_ASSIM_REPO="https://github.com/NGWPC/data-assimilation-engine.git"
         DATA_ASSIM_SHA_MARKER="${RUN_CERF_FLAG_DIRECTORY}/.data_assimilation_engine.sha"
         if DATA_ASSIM_SHA="$(resolve_branch_sha "$DATA_ASSIM_REPO" "$DATA_ASSIMILATION_BRANCH")"; then
             echo "data_assimilation_engine ${DATA_ASSIMILATION_BRANCH} -> ${DATA_ASSIM_SHA}"
