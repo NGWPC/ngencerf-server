@@ -208,6 +208,7 @@ def save_formulation_tab(request) -> Response:
     calibration_run_id = validator.get('calibration_run_id')
     use_sloth = validator.get('use_sloth')
     sloth_parameters = validator.get('sloth_parameters')
+
     have_lstm = 'LSTM' in new_module_names
     if have_lstm and (sloth_parameters or use_sloth):
         return ResponseError("You cannot specify sloth_parameters or use_sloth when using LSTM")
@@ -256,6 +257,7 @@ def save_formulation_tab(request) -> Response:
 
     # Determine which modules to delete and add
     to_be_added: set[str] = new_module_names - existing_module_names
+    to_be_unused = existing_module_names - new_module_names
 
     # We also want to fetch for those Formulations that have no parameters, in case there was an error previously
     with readonly_transaction():
@@ -269,12 +271,12 @@ def save_formulation_tab(request) -> Response:
         # Add modules that already exist but have no parameters, limited to the current selection to avoid refetching for soon-to-be-deleted modules
         to_be_added.update(set(formulations_without_params) & new_module_names)
 
-    to_be_unused = existing_module_names - new_module_names
 
     # TODO for dev only
     #####################
     # to_be_added = new_module_names
     #####################
+    # Fetch module metadata from Data Services (outside write transaction)
     module_metadata, errors = get_module_metadata_from_data_services(run, to_be_added)
     if errors:
         eds_errors.extend(errors)
@@ -301,16 +303,17 @@ def save_formulation_tab(request) -> Response:
             if to_create:
                 CalibrationFormulation.objects.bulk_create(to_create, ignore_conflicts=True)
 
-            # Create the parameters
-            update_parameters(run, module_metadata)
+            # Persist parameters for modules we fetched.
+            if module_metadata:
+                update_parameters(run, module_metadata)
 
-            # Delete existing Sloth params for this run and re-add them
+            # Delete existing Sloth params for this run and re-add them if enabled
             CalibrationSlothParam.objects.filter(calibration_run=run).delete()
-
-            error_message = add_sloth_parameters(run, sloth_parameters, new_module_names)
-            if error_message:
-                logger.error(f"Error adding Sloth parameters: {error_message}")
-                return ResponseError(error_message)
+            if use_sloth:
+                error_message = add_sloth_parameters(run, sloth_parameters, new_module_names)
+                if error_message:
+                    logger.error(f"Error adding Sloth parameters: {error_message}")
+                    return ResponseError(error_message)
 
             # If formulation uses LSTM, we need to clear all irrelevant fields
             if have_lstm:

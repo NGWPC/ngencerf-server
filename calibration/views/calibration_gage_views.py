@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -211,8 +210,7 @@ def save_gage_tab(request: Request):
 
     run.job_name = job_name
 
-    eds_errors = []
-
+    eds_errors: list[dict] = []
     geopackage_image_url = None
 
     # Check cache first to confirm the gage exists and is active
@@ -220,32 +218,52 @@ def save_gage_tab(request: Request):
     if not gage_dict:
         raise Gage.DoesNotExist(f"Gage '{gage_id}' does not exist or is not active")
 
-    # Fetch the actual DB object to assign to the FK
-    gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
+    # Fetch the actual DB object to assign to the FK (include domain for DS calls)
+    gage = (
+        Gage.objects
+        .select_related("domain")
+        .only("id", "gage_id", "domain")
+        .get(gage_id=gage_id)
+    )
 
     gage_is_new_or_changed = (run.gage is None) or (run.gage != gage)
 
     if gage_is_new_or_changed:
-        try:
-            eds_errors_entry = save_gage(run, gage)
-            if eds_errors_entry:
-                eds_errors.extend(eds_errors_entry)
-        except Gage.DoesNotExist:
-            return ResponseError(f"Gage '{gage_id}' does not exist or is not active", http_status=status.HTTP_404_NOT_FOUND)
+        # reset + set gage (non-CLI path)
+        reset_gage_dependent_state_on_change(run, gage, cli=False)
+
+        # Refresh module parameters for existing formulations (if any).
+        # DS call must be outside a write transaction.
+        my_formulations = (
+            CalibrationFormulation.objects
+            .filter(calibration_run_id=run.id)
+            .select_related("module")
+        )
+        module_names = set(my_formulations.values_list("module__name", flat=True))
+
+        if module_names:
+            module_metadata, module_eds_errors = get_module_metadata_from_data_services(run, module_names)
+
+            if module_eds_errors:
+                eds_errors.extend(module_eds_errors)
+            elif module_metadata:
+                # DB writes: parameters update. Keep it in a small atomic block.
+                with transaction.atomic():
+                    update_parameters(run, module_metadata, gage_changed=True)
 
         # Get Geopackage
         if not geopackage_source_name:
             run.geopackage_eds_file_path = None
         elif geopackage_source_name == GeopackageSourceEnum.HYDROFABRIC.value:
-                try:
-                    get_geopackage_from_data_services(run)
-                except DataServicesException as e:
-                    logger.exception("Error retrieving geopackage data from Data Services")
-                    eds_errors.append({
-                        'name': 'geopackage',
-                        'message': str(e),
-                        'status_code': e.status_code if e.status_code else None
-                    })
+            try:
+                get_geopackage_from_data_services(run)
+            except DataServicesException as e:
+                logger.exception("Error retrieving geopackage data from Data Services")
+                eds_errors.append({
+                    'name': 'geopackage',
+                    'message': str(e),
+                    'status_code': e.status_code if e.status_code else None
+                })
         else:
             raise CerfException("Invalid geopackage source")
 
@@ -259,28 +277,9 @@ def save_gage_tab(request: Request):
 
         geopackage_image_url = get_geopackage_image_url(geopackage_path)
 
-        # Note that we do not get Observational data here anymore.
-        # Get Observational data
-        # if observational_source_name:
-        #     if observational_source_name == ObservationalSourceEnum.HISTORICAL.value:
-        #         try:
-        #             get_observational_data_from_data_services(run)
-        #         except DataServicesException as e:
-        #             logger.exception("Error retrieving observational data from Data Services")
-        #             eds_errors.append({
-        #                 'name': 'observational',
-        #                 'message': str(e),
-        #                 'status_code': e.status_code if e.status_code else None
-        #             })
-        #     else:
-        #         raise CerfException("Invalid observational source")
-        # else:
-        #     run.observational_eds_dir_path = None
-        #
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
         # Get Forcing data
-
         # Determine requested forcing source
         forcing_source_requested = (
             ForcingSourceEnum.get_instance(forcing_source_requested_name)
@@ -458,52 +457,73 @@ def get_geopackage_image_url(geopackage_path: str | None) -> str | None:
         return None
 
 
-def save_gage(run: CalibrationRun, gage: Gage) -> dict | None:
+def reset_gage_dependent_state_on_change(run: CalibrationRun, new_gage: Gage, *, cli: bool = False) -> bool:
     """
-    Apply a gage to a calibration run (initial set or change).
+    If the gage changes, clear any fields derived from the prior gage and clear derived times.
 
-    - If the run already had a gage, clear any gage-dependent EDS paths (forcing/observational/geopackage)
-      and clear derived time fields so they will be recalculated.
-    - Set run.gage to the provided gage.
-    - Refresh module metadata/initial parameter values via Data Services.
-
-    Caller:
-    - Should call when the gage is being set for the first time or when it has changed.
-    - Should not call when the gage is unchanged (to preserve existing EDS paths and time fields).
-
-    :param run: The CalibrationRun instance to update (not saved here).
-    :param gage: The gage being applied.
-    :return: Error dict for Data Services failures; otherwise None.
+    This function performs no DB writes; it only mutates `run` in memory.
+    Returns True if the gage changed (or was newly set), else False.
     """
+    gage_changed = (run.gage is None) or (run.gage_id != new_gage.id)
+    if not gage_changed:
+        return False
 
-    # We only get here when the gage is new or changed, but we may have existing state from the prior gage.
-    if run.gage:
-        # Clear any EDS-derived file paths associated with the prior gage.
-        # TODO Need to delete anything in the geopackage_original directory
-        run.geopackage_eds_file_path = None
-        run.forcing_eds_dir_path = None
-        run.observational_eds_file_path = None
+    # Clear EDS-derived file paths associated with the prior gage.
+    # TODO Need to delete anything in the geopackage_original directory
+    run.geopackage_eds_file_path = None
+    run.forcing_eds_dir_path = None
+    # run.observational_eds_file_path = None
 
-        clear_times(run)
+    clear_times(run, cli=cli)
+    run.gage = new_gage
+    return True
 
-    run.gage = gage
-
-    # Compute once and reuse
-    my_formulations = CalibrationFormulation.objects.filter(calibration_run_id=run.id)
-
-    if my_formulations.exists():
-        try:
-            get_module_metadata_from_data_services(run, my_formulations, gage_changed=True)  # type: ignore
-        except DataServicesException as e:
-            logger.exception("Error retrieving module parameter data from Data Services")
-            return {
-                'name': 'parameters',
-                'message': str(e),
-                'status_code': e.status_code if e.status_code else None
-            }
-
-    return None
-
+#
+# def save_gage(run: CalibrationRun, gage: Gage) -> dict | None:
+#     """
+#     Apply a gage to a calibration run (initial set or change).
+#
+#     - If the run already had a gage, clear any gage-dependent EDS paths (forcing/observational/geopackage)
+#       and clear derived time fields so they will be recalculated.
+#     - Set run.gage to the provided gage.
+#     - Refresh module metadata/initial parameter values via Data Services.
+#
+#     Caller:
+#     - Should call when the gage is being set for the first time or when it has changed.
+#     - Should not call when the gage is unchanged (to preserve existing EDS paths and time fields).
+#
+#     :param run: The CalibrationRun instance to update (not saved here).
+#     :param gage: The gage being applied.
+#     :return: Error dict for Data Services failures; otherwise None.
+#     """
+#
+#     # We only get here when the gage is new or changed, but we may have existing state from the prior gage.
+#     if run.gage:
+#         # Clear any EDS-derived file paths associated with the prior gage.
+#         # TODO Need to delete anything in the geopackage_original directory
+#         run.geopackage_eds_file_path = None
+#         run.forcing_eds_dir_path = None
+#         # run.observational_eds_file_path = None
+#
+#         clear_times(run)
+#
+#     run.gage = gage
+#
+#     my_formulations = (
+#         CalibrationFormulation.objects
+#         .filter(calibration_run_id=run.id)
+#         .select_related("module")
+#     )
+#     module_names = set(my_formulations.values_list("module__name", flat=True))
+#
+#     if module_names:
+#         module_metadata, module_eds_errors = get_module_metadata_from_data_services(run, module_names)  # type: ignore
+#         if module_eds_errors:
+#             return module_eds_errors[0]  # or extend/return as your current contract expects
+#         update_parameters(run, module_metadata, gage_changed=True)
+#
+#     return None
+#
 
 def get_data_files_status(run: CalibrationRun) -> dict:
     """

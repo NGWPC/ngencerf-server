@@ -20,7 +20,6 @@ from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, 
 from calibration.util.file_util import get_single_file
 from calibration.util.geopkg import normalize_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
-    get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, UEB_LIB, NGEN_MODULE_PARAMETERS, \
     PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES, get_forcing_dir_for_job
 from calibration.views.calibration_formulation_views import validate_formulation
@@ -29,6 +28,7 @@ from calibration.views.calibration_tuning_views import get_full_evaluation_date_
 from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
 from calibration.views.data_services import should_use_bmi_forcing, get_observational_data_from_data_services
+from calibration.views.mpi_rules import get_mpi_nodes
 from cerfServer.settings import NGEN_ENVIRONMENT, NGEN_BMI_FORCING_WORK_DIR
 
 logger = logging.getLogger(__name__)

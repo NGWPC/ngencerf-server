@@ -325,54 +325,79 @@ def get_forcing_data_from_s3(run: CalibrationRun, forcing_source_name: str):
     raise DataServicesException(f"Could not find forcing data for gage {run.gage.gage_id}")
 
 
-def get_module_metadata_from_data_services(run: CalibrationRun,
-                                           modules: set[str]) -> tuple[dict | None, list[dict]]:
+def get_module_metadata_from_data_services(
+        run: CalibrationRun,
+        modules: set[str],
+        gage_id: str | None = None,
+        domain: str | None = None
+) -> tuple[dict, list[dict]]:
     """
-    Fetch and normalize metadata for a single module from Data Services.
+    Fetch module parameter metadata for a set of modules from Data Services.
 
-    :param run: CalibrationRun instance with associated gage information.
-    :param modules: Set of module names to fetch metadata for.
-    :return: Tuple of (module_metadata, eds_errors), where:
-             - module_metadata is the normalized metadata dict, or None on failure.
-             - eds_errors is a list of error objects describing any failure.
+    This function performs an HTTP request and should be executed outside of a DB transaction.
+
+    Gage context:
+      - Data Services requires gage_id (Gage.gage_id) and domain as query params.
+      - If gage_id/domain are not provided, they are derived from run.gage.
+      - This avoids requiring run.gage to be saved before the call; it only needs to be set
+        in memory (run.gage = gage).
+
+    :param run: CalibrationRun instance (used for context only; not mutated).
+    :param modules: Set of module names.
+    :param gage_id: Optional gage identifier (Gage.gage_id). If not provided, uses run.gage.gage_id.
+    :param domain: Optional domain name for Data Services. If not provided, uses run.gage.domain.name.
+    :return: Tuple (module_metadata, eds_errors)
+        - module_metadata: validated/normalized dict matching ModuleDataListSerializer (falsy {} on failure).
+        - eds_errors: list of error dicts for Data Services failures.
     """
-    # Fetch module metadata from Data Services or use test data
     logger.info('Fetching module metadata from Data Services')
+
+    if not modules:
+        return {}, []
+
+    # Resolve gage_id/domain from args first, then from run.gage.
+    resolved_gage_id = gage_id or (run.gage.gage_id if run.gage else None)
+    resolved_domain = domain or (run.gage.domain.name if run.gage and run.gage.domain else None)
+
+    if not resolved_gage_id or not resolved_domain:
+        raise ValueError(
+            "get_module_metadata_from_data_services requires gage_id and domain. "
+            "Pass them explicitly or ensure run.gage is set (run.gage = gage) before calling."
+        )
+
+    # urlencode(doseq=True) only repeats keys when the value is a sequence (e.g., list)
     params = {
-        "modules": modules,  # list -> repeated ?modules=A&modules=B
-        "gage_id": run.gage.gage_id,
-        "domain": run.gage.domain.name  # Need to translate domain name
+        "modules": sorted(modules),
+        "gage_id": resolved_gage_id,
+        "domain": resolved_domain,
     }
+
     url = urljoin(
         settings.ENTERPRISE_DATA_URL,
-        settings.ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT + "?" + urlencode(params, doseq=True)
+        settings.ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT
+        + "?"
+        + urlencode(params, doseq=True)
     )
 
-    eds_errors: list[dict] = []
-
     try:
-        module_json = fetch_from_data_services('GET', url, headers=default_headers)
+        module_json = fetch_from_data_services("GET", url, headers=default_headers)
     except DataServicesException as e:
         logger.exception(f"Error retrieving module parameter data from Data Services")
-        eds_errors.append({
+        return {}, [{
             'name': 'parameters',
             'message': str(e),
             'status_code': e.status_code if e.status_code else None
-        })
-        return None, eds_errors
+        }]
 
-    # module_json = {
-    #     "modules": module_json
-    # }
     module_metadata = validate_response_data(
-        ModuleDataListSerializer, module_json,
-        'Module metadata from Data Services is not in the expected format')
+        ModuleDataListSerializer,
+        module_json,
+        'Module metadata from Data Services is not in the expected format'
+    )
 
     fix_module_metadata(module_metadata)
 
-    eds_errors = []
-
-    return module_metadata, eds_errors
+    return module_metadata, []
 
 
 def update_parameters(run: CalibrationRun, module_metadata: dict, gage_changed: bool = False):
@@ -389,7 +414,6 @@ def update_parameters(run: CalibrationRun, module_metadata: dict, gage_changed: 
     :return: None.
     """
 
-    # print('module_metadata', module_metadata)
     for module_data in module_metadata.get('modules'):
 
         module_name = module_data['module_name']
@@ -404,7 +428,6 @@ def update_parameters(run: CalibrationRun, module_metadata: dict, gage_changed: 
 
         # Save or update parameters for the module
         parameters = module_data.get('calibratable_parameters', [])
-        print('paramters for', module_name, parameters)
         if not parameters:
             logger.warning(f"Module '{module_name}' has no calibratable parameters.")
         else:

@@ -24,7 +24,7 @@ from calibration.util.ngen_locations import get_geopackage_dir_for_job, \
     get_ngen_logging_file
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_sloth_parameters, SLOTH, add_sloth_parameters, validate_formulation
-from calibration.views.calibration_gage_views import save_gage, get_data_files_status
+from calibration.views.calibration_gage_views import get_data_files_status, reset_gage_dependent_state_on_change
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
 from calibration.views.calibration_run_views import map_path_to_host, normalize_failure_messages
@@ -110,7 +110,6 @@ def import_calibration_run_data(request: Request,
     # ---------------------------------------------------------------------
     with readonly_transaction():
         # Validate modules list
-        print('module_names', module_names)
         if module_names:
 
             # Formulation-level checks (read-only)
@@ -171,6 +170,8 @@ def import_calibration_run_data(request: Request,
     # WRITE PHASE: perform DB mutations & keep IO where it was
     # ---------------------------------------------------------------------
     gage = None
+    module_metadata: dict = {}  # <-- restore: used later by update_parameters()
+
     if gage_id:
         # Check cache first to confirm the gage exists and is active
         gage_dict = get_gage_by_id(gage_id)
@@ -178,21 +179,25 @@ def import_calibration_run_data(request: Request,
             raise Gage.DoesNotExist(f"Gage '{gage_id}' does not exist or is not active")
 
         # Fetch the actual DB object to assign to the FK
-        gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
+        gage = Gage.objects.only("gage_id", "domain").select_related("domain").get(gage_id=gage_id)
+
+        # Pull parameter metadata for modules from Data Services (HTTP call must be outside transaction)
+        if module_names:
+            module_metadata, module_eds_errors = get_module_metadata_from_data_services(
+                run,
+                module_names,
+                gage_id=gage_id,
+                domain=gage.domain.name
+            )
+            if module_eds_errors:
+                eds_errors.extend(module_eds_errors)
 
     with transaction.atomic():
         # -----------------------------
         # Gage
         # -----------------------------
         if gage_id:
-            # Persist the gage on the run
-            try:
-                save_gage(run, gage)
-            except Gage.DoesNotExist:
-                return None, None, ResponseError(
-                    f"Gage '{gage_id}' does not exist or is not active",
-                    http_status=status.HTTP_404_NOT_FOUND
-                )
+            reset_gage_dependent_state_on_change(run, gage, cli=is_cli)
 
             # -----------------------------
             # Formulations & Modules
@@ -299,7 +304,6 @@ def import_calibration_run_data(request: Request,
         # Only validate parameters if we didn't hit DS parameter metadata errors
         if parameters and not any(error.get('name') == 'parameters' for error in eds_errors):
             # These validations read from DB; saving persists selections
-            print('calling validate_parameters')
             parameter_errors, parameter_warnings = validate_parameters(run, parameters)
             if parameter_errors:
                 return None, None, ResponseError(parameter_errors)
