@@ -1,9 +1,9 @@
 import argparse
-import os
 import json
+import os
 
 from calibration.util.geopkg import display_layer_metadata, list_layers, find_catchments, find_gage_id, get_geometry_from_gpkg, \
-    gpkg_to_png_selected_layers, safe_read_gpkg, normalize_gpkg
+    gpkg_to_png_selected_layers, safe_read_gpkg
 
 
 def main():
@@ -64,7 +64,7 @@ def main():
 
                 find_catchments(args.gpkg_path)
 
-        elif args.command == "geometry":
+        elif args.command == "extract":
             result = get_geometry_from_gpkg(
                 gpkg_path=args.gpkg_path,
                 catchment_layer=args.catchment_layer,
@@ -80,9 +80,6 @@ def main():
             with open(args.png_path, "wb") as f:
                 f.write(img.getvalue())
             print(f"PNG image saved to: {args.png_path}")
-
-        elif args.command == "normalize":
-            normalize_gpkg(args.gpkg_path, args.output_path)
 
     except Exception as e:
         print(f"Error: {e}")

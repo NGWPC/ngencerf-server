@@ -18,10 +18,8 @@ from calibration.util.caching import get_cached_module_by_name, get_cached_modul
 from calibration.util.calibration_validators import CalibrationRunSerializer, ExportResponseSerializer, ErrorResponseSerializer, \
     LoadCalibrationJobSerializer, LoadCalibrationRunResponseSerializer
 from calibration.util.cloud_util import path_exists
-from calibration.util.file_util import get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
-from calibration.util.ngen_locations import get_geopackage_dir_for_job, \
-    get_ngen_logging_file
+from calibration.util.ngen_locations import get_ngen_logging_file, get_geopackage_file_path
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_sloth_parameters, SLOTH, add_sloth_parameters, validate_formulation
 from calibration.views.calibration_gage_views import get_data_files_status, reset_gage_dependent_state_on_change
@@ -32,7 +30,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
     save_parameters, has_user_selected_tuning_parameters, compute_time_range, persist_time_range
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
-    validate_request, get_valid_path, truncate_large_fields, get_user_email, generate_ngen_logging_config, get_elapsed_str, readonly_transaction, \
+    validate_request, truncate_large_fields, get_user_email, generate_ngen_logging_config, get_elapsed_str, readonly_transaction, \
     format_datetime
 from calibration.views.data_services import DataServicesException, get_geopackage_from_data_services, \
     get_forcing_data_from_s3, get_module_metadata_from_data_services, update_parameters
@@ -231,7 +229,7 @@ def import_calibration_run_data(request: Request,
                 'message': str(e),
                 'status_code': e.status_code if e.status_code else None
             })
-        geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
+        geopackage_path = get_geopackage_file_path(run)
         if geopackage_path:
             catchments = list(get_geometry_from_gpkg(geopackage_path)['catchments'].keys())
             run.num_catchments = len(catchments)
@@ -301,7 +299,7 @@ def import_calibration_run_data(request: Request,
         # -----------------------------
         run.automatic_validation = automatic_validation
 
-        # Only validate parameters if we didn't hit DS parameter metadata errors
+        # Only validate parameters if we didn't hit Data Services parameter metadata errors
         if parameters and not any(error.get('name') == 'parameters' for error in eds_errors):
             # These validations read from DB; saving persists selections
             parameter_errors, parameter_warnings = validate_parameters(run, parameters)
@@ -541,7 +539,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         # Generate Geopackage map if requested
         if include_gpkg_map:
             gpkg_map_start = time.perf_counter()
-            geopackage_path = run.geopackage_eds_file_path
+            geopackage_path = get_geopackage_file_path(run)
             if geopackage_path and path_exists(geopackage_path):
                 geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
                 base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
@@ -584,7 +582,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     calibration_run_data['is_aet_rootzone'] = run.is_aet_rootzone
 
     # Validation warnings
-    formulation_errors, formulation_warnings, _ = validate_formulation(module_names, run.geopackage_eds_file_path)
+    formulation_errors, formulation_warnings, _ = validate_formulation(module_names, get_geopackage_file_path(run))
     if formulation_warnings and not export:
         calibration_run_data['formulation_warnings'] = formulation_warnings
     if formulation_errors and not export:

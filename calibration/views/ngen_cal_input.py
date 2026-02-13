@@ -17,11 +17,9 @@ from calibration.enums_vanilla import NgenEnvironmentEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, get_cached_modules_by_id
-from calibration.util.file_util import get_single_file
-from calibration.util.geopkg import normalize_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     get_observational_file_for_job, get_geopackage_dir_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, UEB_LIB, NGEN_MODULE_PARAMETERS, \
-    PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES, get_forcing_dir_for_job
+    PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES, get_forcing_dir_for_job, get_geopackage_file_path
 from calibration.views.calibration_formulation_views import validate_formulation
 from calibration.views.calibration_secondary_data_views import should_generate_swe, should_generate_soil_moisture
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
@@ -227,18 +225,19 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             calibration['station_name'] = run.gage.station_name
 
             if not is_missing(run.geopackage_source, 'Geopackage source', error_object):
-                geopackage_dir = get_geopackage_dir_for_job(run)
+                # geopackage_dir = get_geopackage_dir_for_job(run)
 
-                if run.geopackage_eds_file_path and build:
-                    # For data from Data Services, normalize the CRS and copy to job-specific location
-                    try:
-                        normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
-                    except FileNotFoundError:
-                        run.geopackage_eds_file_path = None
+                # Remove normalization
+                # if run.geopackage_eds_file_path and build:
+                #     # For data from Data Services, normalize the CRS and copy to job-specific location
+                #     try:
+                #         normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
+                #     except FileNotFoundError:
+                #         run.geopackage_eds_file_path = None
 
-                geopackage_file = get_single_file(geopackage_dir)
-                if geopackage_file:
-                    datafile['hydrofab_file'] = geopackage_file
+                # geopackage_file = get_single_file(geopackage_dir)
+                # if geopackage_file:
+                datafile['hydrofab_file'] = get_geopackage_file_path(run)
 
             # Determine the source of the forcing data
             if not is_missing(run.forcing_source_requested, 'Forcing source', error_object):
@@ -307,7 +306,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             general['models'] = ', '.join(module_names_for_job)
 
             # Validate using only modules actually present in this job
-            formulation_errors, _, _ = validate_formulation(module_names_for_job, run.geopackage_eds_file_path)
+            formulation_errors, _, _ = validate_formulation(module_names_for_job, get_geopackage_file_path(run))
             for f in formulation_errors:
                 error_object.add_error(f)
 

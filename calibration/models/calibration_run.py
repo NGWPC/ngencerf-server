@@ -26,7 +26,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     streamflow_threshold = models.FloatField(null=True)
     peak_flow_threshold = models.FloatField(null=True)
     geopackage_source = models.ForeignKey('GeopackageSource', null=True, on_delete=models.RESTRICT)
-    geopackage_eds_file_path = models.TextField(null=True)
+    # geopackage_eds_file_path = models.TextField(null=True)
     forcing_source_requested = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT, related_name='+', related_query_name='+')
     forcing_source_actual = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT, related_name='+', related_query_name='+')
     forcing_eds_dir_path = models.TextField(null=True)
@@ -62,7 +62,6 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
             f"CalibrationRun {self.id}, {gage_info}, "
             f"owner: {self.owner.username}, "  # type: ignore[attr-defined]  # Suppress PyCharm warning for unresolved attribute
             f"job_data_directory: {self.job_data_dir},"
-            f"geopackage_eds_file_path: {self.geopackage_eds_file_path}, "
             f"forcing_eds_dir_path: {self.forcing_eds_dir_path}, "
             f"objective_function.name: {self.objective_function.name if self.objective_function else 'None'}, "
             f"optimization.name: {self.optimization.name if self.optimization else 'None'}, "

@@ -137,17 +137,14 @@ def get_geopackage_from_data_services(run: CalibrationRun):
     """
     if run.gage:
         logger.info('Retrieving geopackage from Data Services')
-        original_geopackage_dir = get_geopackage_dir_for_job(run) + '_original'
-        os.makedirs(original_geopackage_dir, exist_ok=True)
+        geopackage_dir = get_geopackage_dir_for_job(run)
+        os.makedirs(geopackage_dir, exist_ok=True)
         geopackage_path = call_icefabric_gpkg(
             run.gage.gage_id,
             run.gage.domain.name,
-            original_geopackage_dir,
+            geopackage_dir,
             settings.ENTERPRISE_DATA_ENV
         )
-
-        run.geopackage_eds_file_path = geopackage_path
-        logger.info(f'Setting run.geopackage_eds_file_path to {run.geopackage_eds_file_path}')
 
 
 def _parse_utc(dt_str: str) -> datetime:
@@ -357,7 +354,7 @@ def get_module_metadata_from_data_services(
 
     # Resolve gage_id/domain from args first, then from run.gage.
     resolved_gage_id = gage_id or (run.gage.gage_id if run.gage else None)
-    resolved_domain = domain or (run.gage.domain.name if run.gage and run.gage.domain else None)
+    resolved_domain = domain or (run.gage.domain.name if run.gage and run.gage.domain_id else None)
 
     if not resolved_gage_id or not resolved_domain:
         raise ValueError(

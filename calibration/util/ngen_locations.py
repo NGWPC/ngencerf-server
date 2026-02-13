@@ -7,6 +7,7 @@ from django.conf import settings
 from calibration.enums import ValidationType
 from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun, VerificationRun
+from calibration.util.file_util import get_single_file
 from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
@@ -103,9 +104,12 @@ def get_observational_file_for_job(run: CalibrationRun) -> str:
     return os.path.join(get_observational_dir_for_job(run), get_observational_filename(run)) if run.gage else None
 
 
-# Job-specific geopackage directory
 def get_geopackage_dir_for_job(run: CalibrationRun) -> str:
     return os.path.join(run.job_data_dir, 'geopackage')
+
+
+def get_geopackage_file_path(run: CalibrationRun) -> str | None:
+    return get_single_file(get_geopackage_dir_for_job(run))
 
 
 def get_ngen_stdout_log_filename() -> str:

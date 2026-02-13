@@ -25,7 +25,7 @@ from calibration.util import cloud_util
 from calibration.util.caching import get_cached_module_by_name, have_LSTM, get_cached_modules_by_id
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
-from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
+from calibration.util.ngen_locations import get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, \
@@ -1067,6 +1067,7 @@ def _as_local_path(path: str) -> str:
     return path
 
 
+# TODO This is only used to read Forcing iles from S3.  We can get rid of this once we use BMI forcing.  We can also get rid of localize_to_path
 def get_csv_daterange(path: str) -> DateTimeRange:
     """
     Reads a CSV file (local or cloud) that is assumed to be sorted by date/time and efficiently determines
@@ -1152,6 +1153,7 @@ def get_date_range_intersection(run: CalibrationRun, forcing_dir_path: str = Non
     Calculates the intersection of date ranges between observational and forcing data.
     Supports both local paths and cloud URLs.
 
+    :param run Calibration Run
     :param forcing_dir_path: Directory path or cloud URL containing forcing data.
     :return: DateTimeRange representing the overlapping period, or None if no overlap.
     """

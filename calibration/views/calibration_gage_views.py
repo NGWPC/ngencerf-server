@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -12,13 +13,11 @@ from rest_framework.response import Response
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum
 from calibration.models import Gage, CalibrationRun, CalibrationFormulation
 from calibration.util.caching import get_cached_gages, get_gage_by_id, update_and_get_cached_gage_status
-from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, SaveGageResponseSerializer, \
-    LoadGageResponseSerializer, GageSerializer, ErrorResponseSerializer, UpdateGageStatusRequestSerializer, UpdateGageStatusResponseSerializer, \
-    EmptySerializer
+from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, SaveGageResponseSerializer, GageSerializer, \
+    LoadGageResponseSerializer, ErrorResponseSerializer, UpdateGageStatusRequestSerializer, UpdateGageStatusResponseSerializer, EmptySerializer
 from calibration.util.cloud_util import path_exists
-from calibration.util.file_util import get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
-from calibration.util.ngen_locations import get_forcing_dir_for_job, get_geopackage_dir_for_job
+from calibration.util.ngen_locations import get_forcing_dir_for_job, get_geopackage_file_path
 from calibration.views import ngen_cal_input
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
@@ -218,7 +217,7 @@ def save_gage_tab(request: Request):
     if not gage_dict:
         raise Gage.DoesNotExist(f"Gage '{gage_id}' does not exist or is not active")
 
-    # Fetch the actual DB object to assign to the FK (include domain for DS calls)
+    # Fetch the actual DB object to assign to the FK (include domain for Data Services calls)
     gage = (
         Gage.objects
         .select_related("domain")
@@ -233,7 +232,7 @@ def save_gage_tab(request: Request):
         reset_gage_dependent_state_on_change(run, gage, cli=False)
 
         # Refresh module parameters for existing formulations (if any).
-        # DS call must be outside a write transaction.
+        # Data Services call must be outside a write transaction.
         my_formulations = (
             CalibrationFormulation.objects
             .filter(calibration_run_id=run.id)
@@ -251,10 +250,8 @@ def save_gage_tab(request: Request):
                 with transaction.atomic():
                     update_parameters(run, module_metadata, gage_changed=True)
 
-        # Get Geopackage
-        if not geopackage_source_name:
-            run.geopackage_eds_file_path = None
-        elif geopackage_source_name == GeopackageSourceEnum.HYDROFABRIC.value:
+        # Get Geopackage - for now HYDROFABRIC is the only possibility
+        if geopackage_source_name and geopackage_source_name == GeopackageSourceEnum.HYDROFABRIC.value:
             try:
                 get_geopackage_from_data_services(run)
             except DataServicesException as e:
@@ -269,7 +266,7 @@ def save_gage_tab(request: Request):
 
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
-        geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
+        geopackage_path = get_geopackage_file_path(run)
         if geopackage_path:
             catchments = list(get_geometry_from_gpkg(geopackage_path)['catchments'].keys())
             run.num_catchments = len(catchments)
@@ -468,9 +465,11 @@ def reset_gage_dependent_state_on_change(run: CalibrationRun, new_gage: Gage, *,
     if not gage_changed:
         return False
 
-    # Clear EDS-derived file paths associated with the prior gage.
-    # TODO Need to delete anything in the geopackage_original directory
-    run.geopackage_eds_file_path = None
+    # Clear file paths associated with the prior gage.
+    geopackage = get_geopackage_file_path(run)
+    if geopackage and os.path.exists(geopackage):
+        os.remove(geopackage)
+
     run.forcing_eds_dir_path = None
 
     clear_times(run, cli=cli)
@@ -489,7 +488,7 @@ def get_data_files_status(run: CalibrationRun) -> dict:
     """
     forcing_path = True if should_use_bmi_forcing(run) else get_valid_path(run.forcing_eds_dir_path, lambda: get_forcing_dir_for_job(run))
 
-    geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
+    geopackage_path = get_geopackage_file_path(run)
 
     # TODO Talk to Richard about this.  Do we really need Obs status?
     return {'observational': True,

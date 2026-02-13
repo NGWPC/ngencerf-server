@@ -14,6 +14,7 @@ from calibration.util.caching import get_cached_module_by_name, get_cached_modul
 from calibration.util.calibration_validators import ValidateFormulationRequestSerializer, \
     SaveFormulationRequestSerializer, ErrorResponseSerializer, ValidateFormulationResponseSerializer, \
     SaveFormulationResponseSerializer, EmptySerializer, GetModulesResponseSerializer
+from calibration.util.ngen_locations import get_geopackage_file_path
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_optimization_views import write_optimization_inputs
 from calibration.views.called_from import get_caller_name
@@ -148,7 +149,7 @@ def validate_formulation_tab(request) -> Response:
     if error_return:
         return error_return
 
-    formulation_errors, formulation_warnings, formulation_messages = validate_formulation(new_module_names, run.geopackage_eds_file_path)
+    formulation_errors, formulation_warnings, formulation_messages = validate_formulation(new_module_names, get_geopackage_file_path(run))
 
     response = {}
     if formulation_warnings:
@@ -235,7 +236,7 @@ def save_formulation_tab(request) -> Response:
     if run.is_aet_rootzone and not any(cfe in new_module_names for cfe in ('CFE-S', 'CFE-X')):
         return ResponseError('AET Rootzone cannot be True for formulations not using CFE.')
 
-    formulation_errors, formulation_warnings, _ = validate_formulation(new_module_names, run.geopackage_eds_file_path)
+    formulation_errors, formulation_warnings, _ = validate_formulation(new_module_names, get_geopackage_file_path(run))
 
     if not use_sloth and sloth_parameters:
         return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
