@@ -41,6 +41,7 @@ services:
       - /ngencerf-app/aws:/root/.aws:ro
     environment:
       - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH}
+      - NGENCERF_UI_TAG=${NGENCERF_UI_TAG}
     env_file:
       - path: ./cerfServer/.env-docker-prod
         required: true
