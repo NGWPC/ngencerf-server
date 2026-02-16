@@ -40,6 +40,9 @@ NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "<unknown>")
 NGENCERF_COPYRIGHT = f"© 2024-{datetime.now().year}, RTX"
 
+# used to find ngencerf-ui Docker image
+NGENCERF_UI_TAG = os.getenv("NGENCERF_UI_TAG", "latest")
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
