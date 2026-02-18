@@ -473,26 +473,67 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             .values('name', 'initial_value', 'minimum', 'maximum', 'calibration_formulation__module_id')
         )
 
-        if not params and not have_LSTM_flag:
-            error_object.add_warning("At least one parameter must be specified")
-        else:
-            param_error = False
-            for p in params:
-                # Make sure everything is specified
-                if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
-                    module_name = modules_by_id[p['calibration_formulation__module_id']].name
-                    param_error = True
-                    error_object.add_warning(
-                        f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) "
-                        f"must be specified for parameter '{p['name']}' (module {module_name})"
-                    )
+        TOPOFLOW = "Topoflow-Glacier"
 
-            if not param_error and build:
-                calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
-                # Swap module_id → name before writing files
+        module_names_for_job = {
+            modules_by_id[f.module_id].name
+            for f in formulations
+        }
+        has_topoflow = TOPOFLOW in module_names_for_job
+        has_non_topoflow_modules = any(name != TOPOFLOW for name in module_names_for_job)
+
+        # Parameter selection rules:
+        # - If LSTM is present: MUST have zero selected parameters.
+        # - If Topoflow-Glacier is in the job: must select >=1 Topoflow-Glacier parameter.
+        #   If any other modules are also in the job: must also select >=1 non-Topoflow-Glacier parameter.
+        # - Otherwise (no LSTM, no Topoflow-Glacier): must select >=1 parameter overall.
+        if have_LSTM_flag:
+            if params:
+                error_object.add_warning("LSTM jobs must not specify any calibration parameters")
+            # Do not validate or write parameter files for LSTM jobs.
+        else:
+            if not params:
+                if has_topoflow:
+                    if has_non_topoflow_modules:
+                        error_object.add_warning(
+                            "At least one Topoflow-Glacier parameter and at least one non-Topoflow-Glacier parameter must be specified"
+                        )
+                    else:
+                        error_object.add_warning(
+                            "At least one Topoflow-Glacier parameter must be specified"
+                        )
+                else:
+                    error_object.add_warning("At least one parameter must be specified")
+            else:
+                selected_module_names = {
+                    modules_by_id[p['calibration_formulation__module_id']].name
+                    for p in params
+                }
+                has_topoflow_param = TOPOFLOW in selected_module_names
+                has_non_topoflow_param = any(name != TOPOFLOW for name in selected_module_names)
+
+                if has_topoflow and not has_topoflow_param:
+                    error_object.add_warning("At least one Topoflow-Glacier parameter must be specified")
+
+                if has_topoflow and has_non_topoflow_modules and not has_non_topoflow_param:
+                    error_object.add_warning("At least one non-Topoflow-Glacier parameter must be specified")
+
+                # Validate parameter values and write parameter files
+                param_error = False
                 for p in params:
-                    p['model'] = modules_by_id[p['calibration_formulation__module_id']].name
-                write_parameter_files(params, calibration['calib_parameter_file'])
+                    if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
+                        module_name = modules_by_id[p['calibration_formulation__module_id']].name
+                        param_error = True
+                        error_object.add_warning(
+                            f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) "
+                            f"must be specified for parameter '{p['name']}' (module {module_name})"
+                        )
+
+                if not param_error and build:
+                    calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
+                    for p in params:
+                        p['model'] = modules_by_id[p['calibration_formulation__module_id']].name
+                    write_parameter_files(params, calibration['calib_parameter_file'])
 
         if build and NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
             config['Parallel'] = parallel

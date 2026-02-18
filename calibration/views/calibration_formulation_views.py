@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Any
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -430,7 +431,30 @@ formulation_validations = {
 }
 
 
-def validate_formulation(module_names: set[str], geopackage_path: str | None, return_group_info: bool = False) -> tuple[list[str], list[str], list[str]]:
+def split_routing_modules(
+        module_names: set[str],
+        cached_modules: dict[str, Any],
+) -> tuple[set[str], set[str]]:
+    """
+    Split module names into (routing_modules, non_routing_modules) using cached module group membership.
+
+    Assumes module_names are already validated and present in cached_modules.
+    """
+    routing: set[str] = set()
+    non_routing: set[str] = set()
+
+    for name in module_names:
+        group_names = {g.name for g in cached_modules[name].groups.all()}
+        if "Routing" in group_names:
+            routing.add(name)
+        else:
+            non_routing.add(name)
+
+    return routing, non_routing
+
+
+def validate_formulation(module_names: set[str], geopackage_path: str | None, return_group_info: bool = False) -> tuple[
+    list[str], list[str], list[str]]:
     """
     Validate formulation rules based on group requirements and exclusions.
 
@@ -460,22 +484,16 @@ def validate_formulation(module_names: set[str], geopackage_path: str | None, re
 
         if len(module_names) < 2:
             # LSTM alone (no other module) is not allowed
-            fatal_errors.append(
-                "When LSTM is specified, exactly one other Routing module must be included."
-            )
+            fatal_errors.append("When LSTM is specified, exactly one other Routing module must be included.")
             return fatal_errors, nonfatal_errors, info_messages
 
-        # At this point, len(module_names) == 2 and one of them is LSTM
-        other_name = next(name for name in module_names if name != "LSTM")
-        other_module = cached_modules.get(other_name)
-        if not other_module:
-            fatal_errors.append(f"Unknown module '{other_name}' in LSTM formulation.")
-            return fatal_errors, nonfatal_errors, info_messages
+        routing, non_routing = split_routing_modules(module_names - {"LSTM"}, cached_modules)
 
-        other_groups = [g.name for g in other_module.groups.all()]
-        if "Routing" not in other_groups:
+        if len(routing) != 1 or non_routing:
+            other_names = sorted(module_names - {"LSTM"})
             fatal_errors.append(
-                f"When LSTM is specified, the other module must be in the Routing group; found: {other_name}"
+                "When LSTM is specified, exactly one other Routing module must be included; "
+                f"found: {', '.join(other_names)}"
             )
             return fatal_errors, nonfatal_errors, info_messages
 
@@ -496,6 +514,18 @@ def validate_formulation(module_names: set[str], geopackage_path: str | None, re
         return fatal_errors, nonfatal_errors, info_messages
 
     # --- End of LSTM special case. All further checks assume LSTM is NOT present. ---
+
+    # Topoflow-Glacier composition rule:
+    # Topoflow-Glacier cannot be specified by itself (routing modules don't count).
+    # If Topoflow-Glacier is present, there must be at least 1 other non-routing module.
+    if "Topoflow-Glacier" in module_names:
+        _, non_routing = split_routing_modules(module_names - {"Topoflow-Glacier"}, cached_modules)
+        if not non_routing:
+            fatal_errors.append(
+                "Topoflow-Glacier cannot be used by itself. When Topoflow-Glacier is specified, "
+                "at least one additional non-Routing module must be included."
+            )
+            return fatal_errors, nonfatal_errors, info_messages
 
     # Perform checks for non-LSTM case
     modules_by_id = get_cached_modules_by_id()  # canonical cache

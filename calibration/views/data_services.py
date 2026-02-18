@@ -131,7 +131,7 @@ class DataServicesException(Exception):
 
 def get_geopackage_from_data_services(run: CalibrationRun):
     """
-    Retrieve a GeoPackage for the run's gage via IceFabric/Data Services and set the file path on the run.
+    Retrieve a GeoPackage for the run's gage from MSWM, which gets it from Data Services and set the file path on the run.
 
     :param run: A CalibrationRun object with associated gage information.
     """
@@ -139,11 +139,12 @@ def get_geopackage_from_data_services(run: CalibrationRun):
         logger.info('Retrieving geopackage from Data Services')
         geopackage_dir = get_geopackage_dir_for_job(run)
         os.makedirs(geopackage_dir, exist_ok=True)
-        geopackage_path = call_icefabric_gpkg(
+        call_icefabric_gpkg(
             run.gage.gage_id,
             run.gage.domain.name,
             geopackage_dir,
-            settings.ENTERPRISE_DATA_ENV
+            settings.ENTERPRISE_DATA_ENV,
+            settings.HYDROFABRIC_SOURCE
         )
 
 
@@ -191,7 +192,7 @@ def _format_naive(dt):
 
 def get_observational_date_range_from_data_services(run: CalibrationRun) -> DateTimeRange:
     """
-    Retrieve observational data for the run's gage and set the S3 URI on the run.
+    Retrieve observational date range for the run's gage from Data Services.
 
     :param run: A CalibrationRun object with associated gage information.
     """
@@ -367,6 +368,7 @@ def get_module_metadata_from_data_services(
         "modules": sorted(modules),
         "gage_id": resolved_gage_id,
         "domain": resolved_domain,
+        "source": settings.HYDROFABRIC_SOURCE
     }
 
     url = urljoin(
