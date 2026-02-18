@@ -18,7 +18,7 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, \
     GetCalibrationJobsResponseSerializer, CalibrationRunSerializer, GetValidationJobsResponseSerializer, \
     GetForecastJobsResponseSerializer, GetVerificationJobsResponseSerializer, CalibrationPaginationSerializer, \
     ForecastPaginationSerializer, VerificationPaginationSerializer, GetCalibrationJobIDsResponseSerializer, EmptySerializer, \
-    GetGagesResponseSerializer
+    GetGagesResponseSerializer, GetGagesRequestSerializer
 from calibration.views.calibration_download_views import downloadable_statuses
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_calibration_run, \
@@ -398,28 +398,42 @@ def _normalize_filters_and_sort(filters: dict | None, sort: dict | None) -> tupl
     """
     Normalize and sanitize incoming filter and sort payloads.
 
-    This function removes blank, empty, or null fields from the validated request data
-    to ensure consistent query behavior. It also strips out nested filter objects
-    (e.g., module_filter, date_filter, id_filter) if they contain no usable values, and disables
-    sorting if the sort field is missing or blank.
+    Goal: treat empty/blank inputs as "not provided" so downstream query-building code
+    can assume that any remaining filter/sort keys are meaningful.
+
+    Notes:
+      - This does NOT enforce semantic correctness (the serializers do that).
+        It only strips empties and drops incomplete nested filter objects.
+      - We intentionally allow "optional" filters to be absent (or empty) without error.
 
     :param filters: Optional dictionary of filter parameters (may include nested objects).
     :param sort: Optional dictionary specifying sorting field and direction.
     :return: Tuple of (normalized_filters, normalized_sort) with blanks stripped out.
-             Returns (filters, None) when sort is invalid or contains only empty values.
     """
     if filters:
-        filters = {
-            k: v for k, v in filters.items()
-            if v not in ("", [], {}, None)
-        }
+        # Remove top-level keys that are "empty" so they don't accidentally enable logic paths.
+        # Examples of values we treat as empty: "", [], {}, None
+        filters = {k: v for k, v in filters.items() if v not in ("", [], {}, None)}
 
-        # handle nested filters
+        # status is a list of strings; drop blank/whitespace entries. If it becomes empty, remove it.
+        if isinstance(filters.get("status"), list):
+            filters["status"] = [s for s in filters["status"] if isinstance(s, str) and s.strip() != ""]
+            if not filters["status"]:
+                filters.pop("status", None)
+
+        # module_filter is a nested object; normalize modules list by dropping blanks.
+        # If modules becomes empty, the module filter is effectively not provided.
         if "module_filter" in filters and filters["module_filter"]:
             mf = filters["module_filter"]
-            if not mf.get("modules"):
-                filters.pop("module_filter")
+            modules = mf.get("modules") or []
+            modules = [m for m in modules if isinstance(m, str) and m.strip() != ""]
+            mf["modules"] = modules
+            if not modules:
+                filters.pop("module_filter", None)
 
+        # date_filter: only keep it if it has the required fields for the chosen operator.
+        # - between: must have BOTH start_date and end_date
+        # - before/after: must have operator and create_date
         if "date_filter" in filters and filters["date_filter"]:
             date_filter = filters["date_filter"]
             op = (date_filter.get("operator") or "").lower()
@@ -427,24 +441,34 @@ def _normalize_filters_and_sort(filters: dict | None, sort: dict | None) -> tupl
             if op == "between":
                 # Require both start and end
                 if not date_filter.get("start_date") or not date_filter.get("end_date"):
-                    filters.pop("date_filter")
+                    filters.pop("date_filter", None)
             elif not date_filter.get("operator") or not date_filter.get("create_date"):
                 # for 'before' / 'after', require a single value
-                filters.pop("date_filter")
+                filters.pop("date_filter", None)
 
+        # id_filter: only keep it if it has the required fields for the chosen operator.
+        # - between: must have BOTH start_id and end_id (and they can be 0, so check is None)
+        # - before/after: must have operator and id (id can be 0, so check is None)
         if "id_filter" in filters and filters["id_filter"]:
             id_filter = filters["id_filter"]
             op = (id_filter.get("operator") or "").lower()
 
             if op == "between":
                 # Require both start and end
-                if not id_filter.get("start_id") or not id_filter.get("end_id"):
-                    filters.pop("id_filter")
+                if id_filter.get("start_id") is None or id_filter.get("end_id") is None:
+                    filters.pop("id_filter", None)
             elif not id_filter.get("operator") or id_filter.get("id") is None:
                 # for 'before' / 'after', require a single id value
-                filters.pop("id_filter")
+                filters.pop("id_filter", None)
 
-    if sort and (not sort.get("field") or str(sort.get("field")).strip() == ""):
+        # If we stripped everything, treat as "no filters".
+        if not filters:
+            filters = None
+
+    # sort: if field is blank/whitespace or sort is not a dict, treat as "no sort".
+    if not isinstance(sort, dict):
+        sort = None
+    elif sort and (not sort.get("field") or str(sort.get("field")).strip() == ""):
         sort = None
 
     return filters, sort
@@ -695,13 +719,13 @@ def resolve_sort(sort: dict | None, enum_class: Type[CalibrationSortField | Fore
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=GetGagesRequestSerializer,
     responses={
         200: GetGagesResponseSerializer,
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
         500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
     },
-    description="Get distinct gage_ids for all Calibration jobs (no filters, no pagination)"
+    description="Get distinct gage_ids for all Calibration jobs (optional domain + include_archived)"
 )
 @api_view(["POST", "GET"])
 @handle_exceptions
@@ -709,14 +733,20 @@ def get_calibration_gages(request: Request) -> Response:
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(GetGagesRequestSerializer, data)
     if error_return:
         return error_return
 
+    domain_name = validator.get("domain_name") or None
+    include_archived = validator.get("include_archived")
+
+    # Domain is optional. If not provided, include gages across all domains.
     gages = get_gages(
         auth_user(request),
         run_status=list(StatusEnum),
         require_both_validations_done=False,
+        include_archived=include_archived,
+        domain_name=domain_name
     )
 
     response = {"gages": gages}
@@ -732,13 +762,13 @@ def get_calibration_gages(request: Request) -> Response:
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=GetGagesRequestSerializer,
     responses={
         200: GetGagesResponseSerializer,
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
         500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
     },
-    description="Get distinct gage_ids for DONE Calibration jobs eligible for Forecast (no filters, no pagination)"
+    description="Get distinct gage_ids for DONE Calibration jobs eligible for Forecast (optional domain + include_archived)"
 )
 @api_view(["POST", "GET"])
 @handle_exceptions
@@ -746,14 +776,20 @@ def get_calibration_gages_for_forecast(request: Request) -> Response:
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(GetGagesRequestSerializer, data)
     if error_return:
         return error_return
 
+    domain_name = validator.get("domain_name") or None
+    include_archived = validator.get("include_archived")
+
+    # Domain is optional. If not provided, include gages across all domains.
     gages = get_gages(
         auth_user(request),
         run_status=[StatusEnum.DONE],
         require_both_validations_done=True,
+        include_archived=include_archived,
+        domain_name=domain_name
     )
 
     response = {"gages": gages}
@@ -769,7 +805,7 @@ def get_calibration_gages_for_forecast(request: Request) -> Response:
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=GetGagesRequestSerializer,
     responses={
         200: GetGagesResponseSerializer,
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
@@ -779,21 +815,27 @@ def get_calibration_gages_for_forecast(request: Request) -> Response:
 )
 @api_view(["POST", "GET"])
 @handle_exceptions
-def get_calibration_gages_for_verification(request: Request) -> Response:
+def get_calibration_gages_for_evaluation(request: Request) -> Response:
     """
-    Get distinct gage_ids for Calibration jobs eligible for Verification (no filters, no pagination).
+    Get distinct gage_ids for Calibration jobs eligible for Verification (optional domain + include_archived).
     """
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(GetGagesRequestSerializer, data)
     if error_return:
         return error_return
 
+    domain_name = validator.get("domain_name") or None
+    include_archived = validator.get("include_archived")
+
+    # Domain is optional. If not provided, include gages across all domains.
     gages = get_gages(
         auth_user(request),
         run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
         require_both_validations_done=True,
+        include_archived=include_archived,
+        domain_name=domain_name
     )
 
     response = {"gages": gages}
@@ -809,13 +851,13 @@ def get_calibration_gages_for_verification(request: Request) -> Response:
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=GetGagesRequestSerializer,
     responses={
         200: EmptySerializer,
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
         500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
     },
-    description="Get distinct gage_ids for Forecast jobs (no filters, no pagination"
+    description="Get distinct gage_ids for Forecast jobs (optional domain + include_archived)"
 )
 @api_view(["POST", "GET"])
 @handle_exceptions
@@ -823,12 +865,23 @@ def get_forecast_gages(request: Request) -> Response:
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(GetGagesRequestSerializer, data)
     if error_return:
         return error_return
 
+    domain_name = validator.get("domain_name") or None
+    include_archived = validator.get("include_archived")
+
     with readonly_transaction():
         query = Q(calibration_run__owner=auth_user(request))
+
+        # Default behavior: exclude archived calibration runs unless include_archived is explicitly true.
+        if not include_archived:
+            query &= Q(calibration_run__is_archived=False)
+
+        # Domain is optional. If not provided, include gages across all domains.
+        if domain_name:
+            query &= Q(calibration_run__gage__domain__name__iexact=domain_name)
 
         gages = list(
             ForecastRun.objects
@@ -853,13 +906,13 @@ def get_forecast_gages(request: Request) -> Response:
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=GetGagesRequestSerializer,
     responses={
         200: GetGagesResponseSerializer,
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
         500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
     },
-    description="Get distinct gage_ids for DONE Forecast jobs eligible for Verification (no filters, no pagination)"
+    description="Get distinct gage_ids for DONE Forecast jobs eligible for Verification (optional domain + include_archived)"
 )
 @api_view(["POST", "GET"])
 @handle_exceptions
@@ -867,12 +920,24 @@ def get_forecast_gages_for_verification(request: Request) -> Response:
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(GetGagesRequestSerializer, data)
     if error_return:
         return error_return
 
+    domain_name = validator.get("domain_name") or None
+    include_archived = validator.get("include_archived")
+
     with readonly_transaction():
         query = Q(calibration_run__owner=auth_user(request))
+
+        # Default behavior: exclude archived calibration runs unless include_archived is explicitly true.
+        if not include_archived:
+            query &= Q(calibration_run__is_archived=False)
+
+        # Domain is optional. If not provided, include gages across all domains.
+        if domain_name:
+            query &= Q(calibration_run__gage__domain__name__iexact=domain_name)
+
         query &= Q(status__in=[StatusEnum.DONE.db_instance])
 
         gages = list(
@@ -898,13 +963,13 @@ def get_forecast_gages_for_verification(request: Request) -> Response:
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=GetGagesRequestSerializer,
     responses={
         200: GetGagesResponseSerializer,
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
         500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
     },
-    description="Get distinct gage_ids for Verification jobs (no filters, no pagination)"
+    description="Get distinct gage_ids for Verification jobs (optional domain + include_archived)"
 )
 @api_view(["POST", "GET"])
 @handle_exceptions
@@ -912,12 +977,24 @@ def get_verification_gages(request: Request) -> Response:
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(GetGagesRequestSerializer, data)
     if error_return:
         return error_return
 
+    domain_name = validator.get("domain_name") or None
+    include_archived = validator.get("include_archived")
+
     with readonly_transaction():
         query = Q(forecast_run__calibration_run__owner=auth_user(request))
+
+        # Default behavior: exclude archived calibration runs unless include_archived is explicitly true.
+        if not include_archived:
+            query &= Q(forecast_run__calibration_run__is_archived=False)
+
+        # Domain is optional. If not provided, include gages across all domains.
+        if domain_name:
+            query &= Q(forecast_run__calibration_run__gage__domain__name__iexact=domain_name)
+
         gages = list(
             VerificationRun.objects
             .filter(query)
@@ -945,6 +1022,8 @@ def get_gages(
         *,
         run_status: list[StatusEnum] | None = None,
         require_both_validations_done: bool = False,
+        include_archived: bool = False,
+        domain_name: str | None = None,
 ) -> list[str]:
     """
     Get distinct non-null gage_ids for the authenticated user's CalibrationRuns.
@@ -957,7 +1036,11 @@ def get_gages(
     :param require_both_validations_done: If True, only include CalibrationRuns where both
                                           VALID_CONTROL and VALID_BEST validation runs
                                           exist and are DONE.
-    :return: List of distinct gage_id strings (no filters, no pagination).
+    :param include_archived: If True, include archived CalibrationRuns; otherwise exclude them.
+                             Default is False so endpoints exclude archived by default.
+    :param domain_name: Optional domain name (validated by serializer as a DomainEnum value).
+                   If None, include gages across all domains.
+    :return: List of distinct gage_id strings.
     """
     with readonly_transaction():
         query = Q(owner=user)
@@ -970,6 +1053,14 @@ def get_gages(
             .filter(query)
             .filter(gage__isnull=False)
         )
+
+        # Default behavior: exclude archived unless include_archived is explicitly true.
+        if not include_archived:
+            qs = qs.filter(is_archived=False)
+
+        # Domain is optional. If not provided, include gages across all domains.
+        if domain_name:
+            qs = qs.filter(gage__domain__name__iexact=domain_name)
 
         if require_both_validations_done:
             qs = qs.annotate(
@@ -1036,17 +1127,27 @@ def get_jobs(
     """
     filters = filters or {}
     order_by = resolve_sort(sort, CalibrationSortField)
-    status_ids = [s.db_instance for s in run_status] if run_status else None
+
+    # These are Status model instances (not IDs)
+    status_instances = [s.db_instance for s in run_status] if run_status else None
+
+    # Cache Status PKs once for consistent, join-free comparisons
+    DONE_ID = StatusEnum.DONE.db_instance.id
+    RUNNING_ID = StatusEnum.RUNNING.db_instance.id
+    SERVER_ERROR_ID = StatusEnum.SERVER_ERROR.db_instance.id
+    FAILED_ID = StatusEnum.FAILED.db_instance.id
+    CANCELLED_ID = StatusEnum.CANCELLED.db_instance.id
+    SUBMITTED_ID = StatusEnum.SUBMITTED.db_instance.id
 
     with readonly_transaction():
         # Base query: filter jobs for the user
         query = Q(owner=user)
 
-        # If a specific status list is provided, filter by those statuses
-        if status_ids:
-            query &= Q(status__in=status_ids)
+        # Endpoint-level status restriction (uses Status model instances)
+        if status_instances:
+            query &= Q(status__in=status_instances)
 
-        # ───── Get date and id range before filters (but after run_status restriction) ─────
+        # Range metadata before user filters (but after run_status restriction)
         date_range, id_range = compute_range(CalibrationRun, query)
 
         # ───── Apply user-defined filters (except status) ─────
@@ -1061,36 +1162,37 @@ def get_jobs(
         base_qs = CalibrationRun.objects.filter(query)
 
         # ─────────────────────────────────────────────────────────────
-        # Always annotate validation_control_status + validation_best_status.
+        # Always annotate validation_control_status_id + validation_best_status_id.
         # combined_status depends on these values, so they must be present
         # for BOTH ids_only and full-detail modes.
+        #
+        # Note: these are the ValidationRun.status_id values (ints), not names.
+        #
         # The only thing skipped in ids_only mode is validation_run_count,
         # because it is not needed for combined_status or filtering.
         # ─────────────────────────────────────────────────────────────
         base_qs = base_qs.annotate(
-            validation_control_status=Subquery(
+            validation_control_status_id=Subquery(
                 ValidationRun.objects.filter(
                     calibration_run_id=OuterRef("pk"),
                     validation_type=ValidationType.VALID_CONTROL.value
-                ).values("status__name")[:1]
+                ).values("status_id")[:1]
             ),
-            validation_best_status=Subquery(
+            validation_best_status_id=Subquery(
                 ValidationRun.objects.filter(
                     calibration_run_id=OuterRef("pk"),
                     validation_type=ValidationType.VALID_BEST.value
-                ).values("status__name")[:1]
+                ).values("status_id")[:1]
             )
         )
 
         if not ids_only:
-            # ───── Annotate validation and status fields used for sorting and combined logic ─────
+            # ───── Annotate validation fields used for sorting and UI display ─────
             # The following annotations enrich each CalibrationRun with additional fields:
             #   • validation_run_count — total number of non-control validation runs
-            #   • validation_control_status — status of the VALID_CONTROL validation run (if any)
-            #   • validation_best_status — status of the VALID_BEST validation run (if any)
             #
-            # These annotations are required both for sorting and for computing the
-            # derived "combined_status" field below.
+            # (validation_control_status_id / validation_best_status_id are always
+            # annotated above, and are used by combined_status.)
             # ------------------------------------------------------------------
             base_qs = base_qs.annotate(
                 # Number of validation runs (excluding VALID_CONTROL)
@@ -1131,54 +1233,54 @@ def get_jobs(
         base_qs = base_qs.annotate(
             combined_status=Case(
                 # Calibration not done → use calibration status directly
-                When(~Q(status__name=StatusEnum.DONE.value), then=F("status__name")),
+                When(~Q(status_id=DONE_ID), then=F("status__name")),
 
                 # Calibration done but any validation running
                 When(
-                    Q(status__name=StatusEnum.DONE.value)
+                    Q(status_id=DONE_ID)
                     & (
-                            Q(validation_control_status=StatusEnum.RUNNING.value)
-                            | Q(validation_best_status=StatusEnum.RUNNING.value)
+                            Q(validation_control_status_id=RUNNING_ID)
+                            | Q(validation_best_status_id=RUNNING_ID)
                     ),
                     then=Value(StatusEnum.RUNNING.value),
                 ),
 
                 # Calibration done but any validation server error
                 When(
-                    Q(status__name=StatusEnum.DONE.value)
+                    Q(status_id=DONE_ID)
                     & (
-                            Q(validation_control_status=StatusEnum.SERVER_ERROR.value)
-                            | Q(validation_best_status=StatusEnum.SERVER_ERROR.value)
+                            Q(validation_control_status_id=SERVER_ERROR_ID)
+                            | Q(validation_best_status_id=SERVER_ERROR_ID)
                     ),
                     then=Value(StatusEnum.SERVER_ERROR.value),
                 ),
 
                 # Calibration done but any validation failed
                 When(
-                    Q(status__name=StatusEnum.DONE.value)
+                    Q(status_id=DONE_ID)
                     & (
-                            Q(validation_control_status=StatusEnum.FAILED.value)
-                            | Q(validation_best_status=StatusEnum.FAILED.value)
+                            Q(validation_control_status_id=FAILED_ID)
+                            | Q(validation_best_status_id=FAILED_ID)
                     ),
                     then=Value(StatusEnum.FAILED.value),
                 ),
 
                 # Calibration done but any validation cancelled
                 When(
-                    Q(status__name=StatusEnum.DONE.value)
+                    Q(status_id=DONE_ID)
                     & (
-                            Q(validation_control_status=StatusEnum.CANCELLED.value)
-                            | Q(validation_best_status=StatusEnum.CANCELLED.value)
+                            Q(validation_control_status_id=CANCELLED_ID)
+                            | Q(validation_best_status_id=CANCELLED_ID)
                     ),
                     then=Value(StatusEnum.CANCELLED.value),
                 ),
 
                 # Calibration done but any validation submitted
                 When(
-                    Q(status__name=StatusEnum.DONE.value)
+                    Q(status_id=DONE_ID)
                     & (
-                            Q(validation_control_status=StatusEnum.SUBMITTED.value)
-                            | Q(validation_best_status=StatusEnum.SUBMITTED.value)
+                            Q(validation_control_status_id=SUBMITTED_ID)
+                            | Q(validation_best_status_id=SUBMITTED_ID)
                     ),
                     then=Value(StatusEnum.SUBMITTED.value),
                 ),
@@ -1186,9 +1288,9 @@ def get_jobs(
                 # Calibration done and any existing validations are DONE (missing validations allowed).
                 # If VALID_CONTROL or VALID_BEST is missing, it does not block DONE here.
                 When(
-                    Q(status__name=StatusEnum.DONE.value)
-                    & (Q(validation_control_status__isnull=True) | Q(validation_control_status=StatusEnum.DONE.value))
-                    & (Q(validation_best_status__isnull=True) | Q(validation_best_status=StatusEnum.DONE.value)),
+                    Q(status_id=DONE_ID)
+                    & (Q(validation_control_status_id__isnull=True) | Q(validation_control_status_id=DONE_ID))
+                    & (Q(validation_best_status_id__isnull=True) | Q(validation_best_status_id=DONE_ID)),
                     then=Value(StatusEnum.DONE.value),
                 ),
 
@@ -1212,16 +1314,16 @@ def get_jobs(
             base_qs = base_qs.annotate(
                 has_valid_control_done=Exists(
                     ValidationRun.objects.filter(
-                        calibration_run_id=OuterRef('id'),
+                        calibration_run_id=OuterRef("id"),
                         validation_type=ValidationType.VALID_CONTROL.value,
-                        status=StatusEnum.DONE.db_instance
+                        status_id=DONE_ID,
                     )
                 ),
                 has_valid_best_done=Exists(
                     ValidationRun.objects.filter(
-                        calibration_run_id=OuterRef('id'),
+                        calibration_run_id=OuterRef("id"),
                         validation_type=ValidationType.VALID_BEST.value,
-                        status=StatusEnum.DONE.db_instance
+                        status_id=DONE_ID,
                     )
                 )
             ).filter(
@@ -1240,8 +1342,9 @@ def get_jobs(
             normalized_statuses = [s.strip().lower() for s in filters["status"]]
 
             # Annotate a lowercase version of combined_status and filter on it
-            base_qs = base_qs.annotate(_status_lower=Lower("combined_status"))
-            base_qs = base_qs.filter(_status_lower__in=normalized_statuses)
+            base_qs = base_qs.annotate(_status_lower=Lower("combined_status")).filter(
+                _status_lower__in=normalized_statuses
+            )
 
         # ───── Finalize ordering and compute total count ─────
         #   • DO NOT apply ordering before computing count.
@@ -1272,7 +1375,7 @@ def get_jobs(
         calibration_runs_qs = ordered_qs.values(
             "id", "gage__gage_id", "gage__domain__name", "submit_date", "updated_at",
             "job_name", "calibration_start_period", "calibration_end_period",
-            "status__name", "combined_status", "job_genesis", "created_at",
+            "status_id", "status__name", "combined_status", "job_genesis", "created_at",
             "objective_function__name", "optimization__name",
             "is_archived", "is_locked"
         )
@@ -1328,9 +1431,13 @@ def get_jobs(
         )
         stop_criteria_map: dict[int, str | None] = {sc["calibration_run_id"]: sc["value"] for sc in stop_qs}
 
+        # downloadable_statuses is list[StatusEnum]
+        downloadable_ids = {s.db_instance.id for s in downloadable_statuses}
+
         results: list[dict[str, Any]] = []
         for run in calibration_runs:
             run_id = run["id"]
+
             result: dict[str, Any] = {
                 'calibration_run_id': run_id,
                 'gage_id': run['gage__gage_id'],
@@ -1348,7 +1455,10 @@ def get_jobs(
                 'job_genesis': run['job_genesis'],
                 'created_at': run['created_at'],
                 'last_updated_on': run['updated_at'],
-                'is_downloadable': StatusEnum.from_name(run['status__name']) in downloadable_statuses,
+
+                # Downloadable is based on the *raw* calibration status (status_id), not combined_status.
+                # This matches downloadable_statuses, which is defined over StatusEnum (calibration statuses).
+                'is_downloadable': run["status_id"] in downloadable_ids,
                 'stop_criteria': stop_criteria_map.get(run_id),
             }
 

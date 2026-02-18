@@ -24,38 +24,42 @@ class BaseSerializer(serializers.Serializer):
         return super().run_validation(data)
 
 
-def enum_validator(enum_class):
+def enum_validator(enum_class, *, allow_blank: bool = True):
     """
     Validates if the value is a valid name or alias of the enum class, case-insensitively.
-    Allows blank values (empty strings or None) to pass through silently,
-    so they can be treated as "no selection" by the caller.
+
+    By default, blanks (None or empty/whitespace strings) are allowed so that optional
+    fields can represent "no selection". Set allow_blank=False for contexts where blanks
+    are not meaningful (e.g., list elements).
     """
+    # Build the valid name list once per validator
+    if hasattr(enum_class, "get_all_valid_names"):
+        original_valid_names = list(enum_class.get_all_valid_names())
+    elif hasattr(enum_class, "get_names"):
+        original_valid_names = list(enum_class.get_names())
+    else:
+        raise RuntimeError(
+            f"Enum class '{enum_class.__name__}' must define either "
+            f"'get_names()' or 'get_all_valid_names()' to work with enum_validator()."
+        )
+
+    valid_names_lc = {str(name).lower() for name in original_valid_names}
 
     def validate_enum(value):
         # Skip validation for blanks (handled as no-op)
-        if value is None or str(value).strip() == "":
-            return  # Allow blank or None
+        if value is None or (isinstance(value, str) and value.strip() == ""):
+            if allow_blank:
+                return
+            raise serializers.ValidationError("This field may not be blank.")
 
-        # Convert input value to lowercase for case-insensitive comparison
-        original_value = value  # Store original value for error message
-        value = value.lower()
+        # Normalize to string for comparison (prevents .lower() crashes on non-str types)
+        original_value = value
+        value_lc = str(value).lower()
 
-        # Retrieve valid names, converting each to lowercase for case-insensitive comparison
-        if hasattr(enum_class, 'get_all_valid_names'):
-            # Enum with get_all_valid_names() method (typically from AbstractEnum)
-            valid_names = [name.lower() for name in enum_class.get_all_valid_names()]
-        elif hasattr(enum_class, 'get_names'):
-            valid_names = [name.lower() for name in enum_class.get_names()]
-        else:
-            # Fatal configuration error – enum must define one of these methods
-            raise RuntimeError(
-                f"Enum class '{enum_class.__name__}' must define either "
-                f"'get_names()' or 'get_all_valid_names()' to work with enum_validator()."
+        if value_lc not in valid_names_lc:
+            raise serializers.ValidationError(
+                f"Invalid value '{original_value}'. This field must be one of {original_valid_names}."
             )
-
-        # Perform the actual validation
-        if value not in valid_names:
-            raise serializers.ValidationError(f"Invalid value '{original_value}'. This field must be one of {valid_names}.")
 
     return validate_enum
 
@@ -68,6 +72,41 @@ def no_space_validator(value):
 def greater_than_zero(value):
     if value <= 0:
         raise serializers.ValidationError("This field must be greater than 0.")
+
+
+class ModuleNameField(serializers.CharField):
+    """
+    Validates a single module name against the cached active module set.
+
+    - Trims whitespace
+    - Validates case-sensitively (must match DB casing exactly)
+    - Returns the trimmed value unchanged
+    """
+
+    default_error_messages = {
+        "blank": "Module name must not be blank.",
+        "invalid": "Invalid module name: '{value}'.",
+    }
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("allow_blank", False)
+        super().__init__(*args, **kwargs)
+
+    @staticmethod
+    def _valid_modules_cs() -> set[str]:
+        return {m.name for m in get_cached_modules_with_groups().values()}
+
+    def to_internal_value(self, data):
+        value = super().to_internal_value(data)
+        trimmed = value.strip()
+
+        if not trimmed:
+            self.fail("blank")
+
+        if trimmed not in self._valid_modules_cs():
+            self.fail("invalid", value=value)
+
+        return trimmed
 
 
 class EmptySerializer(BaseSerializer):
@@ -88,7 +127,7 @@ class DataValidationResponseSerializer(GenericMessageResponseSerializer):
 
 class GenericMessageAndStatusResponseSerializer(GenericMessageResponseSerializer):
     message = serializers.CharField(required=True)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum, allow_blank=False)], required=True)
 
 
 class GenericResponseSerializer(GenericMessageAndStatusResponseSerializer):
@@ -209,7 +248,7 @@ class LoggingConfigSerializer(BaseSerializer):
 
         Returns a new dict with all lowercase keys.
         """
-        validator = enum_validator(NgenLogging)
+        validator = enum_validator(NgenLogging, allow_blank=False)
 
         valid_modules = {m.name.lower() for m in get_cached_modules_with_groups().values()}
         valid_modules.add('ngen')  # Special case
@@ -225,10 +264,12 @@ class LoggingConfigSerializer(BaseSerializer):
             if lowered_name not in valid_modules:
                 errors[module_name] = f"Invalid module name: '{module_name}'"
                 continue
+
             try:
                 validator(log_level)
                 normalized[lowered_name] = log_level
-            except ValueError as e:
+            except serializers.ValidationError as e:
+                # Keep message readable; e.detail can be a list/dict depending on source
                 errors[module_name] = f"Invalid log level for module '{module_name}': {e}"
 
         if errors:
@@ -406,7 +447,7 @@ class ModuleMetadataStaticSerializer(BaseSerializer):
 
 class ValidationStatusSerializer(ValidationRunSerializer):
     validation_type = serializers.CharField(required=True)
-    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
 
 
 class CalibrationJobsResponseSerializer(BaseSerializer):
@@ -416,7 +457,7 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     job_genesis = serializers.CharField(required=True, validators=[enum_validator(JobGenesis)])
     created_at = serializers.DateTimeField(required=True)
     last_updated_on = serializers.DateTimeField(required=True)
-    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
     calibration_start_period = serializers.DateTimeField(required=False, allow_null=True)
     calibration_end_period = serializers.DateTimeField(required=False, allow_null=True)
     job_name = serializers.CharField(required=False, allow_null=True, validators=[no_space_validator])
@@ -514,7 +555,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=True, allow_null=True)
     save_output_iteration = serializers.BooleanField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum, allow_blank=False)], required=True)
     failure_messages = serializers.ListField(child=serializers.DictField(), required=False)
 
 
@@ -565,7 +606,7 @@ class LockJobRequestSerializer(CalibrationRunIdList):
 class ModuleFilterSerializer(serializers.Serializer):
     """Filter by one or more module names with logical operator ('and' | 'or')."""
     operator = serializers.ChoiceField(choices=['or', 'and'], required=False, default='and')
-    modules = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
+    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
 
 
 class DateFilterSerializer(serializers.Serializer):
@@ -641,7 +682,8 @@ class IdFilterSerializer(serializers.Serializer):
 class FilterSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_blank=True)
     domain_name = serializers.CharField(required=False, allow_blank=True, validators=[enum_validator(DomainEnum)])
-    status = serializers.ListField(child=serializers.CharField(validators=[enum_validator(StatusEnum)]), required=False, allow_empty=True)
+    status = serializers.ListField(child=serializers.CharField(validators=[enum_validator(StatusEnum, allow_blank=False)]), required=False,
+                                   allow_empty=True)
     module_filter = ModuleFilterSerializer(required=False)
     date_filter = DateFilterSerializer(required=False)
     id_filter = IdFilterSerializer(required=False)
@@ -653,15 +695,20 @@ class SortSerializer(BaseSerializer):
 
 
 class CalibrationSortSerializer(SortSerializer):
-    field = serializers.CharField(required=False, allow_blank=True, validators=[enum_validator(CalibrationSortField)])
+    field = serializers.CharField(required=False, allow_blank=False, validators=[enum_validator(CalibrationSortField, allow_blank=False)])
 
 
 class ForecastSortSerializer(SortSerializer):
-    field = serializers.CharField(required=False, allow_blank=True, validators=[enum_validator(ForecastSortField)])
+    field = serializers.CharField(required=False, allow_blank=False, validators=[enum_validator(ForecastSortField, allow_blank=False)])
 
 
 class VerificationSortSerializer(SortSerializer):
-    field = serializers.CharField(required=False, allow_blank=True, validators=[enum_validator(VerificationSortField)])
+    field = serializers.CharField(required=False, allow_blank=False, validators=[enum_validator(VerificationSortField, allow_blank=False)])
+
+
+class GetGagesRequestSerializer(BaseSerializer):
+    domain_name = serializers.CharField(required=False, allow_blank=True, validators=[enum_validator(DomainEnum)])
+    include_archived = serializers.BooleanField(default=False, required=False)
 
 
 class GetGagesResponseSerializer(BaseSerializer):
@@ -720,7 +767,7 @@ class SaveGageResponseSerializer(GenericResponseSerializer):
 
 
 class DomainResponseSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, validators=[enum_validator(DomainEnum)])
+    name = serializers.CharField(required=True, validators=[enum_validator(DomainEnum, allow_blank=False)])
     display_name = serializers.CharField(required=True)
     description = serializers.CharField(required=True, allow_blank=False)
 
@@ -797,7 +844,7 @@ class CreateAndRunColdStartResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     coldstart_run_id = serializers.IntegerField(required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
-    cold_start_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    cold_start_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
 
 
 class CreateAndRunForecastResponseSerializer(BaseSerializer):
@@ -827,7 +874,7 @@ class PlotListStaticSerializer(BaseSerializer):
 
 class GetPlotNamesResponseSerializer(CalibrationOrValidationRunSerializer):
     plot_names = PlotListStaticSerializer(many=True)
-    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
 
 
 class GetPlotNamesForComparisonResponseSerializer(BaseSerializer):
@@ -1001,7 +1048,7 @@ class LoadTuningResponseSerializer(BaseSerializer):
     time_range = TimeRangeSerializerAllowEmpty(required=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
-    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
 
 
 ##################################
@@ -1073,7 +1120,7 @@ class PerformanceMetricsSerializer(BaseSerializer):
 class CommonStatusFieldsMixin(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=False)
     job_name = serializers.CharField(required=False)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum, allow_blank=False)], required=True)
     failure_messages = serializers.ListField(child=serializers.DictField(), required=False)
     submit_date = serializers.DateTimeField(required=False, allow_null=True)
     sent_date = serializers.DateTimeField(required=False, allow_null=True)
@@ -1161,23 +1208,23 @@ class GetIterationsResponseSerializer(GenericResponseSerializer):
 
 
 class CalibrationJobSlurmCallbackRequestSerializer(CalibrationRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum)])
+    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
 
 
 class ValidationJobSlurmCallbackRequestSerializer(ValidationRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum)])
+    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
 
 
 class ColdStartJobSlurmCallbackRequestSerializer(ColdStartRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum)])
+    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
 
 
 class ForecastJobSlurmCallbackRequestSerializer(ForecastRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum)])
+    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
 
 
 class VerificationJobSlurmCallbackRequestSerializer(VerificationRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum)])
+    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
 
 
 class RunCalibrationJob(CalibrationRunSerializer):
@@ -1251,7 +1298,7 @@ class LoadForecastTabResponseSerializer(BaseSerializer):
 
 
 class ColdStartJobsResponseSerializer(BaseSerializer):
-    cold_start_status = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(StatusEnum)])
+    cold_start_status = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
     cold_start_date = serializers.DateTimeField(required=True, allow_null=True)
     cold_start_submit_date = serializers.DateTimeField(required=True, allow_null=True)
 
@@ -1263,7 +1310,7 @@ class ForecastJobsResponseSerializer(BaseSerializer):
     configuration = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=True, allow_null=False)
     gage_id = serializers.CharField(required=True)
-    forecast_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    forecast_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     cold_start = ColdStartJobsResponseSerializer(required=False, allow_null=False)
 
@@ -1292,13 +1339,13 @@ class CreateAndRunVerificationResponseSerializer(GenericMessageResponseSerialize
     calibration_run_id = serializers.IntegerField(required=True)
     forecast_run_id = serializers.IntegerField(required=True)
     verification_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum, allow_blank=False)], required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
 class GetVerificationStatusResponseSerializer(GenericMessageAndStatusResponseSerializer):
     verification_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum, allow_blank=False)], required=True)
     warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     submit_date = serializers.DateTimeField(required=False, allow_null=True)
@@ -1312,7 +1359,7 @@ class GetVerificationStatusResponseSerializer(GenericMessageAndStatusResponseSer
 class GetVerificationPlotNamesResponseSerializer(BaseSerializer):
     verification_run_id = serializers.IntegerField(required=True)
     plot_names = PlotListStaticSerializer(many=True)
-    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
 
 
 class GetVerificationPlotRequestSerializer(BaseSerializer):
@@ -1492,7 +1539,7 @@ class ValidationJobsResponseSerializer(BaseSerializer):
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     validation_type = serializers.CharField(required=True)
     iteration_num = serializers.IntegerField(required=True)
-    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
     # Can be empty for LSTM
     parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=True)
     best = serializers.BooleanField(required=True)
@@ -1503,8 +1550,8 @@ class GetValidationJobsResponseSerializer(BaseSerializer):
 
 
 class GetLogRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
-    log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory)])
-    log_name = serializers.CharField(required=True, validators=[enum_validator(LogName)])
+    log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory, allow_blank=False)])
+    log_name = serializers.CharField(required=True, validators=[enum_validator(LogName, allow_blank=False)])
     start = serializers.IntegerField(required=False, default=0, min_value=-1)
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
@@ -1523,7 +1570,7 @@ class LogCategoryDictField(serializers.DictField):
             child=serializers.CharField(), required=False
         )
         # Attach the enum validator for dictionary keys
-        self.key_validator = enum_validator(LogCategory)
+        self.key_validator = enum_validator(LogCategory, allow_blank=False)
 
     def to_internal_value(self, data):
         # Validate all keys using the enum_validator

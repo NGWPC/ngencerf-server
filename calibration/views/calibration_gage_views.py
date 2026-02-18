@@ -73,7 +73,6 @@ def load_gage_tab(request: Request) -> Response:
     observational_source_values = ObservationalSourceEnum.get_choices_with_fields(fields=['name', 'description'])
     geopackage_source_values = GeopackageSourceEnum.get_choices_with_fields(fields=['name', 'description'])
     domain_values = DomainEnum.get_choices_with_fields(fields=['name', 'display_name', 'description'])
-    domain_display_by_name = {d['name']: d['display_name'] for d in domain_values}
 
     # Retrieve cached active gages with necessary fields
     gages = [
