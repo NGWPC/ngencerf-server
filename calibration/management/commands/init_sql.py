@@ -153,13 +153,14 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             ModuleGroup.objects.all().delete()
 
-        values = [{"name": "Glacier", "order": 1},
-                  {"name": "Snowmelt", "order": 2},
-                  {"name": "Evapotranspiration", "order": 3},
-                  {"name": "Soil Moisture", "order": 4},
-                  {"name": "Rainfall Runoff", "order": 5},
-                  {"name": "Routing", "order": 6}
-                  ]
+        values = [
+            {"name": "Glacier", "order": 1},
+            {"name": "Snowmelt", "order": 2},
+            {"name": "Evapotranspiration", "order": 3},
+            {"name": "Soil Moisture", "order": 4},
+            {"name": "Rainfall Runoff", "order": 5},
+            {"name": "Routing", "order": 6}
+        ]
 
         for v in values:
             ModuleGroup.objects.update_or_create(name=v['name'], defaults={"order": v['order'], "is_active": v.get('is_active', True),
@@ -206,63 +207,64 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             Module.objects.all().delete()
 
-        values = [{"name": "Topoflow-Glacier",
-                   "description": "A glacier energy balance module as part of TopoFlow, which calculates runoff based on snow/ice melt",
-                   "groups": ["Glacier"],
-                   "output_variables": ["ACSNOM", "SNOWH", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"],
-                   "is_active": False},
-                  {"name": "Noah-OWP-Modular",
-                   "description": "An extended, refactored version of the Noah-MP land surface model",
-                   "groups": ["Snowmelt", "Evapotranspiration"],
-                   "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "FSNO", "SNOWH", "SNLIQ", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]},
-                  {"name": "Snow-17",
-                   "description": "Snow17 is a snow accumulation and melt model that has been used by the National Weather Service since the late 1970s for operational streamflow forecasting.  It is a temperature-index model",
-                   "groups": ["Snowmelt"],
-                   "output_variables": ["ACSNOM", "SNOWH", "SNEQV"]},
-                  {"name": "UEB", "display_name": "Utah Energy Balance (UEB)",
-                   "description": "description",
-                   "groups": ["Snowmelt"],
-                   "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]},
-                  {"name": "CFE-S", "display_name": "CFE-S (Schaake)",
-                   "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The X represents the Xinanjiang function (configuration: surface_partitioning_scheme= Xinanjiang)",
-                   "groups": ["Rainfall Runoff"],
-                   "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"]},
-                  {"name": "CFE-X", "display_name": "CFE-X (Xinanjiang)",
-                   "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The S represents the Schaake function (configuration: surface_partitioning_scheme=Schaake)",
-                   "groups": ["Rainfall Runoff"],
-                   "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"]},
-                  {"name": "LSTM",
-                   "description": "The Long Short-Term Memory (LSTM) network Module is dependent on a trained deep learning model. The forward pass of this LSTM model nextgen_cuda_lstm.py is heavily based on NeuralHydrology's CudaLSTM",
-                   "groups": ["Glacier", "Snowmelt", "Evapotranspiration", "Soil Moisture", "Rainfall Runoff"]},
-                  {"name": "PET",
-                   "description": "PET handles potential evapotranspiration functions: Aerodynamic method, Combination method, Energy balance method, Penman Monteith method and Priestly Taylor method.",
-                   "groups": ["Evapotranspiration"],
-                   "is_active": False},
-                  {"name": "TopModel",
-                   "description": "A physically based, distributed watershed model that simulates hydrologic fluxes of water.",
-                   "groups": ["Rainfall Runoff"],
-                   "output_variables": ["streamflow", "QRAIN", "SFCRNOFF"]},
-                  {"name": "Sac-SMA",
-                   "description": "A BMI enabled version of the Sacramento Soil Moisture Accounting (Sac-SMA) model.  This version of Sac-SMA allows for multiple hydrological response units (HRUs) to be modeled at once.",
-                   "groups": ["Rainfall Runoff"],
-                   "output_variables": ["qBucket", "streamflow", "SFCRNOFF"]},
-                  {"name": "LASAM", "display_name": "LASAM (Lumped Arid Semi-Arid Model)",
-                   "description": "Lumped Arid/Semi-arid Model (LASAM) for infiltration and surface runoff.  The LASAM simulates infiltration and runoff based on Layered Green & Ampt with redistribution (LGAR) model.).",
-                   "groups": ["Rainfall Runoff"],
-                   "output_variables": ["qBucket", "streamflow", "SOILSAT_TOP", "QRAIN", "SOIL_M", "SFCRNOFF"]},
-                  {"name": "SMP",
-                   "description": "The soil moisture profiles (SMP schemes provide soil moisture distributed over a one-dimensional vertical column and depth to water table. These schemes facilitate coupling among hydrological and thermal models such as (CFE and SFT or LASAM and SFT).",
-                   "groups": ["Soil Moisture"],
-                   "output_variables": ["SOILSAT_TOP", "SOIL_M"]},
-                  {"name": "SFT",
-                   "description": "The soil freeze-thaw model simulates the transport of heat in soil using a one-dimensional vertical column. The model uses a standard diffusion equation discretized using a fully-implicit scheme at the interior and a semi-implicit scheme at the top and bottom boundaries, similar to NOAH-MP. More details are provided below.",
-                   "groups": ["Soil Moisture"],
-                   "output_variables": ["SOILICE", "SOIL_T"]},
-                  {"name": "T-Route",
-                   "description": "Tree-Based Channel Routing -  a dynamic channel routing model, offers a comprehensive solution for river network routing problems. Provides a series lateral inflows for each node in a channel network and computes the resulting streamflows.",
-                   "groups": ["Routing"],
-                   "output_variables": ["inflow", "outflow", "reservoir_assimilated_value", "water_sfc_elev", "nudge", "streamflow", "velocity", ""]}
-                  ]
+        values = [
+            {"name": "Topoflow-Glacier",
+             "description": "A glacier energy balance module as part of TopoFlow, which calculates runoff based on snow/ice melt",
+             "groups": ["Glacier"],
+             "output_variables": ["ACSNOM", "SNOWH", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"],
+             "is_active": False},
+            {"name": "Noah-OWP-Modular",
+             "description": "An extended, refactored version of the Noah-MP land surface model",
+             "groups": ["Snowmelt", "Evapotranspiration"],
+             "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "FSNO", "SNOWH", "SNLIQ", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]},
+            {"name": "Snow-17",
+             "description": "Snow17 is a snow accumulation and melt model that has been used by the National Weather Service since the late 1970s for operational streamflow forecasting.  It is a temperature-index model",
+             "groups": ["Snowmelt"],
+             "output_variables": ["ACSNOM", "SNOWH", "SNEQV"]},
+            {"name": "UEB", "display_name": "Utah Energy Balance (UEB)",
+             "description": "description",
+             "groups": ["Snowmelt"],
+             "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]},
+            {"name": "CFE-S", "display_name": "CFE-S (Schaake)",
+             "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The X represents the Xinanjiang function (configuration: surface_partitioning_scheme= Xinanjiang)",
+             "groups": ["Rainfall Runoff"],
+             "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"]},
+            {"name": "CFE-X", "display_name": "CFE-X (Xinanjiang)",
+             "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The S represents the Schaake function (configuration: surface_partitioning_scheme=Schaake)",
+             "groups": ["Rainfall Runoff"],
+             "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"]},
+            {"name": "LSTM",
+             "description": "The Long Short-Term Memory (LSTM) network Module is dependent on a trained deep learning model. The forward pass of this LSTM model nextgen_cuda_lstm.py is heavily based on NeuralHydrology's CudaLSTM",
+             "groups": ["Glacier", "Snowmelt", "Evapotranspiration", "Soil Moisture", "Rainfall Runoff"]},
+            {"name": "PET",
+             "description": "PET handles potential evapotranspiration functions: Aerodynamic method, Combination method, Energy balance method, Penman Monteith method and Priestly Taylor method.",
+             "groups": ["Evapotranspiration"],
+             "is_active": False},
+            {"name": "TopModel",
+             "description": "A physically based, distributed watershed model that simulates hydrologic fluxes of water.",
+             "groups": ["Rainfall Runoff"],
+             "output_variables": ["streamflow", "QRAIN", "SFCRNOFF"]},
+            {"name": "Sac-SMA",
+             "description": "A BMI enabled version of the Sacramento Soil Moisture Accounting (Sac-SMA) model.  This version of Sac-SMA allows for multiple hydrological response units (HRUs) to be modeled at once.",
+             "groups": ["Rainfall Runoff"],
+             "output_variables": ["qBucket", "streamflow", "SFCRNOFF"]},
+            {"name": "LASAM", "display_name": "LASAM (Lumped Arid Semi-Arid Model)",
+             "description": "Lumped Arid/Semi-arid Model (LASAM) for infiltration and surface runoff.  The LASAM simulates infiltration and runoff based on Layered Green & Ampt with redistribution (LGAR) model.).",
+             "groups": ["Rainfall Runoff"],
+             "output_variables": ["qBucket", "streamflow", "SOILSAT_TOP", "QRAIN", "SOIL_M", "SFCRNOFF"]},
+            {"name": "SMP",
+             "description": "The soil moisture profiles (SMP schemes provide soil moisture distributed over a one-dimensional vertical column and depth to water table. These schemes facilitate coupling among hydrological and thermal models such as (CFE and SFT or LASAM and SFT).",
+             "groups": ["Soil Moisture"],
+             "output_variables": ["SOILSAT_TOP", "SOIL_M"]},
+            {"name": "SFT",
+             "description": "The soil freeze-thaw model simulates the transport of heat in soil using a one-dimensional vertical column. The model uses a standard diffusion equation discretized using a fully-implicit scheme at the interior and a semi-implicit scheme at the top and bottom boundaries, similar to NOAH-MP. More details are provided below.",
+             "groups": ["Soil Moisture"],
+             "output_variables": ["SOILICE", "SOIL_T"]},
+            {"name": "T-Route",
+             "description": "Tree-Based Channel Routing -  a dynamic channel routing model, offers a comprehensive solution for river network routing problems. Provides a series lateral inflows for each node in a channel network and computes the resulting streamflows.",
+             "groups": ["Routing"],
+             "output_variables": ["inflow", "outflow", "reservoir_assimilated_value", "water_sfc_elev", "nudge", "streamflow", "velocity", ""]}
+        ]
 
         for v in values:
             module_instance, _ = Module.objects.update_or_create(
@@ -290,14 +292,24 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             Domain.objects.all().delete()
 
-        values = [{"name": "Alaska", "description": "Alaska"},
-                  {"name": "Hawaii", "description": "Hawaii"},
-                  {"name": "CONUS", "description": "Continental United Status"},
-                  {"name": "Puerto_Rico", "description": "Puerto Rico, including US Virgin Islands"}
-                  ]
+        values = [
+            {"name": "Alaska",
+             "display_name": "Alaska",
+             "description": "Alaska"},
+            {"name": "Hawaii",
+             "display_name": "Hawaii",
+             "description": "Hawaii"},
+            {"name": "CONUS",
+             "display_name": "CONUS",
+             "description": "Continental United Status"},
+            {"name": "Puerto_Rico",
+             "display_name": "Puerto Rico",
+             "description": "Puerto Rico, including US Virgin Islands"}
+        ]
 
         for v in values:
-            Domain.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+            Domain.objects.update_or_create(name=v['name'], defaults={"display_name": v['display_name'],
+                                                                      "is_active": v.get('is_active', True),
                                                                       "description": v['description'],
                                                                       "created_by": self.user})
 
@@ -305,22 +317,23 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             Rfc.objects.all().delete()
 
-        values = [{"name": "NWRFC", "description": "Northwest River Forecast Center"},
-                  {"name": "CNRFC", "description": "California/Nevada River Forecast Center"},
-                  {"name": "CBRFC", "description": "Colorado Basin River Forecast Center"},
-                  {"name": "MBRFC", "description": "Missouri Basin River Forecast Center"},
-                  {"name": "ABRFC", "description": "Arkansas Red-Basin River Forecast Center"},
-                  {"name": "WGRFC", "description": "West Gulf River Forecast Center"},
-                  {"name": "NCRFC", "description": "North Central River Forecast Center"},
-                  {"name": "LMRFC", "description": "Lower Mississippi River Forecast Center"},
-                  {"name": "OHRFC", "description": "Ohio River Forecast Center"},
-                  {"name": "SERFC", "description": "Southeast River Forecast Center"},
-                  {"name": "MARFC", "description": "Mid-Atlantic River Forecast Center"},
-                  {"name": "NERFC", "description": "Northeast River Forecast Center"},
-                  {"name": "ARFC", "description": "Alaska River Forecast Center"},
-                  {"name": "APRFC", "description": "Alaska Pacific River Forecast Center"},
-                  {"name": "Canada", "description": "Canada River Forecast Center"}
-                  ]
+        values = [
+            {"name": "NWRFC", "description": "Northwest River Forecast Center"},
+            {"name": "CNRFC", "description": "California/Nevada River Forecast Center"},
+            {"name": "CBRFC", "description": "Colorado Basin River Forecast Center"},
+            {"name": "MBRFC", "description": "Missouri Basin River Forecast Center"},
+            {"name": "ABRFC", "description": "Arkansas Red-Basin River Forecast Center"},
+            {"name": "WGRFC", "description": "West Gulf River Forecast Center"},
+            {"name": "NCRFC", "description": "North Central River Forecast Center"},
+            {"name": "LMRFC", "description": "Lower Mississippi River Forecast Center"},
+            {"name": "OHRFC", "description": "Ohio River Forecast Center"},
+            {"name": "SERFC", "description": "Southeast River Forecast Center"},
+            {"name": "MARFC", "description": "Mid-Atlantic River Forecast Center"},
+            {"name": "NERFC", "description": "Northeast River Forecast Center"},
+            {"name": "ARFC", "description": "Alaska River Forecast Center"},
+            {"name": "APRFC", "description": "Alaska Pacific River Forecast Center"},
+            {"name": "Canada", "description": "Canada River Forecast Center"}
+        ]
 
         for v in values:
             Rfc.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
@@ -331,9 +344,10 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             ForcingSource.objects.all().delete()
 
-        values = [{"name": "AORC", "description": "Analysis of Record For Calibration", "is_active": True},
-                  {"name": "NWM Retrospective", "description": "NWM Retrospective", "is_active": True},
-                  ]
+        values = [
+            {"name": "AORC", "description": "Analysis of Record For Calibration", "is_active": True},
+            {"name": "NWM Retrospective", "description": "NWM Retrospective", "is_active": True},
+        ]
 
         for v in values:
             ForcingSource.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
@@ -344,16 +358,17 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             ObservationalSource.objects.all().delete()
 
-        values = [{"name": "USGS", "description": "US Geological Society", "is_active": False},
-                  {"name": "USACE", "description": "US Army Corp of Engineers", "is_active": False},
-                  {"name": "BOR", "description": "Bureau of Reclamation", "is_active": False},
-                  {"name": "ENV", "description": "Environmental Canada", "is_active": False},
-                  {"name": "CA DWR", "description": "California Department of Water Resources", "is_active": False},
-                  {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
-                  {"name": "RFC", "description": "River Forecast Center", "is_active": False},
-                  {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
-                  {"name": "Historical", "description": "NGWPC Enterprise Data Services", "is_active": True},
-                  ]
+        values = [
+            {"name": "USGS", "description": "US Geological Society", "is_active": False},
+            {"name": "USACE", "description": "US Army Corp of Engineers", "is_active": False},
+            {"name": "BOR", "description": "Bureau of Reclamation", "is_active": False},
+            {"name": "ENV", "description": "Environmental Canada", "is_active": False},
+            {"name": "CA DWR", "description": "California Department of Water Resources", "is_active": False},
+            {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
+            {"name": "RFC", "description": "River Forecast Center", "is_active": False},
+            {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
+            {"name": "Historical", "description": "NGWPC Enterprise Data Services", "is_active": True},
+        ]
 
         for v in values:
             ObservationalSource.objects.update_or_create(name=v['name'],
@@ -365,8 +380,9 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             GeopackageSource.objects.all().delete()
 
-        values = [{"name": "Hydrofabric", "description": "NGWPC Enterprise Data Services", "is_active": True},
-                  ]
+        values = [
+            {"name": "Hydrofabric", "description": "NGWPC Enterprise Data Services", "is_active": True},
+        ]
 
         for v in values:
             GeopackageSource.objects.update_or_create(name=v['name'],
@@ -624,20 +640,21 @@ class Command(BaseCommand):
             Optimization.objects.all().delete()
             OptimizationInput.objects.all().delete()
 
-        values = [{"name": "DDS", "description": "Dynamically Dimensioned Search",
-                   "inputs": [{"name": "r", "description": "Sample region size", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.2, "min": 0.2,
-                               "max": 0.2}]},
-                  {"name": "PSO", "description": "Particle Swarm Optimization",
-                   "inputs": [{"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 2, "min": 2},
-                              {"name": "c1", "description": "Acceleration coefficient c1", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
-                               "min": 1.0, "max": 3.0},
-                              {"name": "c2", "description": "Acceleration coefficient c2 ", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
-                               "min": 1.0, "max": 3.0},
-                              {"name": "w", "description": "Inertia weight", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.7, "min": 0.0,
-                               "max": 1.0}]},
-                  {"name": "GWO", "description": "Grey Wolf Optimization",
-                   "inputs": [{"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 4, "min": 4}]},
-                  ]
+        values = [
+            {"name": "DDS", "description": "Dynamically Dimensioned Search",
+             "inputs": [{"name": "r", "description": "Sample region size", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.2, "min": 0.2,
+                         "max": 0.2}]},
+            {"name": "PSO", "description": "Particle Swarm Optimization",
+             "inputs": [{"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 2, "min": 2},
+                        {"name": "c1", "description": "Acceleration coefficient c1", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
+                         "min": 1.0, "max": 3.0},
+                        {"name": "c2", "description": "Acceleration coefficient c2 ", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
+                         "min": 1.0, "max": 3.0},
+                        {"name": "w", "description": "Inertia weight", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.7, "min": 0.0,
+                         "max": 1.0}]},
+            {"name": "GWO", "description": "Grey Wolf Optimization",
+             "inputs": [{"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 4, "min": 4}]},
+        ]
 
         # stop_criteria_name and stop_criteria_data_type are not used at this time.  Setting to these values for now, but we never look at it
         for v in values:
@@ -662,56 +679,57 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             Metric.objects.all().delete()
 
-        values = [{"name": "Corr",
-                   "display_name": "Pearson Correlation (Corr)"},
-                  {"name": "MAE",
-                   "display_name": "Mean Absolute Error (MAE)"},
-                  {"name": "RMSE",
-                   "display_name": "Root Mean Square Error (RMSE)"},
-                  {"name": "RSR",
-                   "display_name": "Ratio of RMSE to standard deviation of observation (RSR)"},
-                  {"name": "PBIAS",
-                   "display_name": "Percent Bias (PBIAS)"},
-                  {"name": "KGE",
-                   "display_name": "Kling-Gupta Efficiency (KGE)"},
-                  {"name": "NSE",
-                   "display_name": "Nash-Sutcliffe-Efficiency (NSE)"},
-                  {"name": "NSELog",
-                   "display_name": "Logarithmic of NSE (NSELog)"},
-                  {"name": "NNSE",
-                   "display_name": "Normalized NSE (NNSE)"},
-                  {"name": "POD",
-                   "display_name": "Probability of Detection (POD)",
-                   "categorical": True},
-                  {"name": "CSI",
-                   "display_name": "Critical Success Index (CSI)",
-                   "categorical": True},
-                  {"name": "FAR",
-                   "display_name": "False Alarm Ratio (FAR)",
-                   "categorical": True},
-                  {"name": "HSEG_FDC",
-                   "display_name": "Percent bias of high flow segment of flow duration curve (HSEG_FDC)"},
-                  {"name": "LSEG_FDC",
-                   "display_name": "Percent bias of low flow segment of flow duration curve (LSEG_FDC)"},
-                  {"name": "PKBIAS",
-                   "display_name": "Event Absolute Peak Flow Bias (PKBIAS)",
-                   "event_based": True},
-                  {"name": "PKTE",
-                   "display_name": "Event Peak Flow Timing Error (PKTE)",
-                   "event_based": True},
-                  {"name": "EVBIAS",
-                   "display_name": "Event Volume Bias (EVBIAS)",
-                   "event_based": True},
-                  {"name": "FBIAS",
-                   "display_name": "Frequency Bias (FBIAS)",
-                   "categorical": True, "objective_function": False},
-                  {"name": "MSEG_FDC",
-                   "display_name": "Percent bias of middle flow segment of flow duration curve (MSEG_FDC)",
-                   "objective_function": False},
-                  {"name": "NSEWt",
-                   "display_name": "Weighted NSE and NSELog (NSEWt)",
-                   "objective_function": False},
-                  ]
+        values = [
+            {"name": "Corr",
+             "display_name": "Pearson Correlation (Corr)"},
+            {"name": "MAE",
+             "display_name": "Mean Absolute Error (MAE)"},
+            {"name": "RMSE",
+             "display_name": "Root Mean Square Error (RMSE)"},
+            {"name": "RSR",
+             "display_name": "Ratio of RMSE to standard deviation of observation (RSR)"},
+            {"name": "PBIAS",
+             "display_name": "Percent Bias (PBIAS)"},
+            {"name": "KGE",
+             "display_name": "Kling-Gupta Efficiency (KGE)"},
+            {"name": "NSE",
+             "display_name": "Nash-Sutcliffe-Efficiency (NSE)"},
+            {"name": "NSELog",
+             "display_name": "Logarithmic of NSE (NSELog)"},
+            {"name": "NNSE",
+             "display_name": "Normalized NSE (NNSE)"},
+            {"name": "POD",
+             "display_name": "Probability of Detection (POD)",
+             "categorical": True},
+            {"name": "CSI",
+             "display_name": "Critical Success Index (CSI)",
+             "categorical": True},
+            {"name": "FAR",
+             "display_name": "False Alarm Ratio (FAR)",
+             "categorical": True},
+            {"name": "HSEG_FDC",
+             "display_name": "Percent bias of high flow segment of flow duration curve (HSEG_FDC)"},
+            {"name": "LSEG_FDC",
+             "display_name": "Percent bias of low flow segment of flow duration curve (LSEG_FDC)"},
+            {"name": "PKBIAS",
+             "display_name": "Event Absolute Peak Flow Bias (PKBIAS)",
+             "event_based": True},
+            {"name": "PKTE",
+             "display_name": "Event Peak Flow Timing Error (PKTE)",
+             "event_based": True},
+            {"name": "EVBIAS",
+             "display_name": "Event Volume Bias (EVBIAS)",
+             "event_based": True},
+            {"name": "FBIAS",
+             "display_name": "Frequency Bias (FBIAS)",
+             "categorical": True, "objective_function": False},
+            {"name": "MSEG_FDC",
+             "display_name": "Percent bias of middle flow segment of flow duration curve (MSEG_FDC)",
+             "objective_function": False},
+            {"name": "NSEWt",
+             "display_name": "Weighted NSE and NSELog (NSEWt)",
+             "objective_function": False},
+        ]
 
         for v in values:
             Metric.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
@@ -725,16 +743,17 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             Status.objects.all().delete()
 
-        values = [{"name": "Saved"},
-                  {"name": "Ready"},
-                  {"name": "Submitted"},
-                  {"name": "Running"},
-                  {"name": "Done"},
-                  {"name": "Cancelled"},
-                  {"name": "Failed"},
-                  {"name": "Resumed"},
-                  {"name": "Server error"}
-                  ]
+        values = [
+            {"name": "Saved"},
+            {"name": "Ready"},
+            {"name": "Submitted"},
+            {"name": "Running"},
+            {"name": "Done"},
+            {"name": "Cancelled"},
+            {"name": "Failed"},
+            {"name": "Resumed"},
+            {"name": "Server error"}
+        ]
 
         for v in values:
             Status.objects.update_or_create(name=v['name'], defaults={"created_by": self.user})

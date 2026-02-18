@@ -72,7 +72,7 @@ Use this general shape for every request (omit keys you are not using):
         field: allowed sort field name
         direction: "asc" or "desc"
     ids_only: boolean
-    get_gages: boolean
+    get_gages: boolean  # If true, return distinct gage_ids after filters (before pagination)
 
 Do not send empty/default filters or sort objects.
 
@@ -94,8 +94,7 @@ Full example:
             "date_filter": {
                 "operator": "after",
                 "create_date": "2025-01-01T00:00:00Z"
-        }
-
+            },
             "id_filter": {
                 "operator": "before",
                 "id": 500
@@ -127,27 +126,34 @@ Minimal example:
 Key concepts
 ------------
 
-Status handling
-    Calibration jobs include both their own status and the statuses of their
-    associated validation runs. The module computes a deterministic
-    combined_status, and all user-supplied status filters apply to this value.
+Status handling (Calibration only)
+    Calibration jobs compute a deterministic `combined_status` derived from:
+      - the calibration status, and
+      - the statuses of VALID_CONTROL and VALID_BEST validations (if present).
+
+    User-supplied status filters for calibration jobs apply to `combined_status`.
 
 Filtering
-    All job types support gage filters, status filters, module membership,
-    date filters, ID filters, and archive toggles.
+    All job types support gage, domain, status, module membership, date, ID, and
+    archive toggles.
 
 Sorting
     Sorting uses server-approved fields defined in Enum classes
-    (e.g., CalibrationSortField). Multi-field sorts are supported.
+    (CalibrationSortField, ForecastSortField, VerificationSortField).
+    Multi-field sorts are supported.
 
 Pagination
     Offset/limit pagination applies after filtering and sorting.
-    The module always returns total_count before pagination.
+    total_count is returned before pagination.
 
 Range metadata
     Each endpoint returns:
         • date_range = [min_created_at, max_created_at]
         • id_range   = [min_id, max_id]
+
+    These ranges are computed before user-supplied filters and are restricted
+    only by the base ownership constraint (and any endpoint-level run_status
+    restriction, where applicable).
 
 Read-only execution
     All retrieval runs inside a read-only transaction wrapper to reduce
@@ -345,7 +351,9 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
 @handle_exceptions
 def get_calibration_jobs(request):
     """
-    Return all calibration jobs, including archived ones.
+    Return all calibration jobs for the authenticated user.
+
+    Archived jobs are excluded unless filters.include_archived is explicitly true.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -408,13 +416,13 @@ def _normalize_filters_and_sort(filters: dict | None, sort: dict | None) -> tupl
 
     This function removes blank, empty, or null fields from the validated request data
     to ensure consistent query behavior. It also strips out nested filter objects
-    (e.g., module_filter, date_filter) if they contain no usable values, and disables
+    (e.g., module_filter, date_filter, id_filter) if they contain no usable values, and disables
     sorting if the sort field is missing or blank.
 
     :param filters: Optional dictionary of filter parameters (may include nested objects).
     :param sort: Optional dictionary specifying sorting field and direction.
     :return: Tuple of (normalized_filters, normalized_sort) with blanks stripped out.
-             Returns ({}, None) when inputs are invalid or contain only empty values.
+             Returns (filters, None) when sort is invalid or contains only empty values.
     """
     if filters:
         filters = {
@@ -464,7 +472,9 @@ def _apply_shared_filters(
         module_prefix: str,
         status_field: str,
         created_field: str,
-        archived_field: str = "is_archived"
+        archived_field: str = "is_archived",
+        domain_field: str | None = None,
+        allow_module_and: bool = True
 ) -> Q:
     """
     Apply shared filter logic for Calibration, Forecast, and Verification jobs.
@@ -476,7 +486,13 @@ def _apply_shared_filters(
     :param status_field: ORM field path for status filtering (e.g., 'status__in').
     :param created_field: ORM field path to the created_at date field.
     :param archived_field: ORM field path to the archive flag field (default 'is_archived').
+    :param domain_field: ORM field path to the domain name field (optional).
     :return: Updated Q object with all applicable filters applied.
+
+    Notes:
+      - include_archived: if true, include archived jobs; otherwise (false or missing), exclude them.
+      - module_filter.operator="and" is only supported when the outer queryset is CalibrationRun.
+        For ForecastRun/VerificationRun, "and" is treated as "or".
     """
     if not filters:
         return query
@@ -484,6 +500,11 @@ def _apply_shared_filters(
     # ───── Gage filter ─────
     if "gage_id" in filters and filters["gage_id"]:
         query &= Q(**{f"{gage_prefix}gage_id": filters["gage_id"]})
+
+    # ───── Domain filter ─────
+    if domain_field and filters.get("domain_name"):
+        # Case-insensitive exact match to avoid surprises
+        query &= Q(**{f"{domain_field}__iexact": filters["domain_name"]})
 
     # ───── Status filter ─────
     if "status" in filters and filters["status"]:
@@ -500,7 +521,12 @@ def _apply_shared_filters(
             module_ids = [modules_by_name[name] for name in modules if name in modules_by_name]
 
             if module_ids:
-                if operator == "and":
+                # NOTE: "and" module filtering is only correct when the outer queryset is CalibrationRun.
+                # This subquery uses OuterRef("id") as the calibration_run_id, which is true only for
+                # CalibrationRun (pk == calibration_run_id). For ForecastRun/VerificationRun the outer "id"
+                # is NOT the calibration_run_id, so "and" will not work correctly there.
+                # For Forecast/Verification, treat "and" as "or" (or reject it) at the endpoint layer.
+                if operator == "and" and allow_module_and:
                     subquery = (
                         CalibrationFormulation.objects
                         .filter(
@@ -558,7 +584,8 @@ def _apply_shared_filters(
                 query &= Q(id__gte=start_id, id__lte=end_id)
 
     # ───── Archived toggle ─────
-    if "include_archived" in filters and not filters["include_archived"]:
+    # Default behavior: exclude archived unless include_archived is explicitly true.
+    if not filters.get("include_archived", False):
         query &= Q(**{archived_field: False})
 
     return query
@@ -571,7 +598,7 @@ def apply_calibration_filters(query: Q, filters: dict) -> Q:
     'combined_status' annotation.
 
     :param query: Base Q object (typically includes ownership constraint).
-    :param filters: Dictionary of filter parameters (gage_id, modules, date_filter, etc.).
+    :param filters: Dictionary of filter parameters (gage_id, domain_name, modules, date_filter, id_filter, etc.).
     :return: Q object with calibration-specific filters applied.
     """
     # Make a shallow copy and remove 'status'
@@ -583,7 +610,9 @@ def apply_calibration_filters(query: Q, filters: dict) -> Q:
         module_prefix="calibrationformulation__",
         status_field="status__in",  # not used, since 'status' removed
         created_field="created_at",
-        archived_field="is_archived"
+        archived_field="is_archived",
+        domain_field="gage__domain__name",
+        allow_module_and=True
     )
 
 
@@ -591,8 +620,11 @@ def apply_forecast_filters(query: Q, filters: dict) -> Q:
     """
     Apply standard forecast filters to a ForecastRun queryset.
 
+    Notes:
+      - module_filter.operator="and" is not supported for Forecast/Verification (treated as "or" or ignored).
+
     :param query: Base Q object (e.g., Q(calibration_run__owner=user)).
-    :param filters: Dictionary of filter parameters (gage_id, modules, date_filter, etc.).
+    :param filters: Dictionary of filter parameters (gage_id, domain_name, status, modules, date_filter, id_filter, etc.).
     :return: Q object with forecast-specific filters applied.
     """
     return _apply_shared_filters(
@@ -601,7 +633,9 @@ def apply_forecast_filters(query: Q, filters: dict) -> Q:
         module_prefix="calibration_run__calibrationformulation__",
         status_field="status__in",
         created_field="created_at",
-        archived_field="calibration_run__is_archived"
+        archived_field="calibration_run__is_archived",
+        domain_field="calibration_run__gage__domain__name",
+        allow_module_and=False
     )
 
 
@@ -609,8 +643,11 @@ def apply_verification_filters(query: Q, filters: dict) -> Q:
     """
     Apply standard verification filters to a VerificationRun queryset.
 
+    Notes:
+      - module_filter.operator="and" is not supported for Forecast/Verification (treated as "or" or ignored).
+
     :param query: Base Q object (e.g., Q(forecast_run__calibration_run__owner=user)).
-    :param filters: Dictionary of filter parameters (gage_id, modules, date_filter, etc.).
+    :param filters: Dictionary of filter parameters (gage_id, domain_name, status, modules, date_filter, id_filter, etc.).
     :return: Q object with verification-specific filters applied.
     """
     return _apply_shared_filters(
@@ -619,7 +656,9 @@ def apply_verification_filters(query: Q, filters: dict) -> Q:
         module_prefix="forecast_run__calibration_run__calibrationformulation__",
         status_field="status__in",
         created_field="created_at",
-        archived_field="forecast_run__calibration_run__is_archived"
+        archived_field="forecast_run__calibration_run__is_archived",
+        domain_field="forecast_run__calibration_run__gage__domain__name",
+        allow_module_and=False
     )
 
 
@@ -676,7 +715,7 @@ def resolve_sort(sort: dict | None, enum_class: Type[CalibrationSortField | Fore
 
 def get_jobs(
         user: CustomUser,
-        run_status: list[StatusEnum] = None,
+        run_status: list[StatusEnum] | None = None,
         include_validation_data: GetValidationJobsScope | None = None,
         require_both_validations_done: bool = False,
         include_modules: bool = False,
@@ -686,7 +725,7 @@ def get_jobs(
         sort: dict[str, str] | None = None,
         ids_only: bool = False,
         get_gages: bool = False
-) -> tuple[list[dict[str, Any]], int, list[Any], list[Any], list[str] | None]:
+) -> tuple[list[dict[str, Any]] | list[int], int, list[Any], list[Any], list[str] | None]:
     """
     Retrieves calibration jobs for the given user with optional status filtering,
     validation data inclusion, server-side filters, sorting, and optional pagination.
@@ -694,40 +733,29 @@ def get_jobs(
     Runs in READ ONLY mode to reduce contention.
 
     :param user: The user for whom the jobs are being fetched.
-    :param run_status: Optional list of StatusEnum values to filter jobs (e.g., DONE, FAILED).
+    :param run_status: Optional list of StatusEnum values to restrict the base job set (e.g., DONE, FAILED).
+                       This restriction is applied before computing date/id ranges and before user filters.
     :param include_validation_data: Determines the level of validation data to include:
-        - 'status': Includes validation status details for associated validation runs.
-    :param include_modules: Whether to include module list in the queryset.
+        - STATUS: Includes validation status details for associated validation runs.
+    :param include_modules: Whether to include module list in the response.
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
     :param offset: Optional number of rows to skip before returning results (for pagination).
-    :param filters: Optional dict of filter criteria (e.g. gage_id, status, modules).
+    :param filters: Optional dict of filter criteria (e.g. gage_id, status, modules, date_filter, id_filter, include_archived).
+                    Note: for Calibration jobs, the client "status" filter applies to combined_status (not raw calibration status).
     :param sort: Optional dict { "field": "created_at", "direction": "asc" or "desc" }.
     :param ids_only: Only return the ids of the calibration jobs.
-    :param get_gages: return the set of gages used by all the jobs
-    :param require_both_validations_done: If True, only include calibration jobs where both VALID_CONTROL and VALID_BEST validation runs exist and are DONE.
-    :return: Tuple (results, total_count, date_range, id_range, gage_list). 
+    :param get_gages: If true, also return distinct non-null gage_ids for the filtered job universe
+                      (after all user-supplied filters, before pagination).
+    :param require_both_validations_done: If True, only include calibration jobs where both VALID_CONTROL and VALID_BEST
+                                          validation runs exist and are DONE.
+    :return: Tuple (results, total_count, date_range, id_range, gage_list).
         - total_count reflects total rows BEFORE pagination.
-        - date_range reflects the possible range of created_at dates for this job type 
-            BEFORE pagination and filtering.
-        - id_range reflects the possible range of job IDs for this job type 
-            BEFORE pagination and filtering.
+        - date_range reflects the possible range of created_at dates for this job set BEFORE user filtering (after run_status restriction).
+        - id_range reflects the possible range of job IDs for this job set BEFORE user filtering (after run_status restriction).
     """
     filters = filters or {}
     order_by = resolve_sort(sort, CalibrationSortField)
     status_ids = [s.db_instance for s in run_status] if run_status else None
-
-    # ───── Validate module names (if provided) ─────
-    if "module_filter" in filters:
-        mf = filters["module_filter"] or {}
-        modules = mf.get("modules") or []
-        if modules:
-            valid_modules = {m.name for m in get_cached_modules_by_id().values()}
-            invalid = [m for m in modules if m not in valid_modules]
-            if invalid:
-                raise ValueError(
-                    f"Invalid module names: {invalid}. "
-                    f"Valid options are: {sorted(valid_modules)}"
-                )
 
     with readonly_transaction():
         # Base query: filter jobs for the user
@@ -737,18 +765,19 @@ def get_jobs(
         if status_ids:
             query &= Q(status__in=status_ids)
 
-        # ───── Collect gages before user filters (but after run_status restriction) ─────
+        # ───── Get date and id range before filters (but after run_status restriction) ─────
+        date_range, id_range = compute_range(CalibrationRun, query)
+
+        # ───── Collect gages for the base universe (after run_status, before user filters) ─────
         gage_list = None
         if get_gages:
             gage_list = list(
                 CalibrationRun.objects
-                .filter(query, gage__isnull=False)  # exclude runs with no gage
+                .filter(query)
+                .filter(gage__isnull=False)
                 .values_list("gage__gage_id", flat=True)
                 .distinct()
             )
-
-        # ───── Get date and id range before filters (but after run_status restriction) ─────
-        date_range, id_range = compute_range(CalibrationRun, query)
 
         # ───── Apply user-defined filters (except status) ─────
         # Adds API-provided filters (gage, modules, dates, IDs, etc.)
@@ -805,10 +834,14 @@ def get_jobs(
         # ───── Combined status computation ─────
         # Combined status computation:
         # Django’s Case() evaluates WHEN clauses in order and stops at the first match.
-        # This explicit ordering defines the severity precedence manually.
+        # This explicit ordering defines the severity precedence manually when
+        # calibration status is DONE.
         #
-        # Precedence (highest → lowest):
-        #   Running → Server_Error → Failed → Cancelled → Submitted → Done → Saved/Ready
+        # Precedence when calibration is DONE (highest → lowest):
+        #   Running → Server_Error → Failed → Cancelled → Submitted → Done
+        #
+        # If calibration is NOT DONE, combined_status is simply the calibration status
+        # (e.g., Saved, Ready, Submitted, Running, etc.), and validation statuses are ignored.
         #
         # combined_status is ALWAYS computed (even when ids_only=True) so that:
         #   • status filters behave consistently in both modes
@@ -817,12 +850,12 @@ def get_jobs(
         # Rules:
         #   • If calibration is not Done → combined = calibration status
         #   • If calibration is Done:
-        #       – If any validation is Failed → combined = Failed
         #       – If any validation is Running → combined = Running
         #       – If any validation is Server_Error → combined = Server_Error
+        #       – If any validation is Failed → combined = Failed
         #       – If any validation is Cancelled → combined = Cancelled
         #       – If any validation is Submitted → combined = Submitted
-        #       – If all existing validations are Done → combined = Done
+        #       – If all existing validations are Done (or missing) → combined = Done
         #   • Missing validations are ignored.
         # ------------------------------------------------------------------
         base_qs = base_qs.annotate(
@@ -880,18 +913,13 @@ def get_jobs(
                     then=Value(StatusEnum.SUBMITTED.value),
                 ),
 
-                # Calibration done and all validations done (or missing)
+                # Calibration done and any existing validations are DONE (missing validations allowed).
+                # If VALID_CONTROL or VALID_BEST is missing, it does not block DONE here.
                 When(
                     Q(status__name=StatusEnum.DONE.value)
                     & (Q(validation_control_status__isnull=True) | Q(validation_control_status=StatusEnum.DONE.value))
                     & (Q(validation_best_status__isnull=True) | Q(validation_best_status=StatusEnum.DONE.value)),
                     then=Value(StatusEnum.DONE.value),
-                ),
-
-                # Calibration job Saved or Ready → combined = calibration status
-                When(
-                    Q(status__name__in=[StatusEnum.SAVED.value, StatusEnum.READY.value]),
-                    then=F("status__name"),
                 ),
 
                 # Fallback (covers any future status additions)
@@ -960,7 +988,7 @@ def get_jobs(
             if limit:
                 ids_qs = ids_qs[offset: offset + limit]
 
-            return list(ids_qs), total_count, date_range, id_range, gage_list
+            return list(ids_qs), total_count, date_range, id_range, gage_list if get_gages else None
 
         # ───── Apply ordering BEFORE slicing ─────
         # Django applies LIMIT/OFFSET in SQL only when slicing occurs.
@@ -1090,7 +1118,7 @@ def get_validation_jobs_internal(
 
     :param calibration_run_id: ID of the calibration run to fetch validation jobs for.
     :param detail_level: Must be either STATUS (summary mode) or DETAILS (full job data).
-    :return: [] unless detail_level == DETAILS, in which case a list of detailed dicts.
+    :return: an empty list unless detail_level == DETAILS, in which case a list of detailed dicts.
     """
     # Only return detailed data for DETAILS mode
     if detail_level != GetValidationJobsScope.DETAILS:
@@ -1218,55 +1246,79 @@ def get_forecast_jobs_internal(
         limit: int | None = None,
         offset: int = 0,
         filters: dict[str, Any] | None = None,
-        sort: dict[str, str] | None = None
-) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
+        sort: dict[str, str] | None = None,
+        get_gages: bool = False,
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any], list[str] | None]:
     """
     Internal helper to retrieve forecast jobs for a user (READ ONLY), with optional filtering,
     sorting, and pagination.
+
+    Notes:
+      - module_filter operator "and" is only supported for Calibration jobs. Forecast/Verification
+        will treat operator "and" as "or" (or ignore it), depending on shared filter behavior.
 
     :param user: Owner of the jobs to fetch.
     :param run_status: Optional list of StatusEnum values to filter on (e.g., DONE).
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
     :param offset: Optional number of rows to skip before returning results (for pagination).
-    :param filters: Optional dict of filter criteria (reusing calibration filters, e.g. gage_id, status, modules).
-    :param sort: Optional dict { "field": one of FORECAST_SORT_FIELD_MAP keys, "direction": "asc" or "desc" }.
-    :return: Tuple (results, total_count, date_range, id_range). 
+    :param filters: Optional dict of filter criteria (e.g. gage_id, status, modules).
+    :param sort: Optional dict { "field": one of ForecastSortField values, "direction": "asc" or "desc" }.
+    :param get_gages: If true, also return distinct non-null gage_ids for the filtered job universe
+                      (after all user-supplied filters, before pagination).
+    :return: Tuple (results, total_count, date_range, id_range, gage_list).
         - total_count reflects the total number of matching rows BEFORE pagination is applied.
-        - date_range reflects the possible range of created_at dates for this job type 
-            BEFORE pagination and filtering.
-        - id_range reflects the possible range of job IDs for this job type 
-            BEFORE pagination and filtering.
+        - date_range reflects the possible range of created_at dates for this job type
+          BEFORE user filtering (after run_status restriction).
+        - id_range reflects the possible range of job IDs for this job type
+          BEFORE user filtering (after run_status restriction).
+        - gage_list is returned only when get_gages is true.
     """
     filters = filters or {}
-
     order_by = resolve_sort(sort, ForecastSortField)
 
-    query = Q(calibration_run__owner=user)
-
-    # Compute ranges BEFORE user filters
-    date_range, id_range = compute_range(ForecastRun, query)
-
-    query = Q(calibration_run__owner=user)
-
-    # Now apply user filters
-    query = apply_forecast_filters(query, filters)
-
-    # Apply status restriction if needed
-    if run_status:
-        query &= Q(status_id__in=[s.db_instance.id for s in run_status])
-
-    total_count = ForecastRun.objects.filter(query).count()
-
     with readonly_transaction():
+        # Base query (ownership constraint)
+        query = Q(calibration_run__owner=user)
+
+        # Apply status restriction early so ranges reflect run_status restriction
+        if run_status:
+            query &= Q(status__in=[s.db_instance for s in run_status])
+
+        # Compute ranges BEFORE user filters (but after run_status restriction)
+        date_range, id_range = compute_range(ForecastRun, query)
+
+        # ───── Collect gages for the base universe (after run_status, before user filters) ─────
+        gage_list: list[str] | None = None
+        if get_gages:
+            gage_list = list(
+                ForecastRun.objects
+                .filter(query)
+                .filter(calibration_run__gage__isnull=False)
+                .values_list("calibration_run__gage__gage_id", flat=True)
+                .distinct()
+            )
+
+        # Now apply user filters
+        query = apply_forecast_filters(query, filters)
+
+        base_qs = ForecastRun.objects.filter(query)
+
+        # total_count must be BEFORE pagination
+        total_count = base_qs.count()
+
+        # ──────────────────────────────────────────
+        # Apply ordering + pagination at the DB level
+        # ──────────────────────────────────────────
+        paged_qs = base_qs.order_by(*order_by)
+        if limit:
+            paged_qs = paged_qs[offset: offset + limit]
+
         rows = list(
-            ForecastRun.objects
-            .filter(query)
-            .order_by(*order_by)
-            .values(
+            paged_qs.values(
                 'id',
                 'calibration_run_id',
                 'configuration__name',
-                'configuration__domain__name',
+                'calibration_run__gage__domain__name',
                 'cycle_date',
                 'submit_date',
                 'calibration_run__gage__gage_id',
@@ -1277,22 +1329,13 @@ def get_forecast_jobs_internal(
             )
         )
 
-        # ──────────────────────────────────────────
-        # Apply pagination ONLY if limit provided
-        # ──────────────────────────────────────────
-        if limit:
-            rows = rows[offset: offset + limit]
-        # ──────────────────────────────────────────
-
     # Normalize keys expected by the API response/serializer
     for f in rows:
         f['forecast_run_id'] = f.pop('id')
         f['configuration'] = f.pop('configuration__name')
-        f['domain_name'] = f.pop('configuration__domain__name')
+        f['domain_name'] = f.pop('calibration_run__gage__domain__name')
         f['gage_id'] = f.pop('calibration_run__gage__gage_id')
         f['forecast_status'] = f.pop('status__name')
-        f['cycle_date'] = f.pop('cycle_date')
-        f['submit_date'] = f.pop('submit_date')
 
         cold_date = f.pop('cold_start_run__cold_start_date')
         cold_status = f.pop('cold_start_run__status__name')
@@ -1307,7 +1350,7 @@ def get_forecast_jobs_internal(
             }
         # else: omit cold_start entirely
 
-    return rows, total_count, date_range, id_range
+    return rows, total_count, date_range, id_range, gage_list
 
 
 @extend_schema(
@@ -1333,7 +1376,7 @@ def get_forecast_jobs(request: Request) -> Response:
     Runs in READ ONLY mode to reduce contention.
 
     :param request: The HTTP request object containing calibration run data.
-    :return: JSON response with validation jobs or error information.
+    :return: JSON response with forecast jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -1347,20 +1390,24 @@ def get_forecast_jobs(request: Request) -> Response:
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
+    get_gages = validator.get("get_gages")
 
-    forecast_jobs, total_count, date_range, id_range = get_forecast_jobs_internal(
+    forecast_jobs, total_count, date_range, id_range, gage_list = get_forecast_jobs_internal(
         auth_user(request),
         run_status=None,
         limit=limit,
         offset=offset,
         filters=filters,
-        sort=sort
+        sort=sort,
+        get_gages=get_gages
     )
 
     response = {
         "forecast_jobs": forecast_jobs,
         "total_count": total_count,
     }
+    if get_gages:
+        response["gages"] = gage_list  # type: ignore[assignment]
     if total_count > 0:
         response['date_range'] = date_range
         response['id_range'] = id_range
@@ -1401,7 +1448,7 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
     Retrieves only DONE forecast jobs for the authenticated user (READ ONLY).
 
     :param request: The HTTP request object containing calibration run data.
-    :return: JSON response with validation jobs or error information.
+    :return: JSON response with forecast jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -1415,20 +1462,24 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
+    get_gages = validator.get("get_gages")
 
-    forecast_jobs, total_count, date_range, id_range = get_forecast_jobs_internal(
+    forecast_jobs, total_count, date_range, id_range, gage_list = get_forecast_jobs_internal(
         auth_user(request),
         run_status=[StatusEnum.DONE],
         limit=limit,
         offset=offset,
         filters=filters,
-        sort=sort
+        sort=sort,
+        get_gages=get_gages
     )
 
     response = {
         "forecast_jobs": forecast_jobs,
         "total_count": total_count
     }
+    if get_gages:
+        response["gages"] = gage_list  # type: ignore[assignment]
     if total_count > 0:
         response['date_range'] = date_range
         response['id_range'] = id_range
@@ -1453,49 +1504,74 @@ def get_verification_jobs_internal(
         limit: int | None = None,
         offset: int = 0,
         filters: dict[str, Any] | None = None,
-        sort: dict[str, str] | None = None
-) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
+        sort: dict[str, str] | None = None,
+        get_gages: bool = False,
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any], list[str] | None]:
     """
     Internal helper to retrieve verification jobs (READ ONLY) with optional
     filtering, sorting, and pagination.
 
+    Notes:
+      - module_filter.operator="and" is only supported for Calibration jobs. For Forecast/Verification,
+        module_filter.operator="and" is treated as "or" by the shared filter logic.
+
     :param user: Owner of the jobs to fetch.
-    :param run_status: Optional list of StatusEnum values to filter on (e.g., DONE).
+    :param run_status: Optional list of StatusEnum values to restrict the base job set (e.g., DONE).
+                       This restriction is applied before computing date/id ranges and before user filters.
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
     :param offset: Optional number of rows to skip before returning results (for pagination).
     :param filters: Optional dict of filter criteria (reusing calibration filters, e.g. gage_id, status, modules).
-    :param sort: Optional dict { "field": one of FORECAST_SORT_FIELD_MAP keys, "direction": "asc" or "desc" }.
-    :return: Tuple (results, total_count, date_range, id_range).
+    :param sort: Optional dict { "field": one of VerificationSortField values, "direction": "asc" or "desc" }.
+    :param get_gages: If true, also return distinct non-null gage_ids for the filtered job universe
+                      (after user filters, before pagination).
+    :return: Tuple (results, total_count, date_range, id_range, gage_list).
         - total_count reflects the total number of matching rows BEFORE pagination is applied.
-        - date_range reflects the possible range of created_at dates for this job type 
-            BEFORE pagination and filtering.
-        - id_range reflects the possible range of job IDs for this job type 
-            BEFORE pagination and filtering.
+        - date_range reflects the possible range of created_at dates for this job set BEFORE user filtering
+          (after run_status restriction).
+        - id_range reflects the possible range of job IDs for this job set BEFORE user filtering
+          (after run_status restriction).
+        - gage_list is returned only when get_gages is true.
     """
     filters = filters or {}
-
     order_by = resolve_sort(sort, VerificationSortField)
 
-    query = Q(forecast_run__calibration_run__owner=user)
-
-    # Compute ranges BEFORE user filters
-    date_range, id_range = compute_range(VerificationRun, query)
-
-    # Now apply user filters
-    query = apply_verification_filters(query, filters)
-
-    # Apply status restriction if needed
-    if run_status:
-        query &= Q(status_id__in=[s.db_instance.id for s in run_status])
-
-    total_count = VerificationRun.objects.filter(query).count()
-
     with readonly_transaction():
+        query = Q(forecast_run__calibration_run__owner=user)
+
+        # Apply status restriction early so ranges reflect run_status restriction
+        if run_status:
+            query &= Q(status__in=[s.db_instance for s in run_status])
+
+        # Compute ranges BEFORE user filters (but after run_status restriction)
+        date_range, id_range = compute_range(VerificationRun, query)
+
+        # ───── Collect gages for the base universe (after run_status, before user filters) ─────
+        gage_list: list[str] | None = None
+        if get_gages:
+            gage_list = list(
+                VerificationRun.objects
+                .filter(query)
+                .filter(forecast_run__calibration_run__gage__isnull=False)
+                .values_list("forecast_run__calibration_run__gage__gage_id", flat=True)
+                .distinct()
+            )
+
+        # Now apply user filters
+        query = apply_verification_filters(query, filters)
+
+        base_qs = VerificationRun.objects.filter(query)
+
+        total_count = base_qs.count()
+
+        # ──────────────────────────────────────────
+        # Apply ordering + pagination at the DB level
+        # ──────────────────────────────────────────
+        paged_qs = base_qs.order_by(*order_by)
+        if limit:
+            paged_qs = paged_qs[offset: offset + limit]
+
         rows = list(
-            VerificationRun.objects
-            .filter(query)
-            .order_by(*order_by)
-            .values(
+            paged_qs.values(
                 "id",
                 "forecast_run_id",
                 "status__name",
@@ -1503,18 +1579,13 @@ def get_verification_jobs_internal(
             )
         )
 
-        # ──────────────────────────────────────────
-        # Apply pagination ONLY if limit provided
-        # ──────────────────────────────────────────
-        if limit:
-            rows = rows[offset: offset + limit]
 
     # Normalize keys expected by the API response/serializer
     for r in rows:
         r["verification_run_id"] = r.pop("id")
         r["status"] = r.pop("status__name")
 
-    return rows, total_count, date_range, id_range
+    return rows, total_count, date_range, id_range, gage_list
 
 
 @extend_schema(
@@ -1539,7 +1610,7 @@ def get_verification_jobs(request: Request) -> Response:
     Retrieves all verification jobs for a user
 
     :param request: The HTTP request object containing calibration run data.
-    :return: JSON response with validation jobs or error information.
+    :return: JSON response with verification jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -1553,20 +1624,24 @@ def get_verification_jobs(request: Request) -> Response:
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
+    get_gages = validator.get("get_gages")
 
-    verification_jobs, total_count, date_range, id_range = get_verification_jobs_internal(
+    verification_jobs, total_count, date_range, id_range, gage_list = get_verification_jobs_internal(
         auth_user(request),
         run_status=None,
         limit=limit,
         offset=offset,
         filters=filters,
         sort=sort,
+        get_gages=get_gages
     )
 
     response = {
         'verification_jobs': verification_jobs,
         "total_count": total_count
     }
+    if get_gages:
+        response["gages"] = gage_list  # type: ignore[assignment]
     if total_count > 0:
         response['date_range'] = date_range
         response['id_range'] = id_range

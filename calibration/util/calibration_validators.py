@@ -641,6 +641,7 @@ class IdFilterSerializer(serializers.Serializer):
 
 class FilterSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_blank=True)
+    domain_name = serializers.CharField(required=False, allow_blank=True, validators=[enum_validator(DomainEnum)])
     status = serializers.ListField(child=serializers.CharField(validators=[enum_validator(StatusEnum)]), required=False, allow_empty=True)
     module_filter = ModuleFilterSerializer(required=False)
     date_filter = DateFilterSerializer(required=False)
@@ -718,6 +719,7 @@ class SaveGageResponseSerializer(GenericResponseSerializer):
 
 class DomainResponseSerializer(BaseSerializer):
     name = serializers.CharField(required=True, validators=[enum_validator(DomainEnum)])
+    display_name = serializers.CharField(required=True)
     description = serializers.CharField(required=True, allow_blank=False)
 
 
@@ -734,14 +736,6 @@ class ObservationalSourceSerializer(BaseSerializer):
 class GeopackageSourceSerializer(BaseSerializer):
     name = serializers.CharField(required=True, validators=[enum_validator(GeopackageSourceEnum)])
     description = serializers.CharField(required=True)
-
-
-#
-# class GagesSerializer(BaseSerializer):
-#     gage_id = serializers.CharField(required=True, allow_blank=False)
-#     nws_id = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-#     domain = serializers.CharField(required=True, validators=[enum_validator(DomainEnum)])
-#     headwater_calibration = serializers.BooleanField(required=True)
 
 
 class FastGagesSerializer(serializers.Field):
@@ -1138,9 +1132,11 @@ class GetVerificationJobResponseSerializer(CommonStatusFieldsMixin):
 class GetVerificationJobsResponseSerializer(BaseSerializer):
     verification_jobs = serializers.ListSerializer(child=GetVerificationJobResponseSerializer(), required=True, allow_empty=True)
     total_count = serializers.IntegerField(required=True)
-    date_range = serializers.ListSerializer(child=serializers.DateTimeField(required=True, allow_null=False), min_length=2, max_length=2,
-                                            required=False)
-    id_range = serializers.ListSerializer(child=serializers.IntegerField(required=True, allow_null=False), min_length=2, max_length=2, required=False)
+    date_range = serializers.ListSerializer(child=serializers.DateTimeField(required=True, allow_null=False),
+                                            min_length=2, max_length=2, required=False)
+    id_range = serializers.ListSerializer(child=serializers.IntegerField(required=True, allow_null=False),
+                                          min_length=2, max_length=2, required=False)
+    gages = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
 
 
 class GetStatusForComparisonResponseSerializer(CalibrationRunIdList):
@@ -1273,9 +1269,11 @@ class ForecastJobsResponseSerializer(BaseSerializer):
 class GetForecastJobsResponseSerializer(BaseSerializer):
     forecast_jobs = serializers.ListSerializer(child=ForecastJobsResponseSerializer(), required=True, allow_empty=True)
     total_count = serializers.IntegerField(required=True)
-    date_range = serializers.ListSerializer(child=serializers.DateTimeField(required=True, allow_null=False), min_length=2, max_length=2,
-                                            required=False)
-    id_range = serializers.ListSerializer(child=serializers.IntegerField(required=True, allow_null=False), min_length=2, max_length=2, required=False)
+    date_range = serializers.ListSerializer(child=serializers.DateTimeField(required=True, allow_null=False),
+                                            min_length=2, max_length=2, required=False)
+    id_range = serializers.ListSerializer(child=serializers.IntegerField(required=True, allow_null=False),
+                                          min_length=2, max_length=2, required=False)
+    gages = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
 
 
 ##################################
@@ -1445,7 +1443,7 @@ class ErrorResponseSerializer(BaseSerializer):
 class GetZipStatusSerializer(CalibrationRunSerializer):
     zip_status = serializers.ChoiceField(choices=['pending', 'done', 'error'], required=True, allow_null=False)
     started_at = serializers.DateTimeField(required=True, allow_null=False)
-    path = serializers.CharField(required=True,  allow_null=True, allow_blank=False)
+    path = serializers.CharField(required=True, allow_null=True, allow_blank=False)
 
 
 class GetZipDownloadUrlResponseSerializer(CalibrationRunSerializer):
