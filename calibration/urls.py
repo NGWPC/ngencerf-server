@@ -18,17 +18,34 @@ urlpatterns = [
     path('calibration/create_and_run_forecast/', calibration_landing_views.create_and_run_forecast, name="createForecastRun"),
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
     path('calibration/get_git_info/', calibration_landing_views.get_git_info, name="getGitInfo"),
+    path('calibration/load_calibration_run/', calibration.views.calibration_import_export_views.load_calibration_run, name="loadCalibrationRun"),
+    path('calibration/delete_jobs/', calibration_landing_views.delete_jobs, name="deleteJobs"),
+    path('calibration/archive_jobs/', calibration_landing_views.archive_jobs, name="archiveJobs"),
+    path('calibration/lock_jobs/', calibration_landing_views.lock_jobs, name="lockJobs"),
+    path('calibration/clone_job/', calibration_landing_views.clone_job, name="cloneJob"),
+
+    ##################################
+    # Get Jobs
+    ##################################
     path('calibration/get_calibration_jobs/', calibration.views.get_jobs_views.get_calibration_jobs, name="getCalibrationJobs"),
     path('calibration/get_calibration_jobs_for_evaluation/', calibration.views.get_jobs_views.get_calibration_jobs_for_evaluation,
          name="getCalibrationJobsForEvaluation"),
     path('calibration/get_calibration_jobs_for_forecast/', calibration.views.get_jobs_views.get_calibration_jobs_for_forecast,
          name="getCalibrationJobsForForecast"),
     path('calibration/get_validation_jobs/', calibration.views.get_jobs_views.get_validation_jobs, name="getValidationJobs"),
-    path('calibration/load_calibration_run/', calibration.views.calibration_import_export_views.load_calibration_run, name="loadCalibrationRun"),
-    path('calibration/delete_jobs/', calibration_landing_views.delete_jobs, name="deleteJobs"),
-    path('calibration/archive_jobs/', calibration_landing_views.archive_jobs, name="archiveJobs"),
-    path('calibration/lock_jobs/', calibration_landing_views.lock_jobs, name="lockJobs"),
-    path('calibration/clone_job/', calibration_landing_views.clone_job, name="cloneJob"),
+    path('calibration/get_forecast_jobs/', calibration.views.get_jobs_views.get_forecast_jobs, name="getForecastJobs"),
+    path('calibration/get_verification_jobs/', calibration.views.get_jobs_views.get_verification_jobs, name="getVerificationJobs"),
+    path('calibration/get_forecast_jobs_for_verification/', calibration.views.get_jobs_views.get_forecast_jobs_for_verification,
+         name="getForecastJobsForVerification"),
+    path('calibration/get_calibration_gages/', calibration.views.get_jobs_views.get_calibration_gages, name="getCalibrationGages"),
+    path('calibration/get_calibration_gages_for_forecast/', calibration.views.get_jobs_views.get_calibration_gages_for_forecast,
+         name="getCalibrationGagesForForecast"),
+    path('calibration/get_calibration_gages_for_verification/', calibration.views.get_jobs_views.get_calibration_gages_for_verification,
+         name="getCalibrationGagesForVerification"),
+    path('calibration/get_forecast_gages/', calibration.views.get_jobs_views.get_forecast_gages, name="getForecastGages"),
+    path('calibration/get_forecast_gages_for_verification/', calibration.views.get_jobs_views.get_forecast_gages_for_verification,
+         name="getForecastGagesForVerification"),
+    path('calibration/get_verification_gages/', calibration.views.get_jobs_views.get_verification_gages, name="getVerificationGages"),
 
     ##################################
     # Gage tab
@@ -105,9 +122,7 @@ urlpatterns = [
     # Forecast
     ##################################
     path('calibration/load_forecast_tab/', calibration_forecast_views.load_forecast_tab, name="loadForecastTab"),
-    path('calibration/get_forecast_jobs/', calibration.views.get_jobs_views.get_forecast_jobs, name="getForecastJobs"),
-    path('calibration/get_forecast_jobs_for_verification/', calibration.views.get_jobs_views.get_forecast_jobs_for_verification,
-         name="getForecastJobsForVerification"),
+
     path('calibration/clone_and_run_forecast/', calibration_forecast_views.clone_and_run_forecast_job, name="cloneAndRunForecastJob"),
     path('calibration/get_forecast_timeseries_data/', calibration_forecast_views.get_forecast_timeseries_data, name="getForecastTimeseriesData"),
     path('calibration/delete_forecast_job/', calibration_forecast_views.delete_forecast_job, name="deleteForecastJob"),
@@ -115,7 +130,6 @@ urlpatterns = [
     ##################################
     # Verification
     ##################################
-    path('calibration/get_verification_jobs/', calibration.views.get_jobs_views.get_verification_jobs, name="getVerificationJobs"),
     path('calibration/create_and_run_verification_job/', calibration_verification_views.create_and_run_verification_job,
          name="createVerificationJob"),
     path('calibration/get_verification_plot_names/', calibration_verification_views.get_verification_plot_names, name="getVerificationPlotNames"),

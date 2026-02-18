@@ -438,7 +438,6 @@ class GetCalibrationJobsResponseSerializer(BaseSerializer):
     date_range = serializers.ListSerializer(child=serializers.DateTimeField(required=True, allow_null=False), min_length=2, max_length=2,
                                             required=False)
     id_range = serializers.ListSerializer(child=serializers.IntegerField(required=True, allow_null=False), min_length=2, max_length=2, required=False)
-    gages = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
 
 
 class GetCalibrationJobIDsResponseSerializer(BaseSerializer):
@@ -665,11 +664,14 @@ class VerificationSortSerializer(SortSerializer):
     field = serializers.CharField(required=False, allow_blank=True, validators=[enum_validator(VerificationSortField)])
 
 
+class GetGagesResponseSerializer(BaseSerializer):
+    gages = serializers.ListField(child=serializers.CharField(required=True), required=True, allow_empty=True)
+
+
 class PaginationSerializer(BaseSerializer):
     limit = serializers.IntegerField(required=False, min_value=1, max_value=500)
     offset = serializers.IntegerField(required=False, min_value=0, default=0)
     filters = FilterSerializer(required=False, allow_null=True)
-    get_gages = serializers.BooleanField(required=False, default=False)
 
 
 class CalibrationPaginationSerializer(PaginationSerializer):

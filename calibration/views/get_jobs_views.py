@@ -17,7 +17,8 @@ from calibration.util.caching import get_cached_modules_by_id
 from calibration.util.calibration_validators import ErrorResponseSerializer, \
     GetCalibrationJobsResponseSerializer, CalibrationRunSerializer, GetValidationJobsResponseSerializer, \
     GetForecastJobsResponseSerializer, GetVerificationJobsResponseSerializer, CalibrationPaginationSerializer, \
-    ForecastPaginationSerializer, VerificationPaginationSerializer, GetCalibrationJobIDsResponseSerializer
+    ForecastPaginationSerializer, VerificationPaginationSerializer, GetCalibrationJobIDsResponseSerializer, EmptySerializer, \
+    GetGagesResponseSerializer
 from calibration.views.calibration_download_views import downloadable_statuses
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_calibration_run, \
@@ -29,20 +30,19 @@ logger = logging.getLogger(__name__)
 Job Retrieval Endpoints for Calibration, Forecast, and Verification
 ===================================================================
 
-This module provides a unified, consistent interface for retrieving job
-records across the CERF workflow, including Calibration, Forecast, and
-Verification runs. All endpoints support:
+This module provides a unified interface for retrieving job records across the CERF workflow,
+including Calibration, Forecast, and Verification runs.
 
+All endpoints support:
   • Server-side filtering
   • Server-side sorting
   • Pagination with offset + limit
-  • Optional ID-only responses
-  • Optional gage list retrieval
   • Consistent date and ID ranges for client-side filtering
   • Read-only execution to reduce database contention
 
-The central function `get_jobs()` implements Calibration job retrieval.
-Forecast and Verification endpoints follow the same pattern.
+Calibration retrieval is implemented by `get_jobs()`.
+Forecast and Verification retrieval are implemented by `get_forecast_jobs_internal()` and
+`get_verification_jobs_internal()`.
 
 Request payload shape
 ---------------------
@@ -71,8 +71,10 @@ Use this general shape for every request (omit keys you are not using):
     sort:
         field: allowed sort field name
         direction: "asc" or "desc"
+
+Calibration-only request keys
+-----------------------------
     ids_only: boolean
-    get_gages: boolean  # If true, return distinct gage_ids after filters (before pagination)
 
 Do not send empty/default filters or sort objects.
 
@@ -206,41 +208,36 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     sort = validator.get("sort")
     ids_only = validator.get("ids_only")
     filters, sort = _normalize_filters_and_sort(filters, sort)
-    get_gages = validator.get("get_gages")
 
-    jobs, total_count, date_range, id_range, gage_list = get_jobs(
+    jobs, total_count, date_range, id_range = get_jobs(
         auth_user(request),
         run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
         include_validation_data=GetValidationJobsScope.STATUS,
         require_both_validations_done=True,
         limit=limit,
-        offset=offset, filters=filters,
-        sort=sort, ids_only=ids_only,
-        get_gages=get_gages
+        offset=offset,
+        filters=filters,
+        sort=sort,
+        ids_only=ids_only
     )
 
-    response = {
+    response: dict[str, Any] = {
         "jobs": jobs,
         "total_count": total_count
     }
-    if get_gages:
-        response["gages"] = gage_list  # type: ignore[assignment]
     if total_count > 0:
         response['date_range'] = date_range
         response['id_range'] = id_range
 
-    if ids_only:
-        serializer_class = GetCalibrationJobIDsResponseSerializer
-    else:
-        serializer_class = GetCalibrationJobsResponseSerializer
+    serializer_class = GetCalibrationJobIDsResponseSerializer if ids_only else GetCalibrationJobsResponseSerializer
 
-    response_validator, error_response = validate_response(serializer_class, response, fields_to_truncate=['jobs', 'gages'], max_length=10)
+    response_validator, error_response = validate_response(serializer_class, response, fields_to_truncate=['jobs'], max_length=10)
     if error_response:
         return error_response
 
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
-        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs", "gages"], max_length=10))}'
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
 
@@ -264,7 +261,9 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
 @handle_exceptions
 def get_calibration_jobs_for_forecast(request: Request) -> Response:
     """
-    Returns only DONE calibration jobs for forecasting purposes.
+    Returns calibration jobs eligible for forecasting purposes.
+
+    Only DONE calibration jobs are returned, and VALID_CONTROL and VALID_BEST must both exist and be DONE.
 
     :param request: The HTTP request object.
     :return: JSON response with a list of calibration jobs or error information.
@@ -282,9 +281,8 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     sort = validator.get("sort")
     ids_only = validator.get("ids_only")
     filters, sort = _normalize_filters_and_sort(filters, sort)
-    get_gages = validator.get("get_gages")
 
-    jobs, total_count, date_range, id_range, gage_list = get_jobs(
+    jobs, total_count, date_range, id_range = get_jobs(
         auth_user(request),
         run_status=[StatusEnum.DONE],
         include_validation_data=None,
@@ -293,32 +291,26 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
         offset=offset,
         filters=filters,
         sort=sort,
-        ids_only=ids_only,
-        get_gages=get_gages
+        ids_only=ids_only
     )
 
-    response = {
+    response: dict[str, Any] = {
         "jobs": jobs,
         "total_count": total_count
     }
-    if get_gages:
-        response["gages"] = gage_list  # type: ignore[assignment]
     if total_count > 0:
         response['date_range'] = date_range
         response['id_range'] = id_range
 
-    if ids_only:
-        serializer_class = GetCalibrationJobIDsResponseSerializer
-    else:
-        serializer_class = GetCalibrationJobsResponseSerializer
+    serializer_class = GetCalibrationJobIDsResponseSerializer if ids_only else GetCalibrationJobsResponseSerializer
 
-    response_validator, error_response = validate_response(serializer_class, response, fields_to_truncate=['jobs', 'gages'], max_length=10)
+    response_validator, error_response = validate_response(serializer_class, response, fields_to_truncate=['jobs'], max_length=10)
     if error_response:
         return error_response
 
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
-        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs", "gages"], max_length=10))}'
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
 
@@ -344,12 +336,11 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
             description="Internal server error"
         )
     },
-
     description="Get all calibration jobs"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def get_calibration_jobs(request):
+def get_calibration_jobs(request) -> Response:
     """
     Return all calibration jobs for the authenticated user.
 
@@ -368,10 +359,9 @@ def get_calibration_jobs(request):
     sort = validator.get("sort")
     ids_only = validator.get("ids_only")
     filters, sort = _normalize_filters_and_sort(filters, sort)
-    get_gages = validator.get("get_gages")
     include_modules = validator.get("include_modules")
 
-    jobs, total_count, date_range, id_range, gage_list = get_jobs(
+    jobs, total_count, date_range, id_range = get_jobs(
         auth_user(request),
         run_status=list(StatusEnum),
         include_validation_data=GetValidationJobsScope.STATUS,
@@ -380,32 +370,26 @@ def get_calibration_jobs(request):
         offset=offset,
         filters=filters,
         sort=sort,
-        ids_only=ids_only,
-        get_gages=get_gages
+        ids_only=ids_only
     )
 
-    response = {
+    response: dict[str, Any] = {
         "jobs": jobs,
         "total_count": total_count
     }
-    if get_gages:
-        response["gages"] = gage_list  # type: ignore[assignment]
     if total_count > 0:
         response['date_range'] = date_range
         response['id_range'] = id_range
 
-    if ids_only:
-        serializer_class = GetCalibrationJobIDsResponseSerializer
-    else:
-        serializer_class = GetCalibrationJobsResponseSerializer
+    serializer_class = GetCalibrationJobIDsResponseSerializer if ids_only else GetCalibrationJobsResponseSerializer
 
-    response_validator, error_response = validate_response(serializer_class, response, fields_to_truncate=['jobs', 'gages'], max_length=10)
+    response_validator, error_response = validate_response(serializer_class, response, fields_to_truncate=['jobs'], max_length=10)
     if error_response:
         return error_response
 
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
-        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs", "gages"], max_length=10))}'
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
 
@@ -701,16 +685,316 @@ def resolve_sort(sort: dict | None, enum_class: Type[CalibrationSortField | Fore
     orm_field = member.orm_field
 
     # Normalize single vs multi-field sorts
-    if isinstance(orm_field, str):
-        orm_fields = [orm_field]
-    else:
-        orm_fields = orm_field  # already a list
+    orm_fields = [orm_field] if isinstance(orm_field, str) else orm_field
 
     # Apply direction prefix to all fields
     if direction == "desc":
         orm_fields = [f"-{f}" for f in orm_fields]
 
     return orm_fields
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses={
+        200: GetGagesResponseSerializer,
+        400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
+        500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
+    },
+    description="Get distinct gage_ids for all Calibration jobs (no filters, no pagination)"
+)
+@api_view(["POST", "GET"])
+@handle_exceptions
+def get_calibration_gages(request: Request) -> Response:
+    data = request.data if request.method == "POST" else request.query_params.dict()
+    logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    gages = get_gages(
+        auth_user(request),
+        run_status=list(StatusEnum),
+        require_both_validations_done=False,
+    )
+
+    response = {"gages": gages}
+    response_validator, error_response = validate_response(GetGagesResponseSerializer, response, fields_to_truncate=["gages"], max_length=10)
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f"Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - "
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=10))}'
+    )
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses={
+        200: GetGagesResponseSerializer,
+        400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
+        500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
+    },
+    description="Get distinct gage_ids for DONE Calibration jobs eligible for Forecast (no filters, no pagination)"
+)
+@api_view(["POST", "GET"])
+@handle_exceptions
+def get_calibration_gages_for_forecast(request: Request) -> Response:
+    data = request.data if request.method == "POST" else request.query_params.dict()
+    logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    gages = get_gages(
+        auth_user(request),
+        run_status=[StatusEnum.DONE],
+        require_both_validations_done=True,
+    )
+
+    response = {"gages": gages}
+    response_validator, error_response = validate_response(GetGagesResponseSerializer, response, fields_to_truncate=["gages"], max_length=10)
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f"Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - "
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=10))}'
+    )
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses={
+        200: GetGagesResponseSerializer,
+        400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
+        500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
+    },
+    description="Get distinct gage_ids for Calibration jobs eligible for Evaluation (no filters, no pagination)"
+)
+@api_view(["POST", "GET"])
+@handle_exceptions
+def get_calibration_gages_for_verification(request: Request) -> Response:
+    """
+    Get distinct gage_ids for Calibration jobs eligible for Verification (no filters, no pagination).
+    """
+    data = request.data if request.method == "POST" else request.query_params.dict()
+    logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    gages = get_gages(
+        auth_user(request),
+        run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
+        require_both_validations_done=True,
+    )
+
+    response = {"gages": gages}
+    response_validator, error_response = validate_response(GetGagesResponseSerializer, response, fields_to_truncate=["gages"], max_length=10)
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f"Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - "
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=10))}'
+    )
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses={
+        200: EmptySerializer,
+        400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
+        500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
+    },
+    description="Get distinct gage_ids for Forecast jobs (no filters, no pagination"
+)
+@api_view(["POST", "GET"])
+@handle_exceptions
+def get_forecast_gages(request: Request) -> Response:
+    data = request.data if request.method == "POST" else request.query_params.dict()
+    logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    with readonly_transaction():
+        query = Q(calibration_run__owner=auth_user(request))
+
+        gages = list(
+            ForecastRun.objects
+            .filter(query)
+            .filter(calibration_run__gage__isnull=False)
+            .values_list("calibration_run__gage__gage_id", flat=True)
+            .distinct()
+        )
+
+    response = {"gages": gages}
+    response_validator, error_response = validate_response(
+        GetGagesResponseSerializer, response, fields_to_truncate=["gages"], max_length=10
+    )
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f"Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - "
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=10))}'
+    )
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses={
+        200: GetGagesResponseSerializer,
+        400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
+        500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
+    },
+    description="Get distinct gage_ids for DONE Forecast jobs eligible for Verification (no filters, no pagination)"
+)
+@api_view(["POST", "GET"])
+@handle_exceptions
+def get_forecast_gages_for_verification(request: Request) -> Response:
+    data = request.data if request.method == "POST" else request.query_params.dict()
+    logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    with readonly_transaction():
+        query = Q(calibration_run__owner=auth_user(request))
+        query &= Q(status__in=[StatusEnum.DONE.db_instance])
+
+        gages = list(
+            ForecastRun.objects
+            .filter(query)
+            .filter(calibration_run__gage__isnull=False)
+            .values_list("calibration_run__gage__gage_id", flat=True)
+            .distinct()
+        )
+
+    response = {"gages": gages}
+    response_validator, error_response = validate_response(
+        GetGagesResponseSerializer, response, fields_to_truncate=["gages"], max_length=10
+    )
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f"Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - "
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=10))}'
+    )
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses={
+        200: GetGagesResponseSerializer,
+        400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
+        500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
+    },
+    description="Get distinct gage_ids for Verification jobs (no filters, no pagination)"
+)
+@api_view(["POST", "GET"])
+@handle_exceptions
+def get_verification_gages(request: Request) -> Response:
+    data = request.data if request.method == "POST" else request.query_params.dict()
+    logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    with readonly_transaction():
+        query = Q(forecast_run__calibration_run__owner=auth_user(request))
+        gages = list(
+            VerificationRun.objects
+            .filter(query)
+            .filter(forecast_run__calibration_run__gage__isnull=False)
+            .values_list("forecast_run__calibration_run__gage__gage_id", flat=True)
+            .distinct()
+        )
+
+    response = {"gages": gages}
+    response_validator, error_response = validate_response(
+        GetGagesResponseSerializer, response, fields_to_truncate=["gages"], max_length=10
+    )
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f"Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - "
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=10))}'
+    )
+    return Response(response_validator.data)
+
+
+def get_gages(
+        user: CustomUser,
+        *,
+        run_status: list[StatusEnum] | None = None,
+        require_both_validations_done: bool = False,
+) -> list[str]:
+    """
+    Get distinct non-null gage_ids for the authenticated user's CalibrationRuns.
+
+    Runs in READ ONLY mode to reduce contention.
+
+    :param user: Owner of the CalibrationRuns to inspect.
+    :param run_status: Optional list of StatusEnum values to restrict the base job set
+                       (matches endpoint-level restrictions).
+    :param require_both_validations_done: If True, only include CalibrationRuns where both
+                                          VALID_CONTROL and VALID_BEST validation runs
+                                          exist and are DONE.
+    :return: List of distinct gage_id strings (no filters, no pagination).
+    """
+    with readonly_transaction():
+        query = Q(owner=user)
+
+        if run_status:
+            query &= Q(status__in=[s.db_instance for s in run_status])
+
+        qs = (
+            CalibrationRun.objects
+            .filter(query)
+            .filter(gage__isnull=False)
+        )
+
+        if require_both_validations_done:
+            qs = qs.annotate(
+                has_valid_control_done=Exists(
+                    ValidationRun.objects.filter(
+                        calibration_run_id=OuterRef("id"),
+                        validation_type=ValidationType.VALID_CONTROL.value,
+                        status=StatusEnum.DONE.db_instance,
+                    )
+                ),
+                has_valid_best_done=Exists(
+                    ValidationRun.objects.filter(
+                        calibration_run_id=OuterRef("id"),
+                        validation_type=ValidationType.VALID_BEST.value,
+                        status=StatusEnum.DONE.db_instance,
+                    )
+                ),
+            ).filter(
+                has_valid_control_done=True,
+                has_valid_best_done=True,
+            )
+
+        return list(
+            qs.values_list("gage__gage_id", flat=True).distinct()
+        )
 
 
 def get_jobs(
@@ -723,9 +1007,8 @@ def get_jobs(
         offset: int = 0,
         filters: dict[str, Any] | None = None,
         sort: dict[str, str] | None = None,
-        ids_only: bool = False,
-        get_gages: bool = False
-) -> tuple[list[dict[str, Any]] | list[int], int, list[Any], list[Any], list[str] | None]:
+        ids_only: bool = False
+) -> tuple[list[dict[str, Any]] | list[int], int, list[Any], list[Any]]:
     """
     Retrieves calibration jobs for the given user with optional status filtering,
     validation data inclusion, server-side filters, sorting, and optional pagination.
@@ -744,11 +1027,9 @@ def get_jobs(
                     Note: for Calibration jobs, the client "status" filter applies to combined_status (not raw calibration status).
     :param sort: Optional dict { "field": "created_at", "direction": "asc" or "desc" }.
     :param ids_only: Only return the ids of the calibration jobs.
-    :param get_gages: If true, also return distinct non-null gage_ids for the filtered job universe
-                      (after all user-supplied filters, before pagination).
     :param require_both_validations_done: If True, only include calibration jobs where both VALID_CONTROL and VALID_BEST
                                           validation runs exist and are DONE.
-    :return: Tuple (results, total_count, date_range, id_range, gage_list).
+    :return: Tuple (results, total_count, date_range, id_range).
         - total_count reflects total rows BEFORE pagination.
         - date_range reflects the possible range of created_at dates for this job set BEFORE user filtering (after run_status restriction).
         - id_range reflects the possible range of job IDs for this job set BEFORE user filtering (after run_status restriction).
@@ -767,17 +1048,6 @@ def get_jobs(
 
         # ───── Get date and id range before filters (but after run_status restriction) ─────
         date_range, id_range = compute_range(CalibrationRun, query)
-
-        # ───── Collect gages for the base universe (after run_status, before user filters) ─────
-        gage_list = None
-        if get_gages:
-            gage_list = list(
-                CalibrationRun.objects
-                .filter(query)
-                .filter(gage__isnull=False)
-                .values_list("gage__gage_id", flat=True)
-                .distinct()
-            )
 
         # ───── Apply user-defined filters (except status) ─────
         # Adds API-provided filters (gage, modules, dates, IDs, etc.)
@@ -987,8 +1257,7 @@ def get_jobs(
 
             if limit:
                 ids_qs = ids_qs[offset: offset + limit]
-
-            return list(ids_qs), total_count, date_range, id_range, gage_list if get_gages else None
+            return list(ids_qs), total_count, date_range, id_range
 
         # ───── Apply ordering BEFORE slicing ─────
         # Django applies LIMIT/OFFSET in SQL only when slicing occurs.
@@ -1000,14 +1269,12 @@ def get_jobs(
             ordered_qs = ordered_qs[offset: offset + limit]
 
         # ───── Extract values AFTER slicing ─────
-        calibration_runs_qs = (
-            ordered_qs.values(
-                "id", "gage__gage_id", "gage__domain__name", "submit_date", "updated_at",
-                "job_name", "calibration_start_period", "calibration_end_period",
-                "status__name", "combined_status", "job_genesis", "created_at",
-                "objective_function__name", "optimization__name",
-                "is_archived", "is_locked"
-            )
+        calibration_runs_qs = ordered_qs.values(
+            "id", "gage__gage_id", "gage__domain__name", "submit_date", "updated_at",
+            "job_name", "calibration_start_period", "calibration_end_period",
+            "status__name", "combined_status", "job_genesis", "created_at",
+            "objective_function__name", "optimization__name",
+            "is_archived", "is_locked"
         )
 
         calibration_runs = list(calibration_runs_qs)
@@ -1059,16 +1326,12 @@ def get_jobs(
             .filter(calibration_run_id__in=run_ids)
             .values("calibration_run_id", "value")
         )
+        stop_criteria_map: dict[int, str | None] = {sc["calibration_run_id"]: sc["value"] for sc in stop_qs}
 
-        stop_criteria_map: dict[int, str | None] = {
-            sc["calibration_run_id"]: sc["value"]
-            for sc in stop_qs
-        }
-
-        results = []
+        results: list[dict[str, Any]] = []
         for run in calibration_runs:
             run_id = run["id"]
-            result = {
+            result: dict[str, Any] = {
                 'calibration_run_id': run_id,
                 'gage_id': run['gage__gage_id'],
                 'domain_name': run['gage__domain__name'],
@@ -1086,6 +1349,7 @@ def get_jobs(
                 'created_at': run['created_at'],
                 'last_updated_on': run['updated_at'],
                 'is_downloadable': StatusEnum.from_name(run['status__name']) in downloadable_statuses,
+                'stop_criteria': stop_criteria_map.get(run_id),
             }
 
             if include_modules:
@@ -1102,11 +1366,9 @@ def get_jobs(
                     for v in validations_map.get(run_id, [])
                 ]
 
-            result['stop_criteria'] = stop_criteria_map.get(run_id)
-
             results.append(result)
 
-        return results, total_count, date_range, id_range, gage_list if get_gages else None
+        return results, total_count, date_range, id_range
 
 
 def get_validation_jobs_internal(
@@ -1114,11 +1376,13 @@ def get_validation_jobs_internal(
         detail_level: Literal[GetValidationJobsScope.STATUS, GetValidationJobsScope.DETAILS] = GetValidationJobsScope.STATUS,
 ) -> list[dict[str, Any]]:
     """
-    Retrieves validation jobs for a specific calibration job.
+    Retrieve validation jobs for a specific calibration job.
+
+    Only returns data when detail_level == DETAILS. For STATUS mode, returns an empty list.
 
     :param calibration_run_id: ID of the calibration run to fetch validation jobs for.
     :param detail_level: Must be either STATUS (summary mode) or DETAILS (full job data).
-    :return: an empty list unless detail_level == DETAILS, in which case a list of detailed dicts.
+    :return: An empty list unless detail_level == DETAILS, in which case a list of detailed dicts.
     """
     # Only return detailed data for DETAILS mode
     if detail_level != GetValidationJobsScope.DETAILS:
@@ -1159,18 +1423,12 @@ def get_validation_jobs_internal(
             iteration__best_params=True
         ).values("calibration_parameter__name", "tuned_value")
 
-        best_params = [
-            {"name": bp["calibration_parameter__name"], "value": bp["tuned_value"]}
-            for bp in best_params_qs
-        ]
+        best_params = [{"name": bp["calibration_parameter__name"], "value": bp["tuned_value"]} for bp in best_params_qs]
 
         # Build result
         results: list[dict[str, Any]] = []
         for job in validation_runs:
-            if job.validation_type == ValidationType.VALID_BEST.value:
-                parameters = best_params
-            else:
-                parameters = params_map.get(job.iteration_id, [])
+            parameters = best_params if job.validation_type == ValidationType.VALID_BEST.value else params_map.get(job.iteration_id, [])
 
             results.append({
                 "validation_run_id": job.id,
@@ -1236,7 +1494,8 @@ def get_validation_jobs(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}'
+    )
     return Response(response_validator.data)
 
 
@@ -1246,9 +1505,8 @@ def get_forecast_jobs_internal(
         limit: int | None = None,
         offset: int = 0,
         filters: dict[str, Any] | None = None,
-        sort: dict[str, str] | None = None,
-        get_gages: bool = False,
-) -> tuple[list[dict[str, Any]], int, list[Any], list[Any], list[str] | None]:
+        sort: dict[str, str] | None = None
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
     """
     Internal helper to retrieve forecast jobs for a user (READ ONLY), with optional filtering,
     sorting, and pagination.
@@ -1263,9 +1521,7 @@ def get_forecast_jobs_internal(
     :param offset: Optional number of rows to skip before returning results (for pagination).
     :param filters: Optional dict of filter criteria (e.g. gage_id, status, modules).
     :param sort: Optional dict { "field": one of ForecastSortField values, "direction": "asc" or "desc" }.
-    :param get_gages: If true, also return distinct non-null gage_ids for the filtered job universe
-                      (after all user-supplied filters, before pagination).
-    :return: Tuple (results, total_count, date_range, id_range, gage_list).
+    :return: Tuple (results, total_count, date_range, id_range).
         - total_count reflects the total number of matching rows BEFORE pagination is applied.
         - date_range reflects the possible range of created_at dates for this job type
           BEFORE user filtering (after run_status restriction).
@@ -1286,17 +1542,6 @@ def get_forecast_jobs_internal(
 
         # Compute ranges BEFORE user filters (but after run_status restriction)
         date_range, id_range = compute_range(ForecastRun, query)
-
-        # ───── Collect gages for the base universe (after run_status, before user filters) ─────
-        gage_list: list[str] | None = None
-        if get_gages:
-            gage_list = list(
-                ForecastRun.objects
-                .filter(query)
-                .filter(calibration_run__gage__isnull=False)
-                .values_list("calibration_run__gage__gage_id", flat=True)
-                .distinct()
-            )
 
         # Now apply user filters
         query = apply_forecast_filters(query, filters)
@@ -1350,7 +1595,7 @@ def get_forecast_jobs_internal(
             }
         # else: omit cold_start entirely
 
-    return rows, total_count, date_range, id_range, gage_list
+    return rows, total_count, date_range, id_range
 
 
 @extend_schema(
@@ -1390,24 +1635,20 @@ def get_forecast_jobs(request: Request) -> Response:
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
-    get_gages = validator.get("get_gages")
 
-    forecast_jobs, total_count, date_range, id_range, gage_list = get_forecast_jobs_internal(
+    forecast_jobs, total_count, date_range, id_range = get_forecast_jobs_internal(
         auth_user(request),
         run_status=None,
         limit=limit,
         offset=offset,
         filters=filters,
-        sort=sort,
-        get_gages=get_gages
+        sort=sort
     )
 
     response = {
         "forecast_jobs": forecast_jobs,
         "total_count": total_count,
     }
-    if get_gages:
-        response["gages"] = gage_list  # type: ignore[assignment]
     if total_count > 0:
         response['date_range'] = date_range
         response['id_range'] = id_range
@@ -1462,24 +1703,20 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
-    get_gages = validator.get("get_gages")
 
-    forecast_jobs, total_count, date_range, id_range, gage_list = get_forecast_jobs_internal(
+    forecast_jobs, total_count, date_range, id_range = get_forecast_jobs_internal(
         auth_user(request),
         run_status=[StatusEnum.DONE],
         limit=limit,
         offset=offset,
         filters=filters,
-        sort=sort,
-        get_gages=get_gages
+        sort=sort
     )
 
     response = {
         "forecast_jobs": forecast_jobs,
         "total_count": total_count
     }
-    if get_gages:
-        response["gages"] = gage_list  # type: ignore[assignment]
     if total_count > 0:
         response['date_range'] = date_range
         response['id_range'] = id_range
@@ -1505,8 +1742,7 @@ def get_verification_jobs_internal(
         offset: int = 0,
         filters: dict[str, Any] | None = None,
         sort: dict[str, str] | None = None,
-        get_gages: bool = False,
-) -> tuple[list[dict[str, Any]], int, list[Any], list[Any], list[str] | None]:
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
     """
     Internal helper to retrieve verification jobs (READ ONLY) with optional
     filtering, sorting, and pagination.
@@ -1522,9 +1758,7 @@ def get_verification_jobs_internal(
     :param offset: Optional number of rows to skip before returning results (for pagination).
     :param filters: Optional dict of filter criteria (reusing calibration filters, e.g. gage_id, status, modules).
     :param sort: Optional dict { "field": one of VerificationSortField values, "direction": "asc" or "desc" }.
-    :param get_gages: If true, also return distinct non-null gage_ids for the filtered job universe
-                      (after user filters, before pagination).
-    :return: Tuple (results, total_count, date_range, id_range, gage_list).
+    :return: Tuple (results, total_count, date_range, id_range).
         - total_count reflects the total number of matching rows BEFORE pagination is applied.
         - date_range reflects the possible range of created_at dates for this job set BEFORE user filtering
           (after run_status restriction).
@@ -1544,17 +1778,6 @@ def get_verification_jobs_internal(
 
         # Compute ranges BEFORE user filters (but after run_status restriction)
         date_range, id_range = compute_range(VerificationRun, query)
-
-        # ───── Collect gages for the base universe (after run_status, before user filters) ─────
-        gage_list: list[str] | None = None
-        if get_gages:
-            gage_list = list(
-                VerificationRun.objects
-                .filter(query)
-                .filter(forecast_run__calibration_run__gage__isnull=False)
-                .values_list("forecast_run__calibration_run__gage__gage_id", flat=True)
-                .distinct()
-            )
 
         # Now apply user filters
         query = apply_verification_filters(query, filters)
@@ -1579,13 +1802,12 @@ def get_verification_jobs_internal(
             )
         )
 
-
     # Normalize keys expected by the API response/serializer
     for r in rows:
         r["verification_run_id"] = r.pop("id")
         r["status"] = r.pop("status__name")
 
-    return rows, total_count, date_range, id_range, gage_list
+    return rows, total_count, date_range, id_range
 
 
 @extend_schema(
@@ -1624,24 +1846,20 @@ def get_verification_jobs(request: Request) -> Response:
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
-    get_gages = validator.get("get_gages")
 
-    verification_jobs, total_count, date_range, id_range, gage_list = get_verification_jobs_internal(
+    verification_jobs, total_count, date_range, id_range = get_verification_jobs_internal(
         auth_user(request),
         run_status=None,
         limit=limit,
         offset=offset,
         filters=filters,
-        sort=sort,
-        get_gages=get_gages
+        sort=sort
     )
 
     response = {
         'verification_jobs': verification_jobs,
         "total_count": total_count
     }
-    if get_gages:
-        response["gages"] = gage_list  # type: ignore[assignment]
     if total_count > 0:
         response['date_range'] = date_range
         response['id_range'] = id_range
