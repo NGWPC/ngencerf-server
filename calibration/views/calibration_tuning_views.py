@@ -29,7 +29,7 @@ from calibration.util.ngen_locations import get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, \
-    get_valid_path, format_datetime, get_user_email, get_elapsed_str, readonly_transaction
+    get_valid_path, format_datetime, get_user_email, get_elapsed_str, readonly_transaction, ErrorReport
 from calibration.views.data_services import should_use_bmi_forcing, get_observational_date_range_from_data_services
 
 logger = logging.getLogger(__name__)
@@ -1172,3 +1172,67 @@ def get_date_range_intersection(run: CalibrationRun, forcing_dir_path: str = Non
         if start_time <= end_time:
             return DateTimeRange(start_time, end_time)
     return None
+
+
+def validate_parameter_selection_rules(
+        *,
+        module_names_for_job: set[str],
+        selected_module_names: set[str],
+        have_LSTM_flag: bool,
+        has_any_params: bool,
+        error_object: ErrorReport
+) -> None:
+    """
+    Enforce calibration parameter selection rules for a job, based on its modules.
+
+    Rules:
+    - If LSTM is present: MUST have zero selected parameters.
+    - If Topoflow-Glacier is in the job: must select >=1 Topoflow-Glacier parameter.
+      If any other modules are also in the job: must also select >=1 non-Topoflow-Glacier parameter.
+    - Otherwise (no LSTM, no Topoflow-Glacier): must select >=1 parameter overall.
+
+    Parameters:
+    - module_names_for_job: module names included in this job (e.g., from formulations).
+    - selected_module_names: module names that have at least one selected parameter.
+      Pass empty when there are no selected params.
+    - have_LSTM_flag: True if the job includes LSTM.
+    - has_any_params: True if there are any selected params (i.e., bool(params)).
+    - error_object: ErrorReport to receive warnings.
+    """
+    TOPOFLOW = "Topoflow-Glacier"
+
+    has_topoflow = TOPOFLOW in module_names_for_job
+    has_non_topoflow_modules = any(name != TOPOFLOW for name in module_names_for_job)
+
+    # Parameter selection rules:
+    # - If LSTM is present: MUST have zero selected parameters.
+    # - If Topoflow-Glacier is in the job: must select >=1 Topoflow-Glacier parameter.
+    #   If any other modules are also in the job: must also select >=1 non-Topoflow-Glacier parameter.
+    # - Otherwise (no LSTM, no Topoflow-Glacier): must select >=1 parameter overall.
+    if have_LSTM_flag:
+        if has_any_params:
+            error_object.add_warning("LSTM jobs must not specify any calibration parameters")
+        return
+
+    # No params selected at all.
+    if not has_any_params:
+        if has_topoflow:
+            if has_non_topoflow_modules:
+                error_object.add_warning(
+                    "At least one Topoflow-Glacier parameter and at least one non-Topoflow-Glacier parameter must be specified"
+                )
+            else:
+                error_object.add_warning("At least one Topoflow-Glacier parameter must be specified")
+        else:
+            error_object.add_warning("At least one parameter must be specified")
+        return
+
+    # Parameters selected — ensure they cover required module categories
+    has_topoflow_param = TOPOFLOW in selected_module_names
+    has_non_topoflow_param = any(name != TOPOFLOW for name in selected_module_names)
+
+    if has_topoflow and not has_topoflow_param:
+        error_object.add_warning("At least one Topoflow-Glacier parameter must be specified")
+
+    if has_topoflow and has_non_topoflow_modules and not has_non_topoflow_param:
+        error_object.add_warning("At least one non-Topoflow-Glacier parameter must be specified")

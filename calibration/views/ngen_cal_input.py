@@ -18,11 +18,12 @@ from calibration.models import CalibrationOptimizationInput, CalibrationStopCrit
     CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, get_cached_modules_by_id
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
-    get_observational_file_for_job, get_geopackage_dir_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, UEB_LIB, NGEN_MODULE_PARAMETERS, \
+    get_observational_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, UEB_LIB, NGEN_MODULE_PARAMETERS, \
     PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES, get_forcing_dir_for_job, get_geopackage_file_path
 from calibration.views.calibration_formulation_views import validate_formulation
 from calibration.views.calibration_secondary_data_views import should_generate_swe, should_generate_soil_moisture
-from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
+from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data, \
+    validate_parameter_selection_rules
 from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
 from calibration.views.data_services import should_use_bmi_forcing, get_observational_data_from_data_services
@@ -294,10 +295,13 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
 
         formulations = CalibrationFormulation.objects.filter(calibration_run=run).only("module_id")
 
-        if not is_missing(formulations, 'Modules', error_object) and not is_missing(run.job_name, 'Formulation name', error_object):
+        # Compute once and reuse everywhere below.
+        module_names_for_job: set[str] = {
+            modules_by_id[f.module_id].name
+            for f in formulations
+        }
 
-            # Extract only the modules actually used in THIS calibration job
-            module_names_for_job = {modules_by_id[f.module_id].name for f in formulations}
+        if not is_missing(formulations, 'Modules', error_object) and not is_missing(run.job_name, 'Formulation name', error_object):
 
             # Build the proper { name → Module } filter for just this job
             modules_by_name_for_job = {name: modules_by_name[name] for name in module_names_for_job}
@@ -315,10 +319,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
 
             if run.use_sloth:
                 general['models'] += f', {SLOTH}'
-
-            # # Dynamically add BMI config paths based on only the modules actually used
-            # for name in module_names_for_job:
-            #     datafile[get_bmi_config_key(name)] = get_bmi_config_dir_for_module(run, name)
 
             general['is_aet_rootzone'] = run.is_aet_rootzone
 
@@ -473,67 +473,38 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             .values('name', 'initial_value', 'minimum', 'maximum', 'calibration_formulation__module_id')
         )
 
-        TOPOFLOW = "Topoflow-Glacier"
+        # Pre-attach model names so the validator can reason about Topoflow vs non-Topoflow.
+        for p in params:
+            p["model"] = modules_by_id[p["calibration_formulation__module_id"]].name
 
-        module_names_for_job = {
-            modules_by_id[f.module_id].name
-            for f in formulations
-        }
-        has_topoflow = TOPOFLOW in module_names_for_job
-        has_non_topoflow_modules = any(name != TOPOFLOW for name in module_names_for_job)
+        selected_module_names = {p["model"] for p in params}  # after you set model
 
-        # Parameter selection rules:
-        # - If LSTM is present: MUST have zero selected parameters.
-        # - If Topoflow-Glacier is in the job: must select >=1 Topoflow-Glacier parameter.
-        #   If any other modules are also in the job: must also select >=1 non-Topoflow-Glacier parameter.
-        # - Otherwise (no LSTM, no Topoflow-Glacier): must select >=1 parameter overall.
+        validate_parameter_selection_rules(
+            module_names_for_job=module_names_for_job,
+            selected_module_names=selected_module_names,
+            have_LSTM_flag=have_LSTM_flag,
+            has_any_params=bool(params),
+            error_object=error_object,
+        )
+
         if have_LSTM_flag:
-            if params:
-                error_object.add_warning("LSTM jobs must not specify any calibration parameters")
             # Do not validate or write parameter files for LSTM jobs.
+            pass
         else:
-            if not params:
-                if has_topoflow:
-                    if has_non_topoflow_modules:
-                        error_object.add_warning(
-                            "At least one Topoflow-Glacier parameter and at least one non-Topoflow-Glacier parameter must be specified"
-                        )
-                    else:
-                        error_object.add_warning(
-                            "At least one Topoflow-Glacier parameter must be specified"
-                        )
-                else:
-                    error_object.add_warning("At least one parameter must be specified")
-            else:
-                selected_module_names = {
-                    modules_by_id[p['calibration_formulation__module_id']].name
-                    for p in params
-                }
-                has_topoflow_param = TOPOFLOW in selected_module_names
-                has_non_topoflow_param = any(name != TOPOFLOW for name in selected_module_names)
+            # Validate parameter values and write parameter files
+            param_error = False
+            for p in params:
+                if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
+                    # module_name = modules_by_id[p['calibration_formulation__module_id']].name
+                    param_error = True
+                    error_object.add_warning(
+                        f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) "
+                        f"must be specified for parameter '{p['name']}' (module {p['model']})"
+                    )
 
-                if has_topoflow and not has_topoflow_param:
-                    error_object.add_warning("At least one Topoflow-Glacier parameter must be specified")
-
-                if has_topoflow and has_non_topoflow_modules and not has_non_topoflow_param:
-                    error_object.add_warning("At least one non-Topoflow-Glacier parameter must be specified")
-
-                # Validate parameter values and write parameter files
-                param_error = False
-                for p in params:
-                    if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
-                        module_name = modules_by_id[p['calibration_formulation__module_id']].name
-                        param_error = True
-                        error_object.add_warning(
-                            f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) "
-                            f"must be specified for parameter '{p['name']}' (module {module_name})"
-                        )
-
-                if not param_error and build:
-                    calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
-                    for p in params:
-                        p['model'] = modules_by_id[p['calibration_formulation__module_id']].name
-                    write_parameter_files(params, calibration['calib_parameter_file'])
+            if params and (not param_error) and build:
+                calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
+                write_parameter_files(params, calibration['calib_parameter_file'])
 
         if build and NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
             config['Parallel'] = parallel
@@ -669,3 +640,5 @@ def get_node_type(num_catchments: int) -> str:
 
     logger.info(f'{num_catchments} catchments using node type {node_type}')
     return node_type
+
+
