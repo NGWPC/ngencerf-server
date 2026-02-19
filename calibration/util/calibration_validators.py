@@ -1032,8 +1032,25 @@ class UserParameterFileUploadResponse(BaseSerializer):
 # Module object from Data Services containing module parameters and output variables
 class ModuleMetadataSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
-    calibratable_parameters = ModuleParametersSerializer(many=True)
-    # error = serializers.CharField(required=False)
+    error = serializers.CharField(required=False, allow_blank=False)
+
+    calibratable_parameters = ModuleParametersSerializer(many=True, required=False, allow_empty=True)
+
+    def validate(self, data):
+        has_error = bool(data.get("error"))
+        has_params = "calibratable_parameters" in data
+
+        # If Data Services returns an error for a module, it may omit calibratable_parameters.
+        if has_error:
+            return data
+
+        # If no error, calibratable_parameters must be present.
+        if not has_params:
+            raise serializers.ValidationError({
+                "calibratable_parameters": "This field is required unless 'error' is provided."
+            })
+
+        return data
 
 
 # List of module objects from Data Services containing module parameters and output variables

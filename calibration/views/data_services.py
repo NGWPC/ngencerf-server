@@ -394,9 +394,22 @@ def get_module_metadata_from_data_services(
         'Module metadata from Data Services is not in the expected format'
     )
 
+    # Check for any error fields from EDFS
+    eds_errors: list[dict] = []
+    for module_data in module_metadata.get("modules", []):
+        err = module_data.get("error")
+        if err:
+            module_name = module_data.get('module_name')
+            eds_errors.append({
+                "name": "parameters",
+                "message": f'{module_name} - {err}',
+                "status_code": None,
+            })
+
+    # Only translate names for modules that actually have parameters
     fix_module_metadata(module_metadata)
 
-    return module_metadata, []
+    return module_metadata, eds_errors
 
 
 def update_parameters(run: CalibrationRun, module_metadata: dict, gage_changed: bool = False):
@@ -546,15 +559,28 @@ def fix_module_metadata(module_metadata):
                          ]
                      }
     """
-    for module in module_metadata["modules"]:
-        module_name = module["module_name"]  # Extract the module name
-        for param in module["calibratable_parameters"]:
+    modules = (module_metadata or {}).get("modules") or []
+    for module in modules:
+        # If EDFS reported an error for this module, do not touch it.
+        if module.get("error"):
+            continue
+
+        module_name = module.get("module_name")
+        if not module_name:
+            continue
+
+        params = module.get("calibratable_parameters") or []
+        for param in params:
             param_name = param["name"]  # Extract the parameter name
+            if not param_name:
+                continue
+
             key = (module_name, param_name)  # Create a tuple key
+            mapped = translation_map.get(key)
             # Check if the key exists in the translation_map
-            if key in translation_map:
-                logger.info(f"Translating {key} to {translation_map[key]}")
-                param["name"] = translation_map[key]
+            if mapped:
+                logger.info(f"Translating {key} to {mapped}")
+                param["name"] = mapped
 
 
 def safe_float(value, label, param_name, module_name):

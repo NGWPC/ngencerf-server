@@ -245,10 +245,15 @@ def save_gage_tab(request: Request):
 
             if module_eds_errors:
                 eds_errors.extend(module_eds_errors)
-            elif module_metadata:
-                # DB writes: parameters update. Keep it in a small atomic block.
-                with transaction.atomic():
-                    update_parameters(run, module_metadata, gage_changed=True)
+            else:
+                modules_with_params = [
+                    m for m in (module_metadata or {}).get("modules", [])
+                    if not m.get("error")
+                ]
+
+                if modules_with_params:
+                    with transaction.atomic():
+                        update_parameters(run, {"modules": modules_with_params}, gage_changed=True)
 
         # Get Geopackage - for now HYDROFABRIC is the only possibility
         if geopackage_source_name and geopackage_source_name == GeopackageSourceEnum.HYDROFABRIC.value:

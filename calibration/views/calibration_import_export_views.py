@@ -189,6 +189,14 @@ def import_calibration_run_data(request: Request,
             )
             if module_eds_errors:
                 eds_errors.extend(module_eds_errors)
+                module_metadata = {}
+            else:
+                # Only pass through modules that actually returned params
+                modules_with_params = [
+                    m for m in (module_metadata or {}).get("modules", [])
+                    if not m.get("error")
+                ]
+                module_metadata = {"modules": modules_with_params} if modules_with_params else {}
 
     with transaction.atomic():
         # -----------------------------

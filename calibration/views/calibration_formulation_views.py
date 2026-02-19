@@ -288,58 +288,63 @@ def save_formulation_tab(request) -> Response:
     module_metadata, errors = get_module_metadata_from_data_services(run, to_be_added)
     if errors:
         eds_errors.extend(errors)
-    else:
-        with transaction.atomic():
-            # Delete unused formulations
-            if to_be_unused:
-                logger.info(f"Deleting unused modules: {to_be_unused}")
-                delete_unused_formulations(to_be_unused, run)
 
-            # Refresh the list after inserts/deletes
-            existing_module_ids = set(
-                CalibrationFormulation.objects
-                .filter(calibration_run=run)
-                .values_list("module_id", flat=True)
-            )
+    with transaction.atomic():
+        # Delete unused formulations
+        if to_be_unused:
+            logger.info(f"Deleting unused modules: {to_be_unused}")
+            delete_unused_formulations(to_be_unused, run)
 
-            to_create = []
-            for module_name in to_be_added:
-                m = get_cached_module_by_name(module_name)
-                if m and m.id not in existing_module_ids:
-                    to_create.append(CalibrationFormulation(calibration_run=run, module=m))
+        # Refresh the list after inserts/deletes
+        existing_module_ids = set(
+            CalibrationFormulation.objects
+            .filter(calibration_run=run)
+            .values_list("module_id", flat=True)
+        )
 
-            if to_create:
-                CalibrationFormulation.objects.bulk_create(to_create, ignore_conflicts=True)
+        to_create = []
+        for module_name in to_be_added:
+            m = get_cached_module_by_name(module_name)
+            if m and m.id not in existing_module_ids:
+                to_create.append(CalibrationFormulation(calibration_run=run, module=m))
 
-            # Persist parameters for modules we fetched.
-            if module_metadata:
-                update_parameters(run, module_metadata)
+        if to_create:
+            CalibrationFormulation.objects.bulk_create(to_create, ignore_conflicts=True)
 
-            # Delete existing Sloth params for this run and re-add them if enabled
-            CalibrationSlothParam.objects.filter(calibration_run=run).delete()
-            if use_sloth:
-                error_message = add_sloth_parameters(run, sloth_parameters, new_module_names)
-                if error_message:
-                    logger.error(f"Error adding Sloth parameters: {error_message}")
-                    return ResponseError(error_message)
+        # Persist parameters only for modules that actually returned them
+        modules_with_params = [
+            m for m in (module_metadata or {}).get("modules", [])
+            if not m.get("error")
+        ]
 
-            # If formulation uses LSTM, we need to clear all irrelevant fields
-            if have_lstm:
-                # clear core CalibrationRun fields
-                run.optimization = None
-                run.objective_function = None
-                run.streamflow_threshold = None
-                run.peak_flow_threshold = None
-                run.save_plot_iteration_frequency = None
-                run.save_output_iteration = False
+        if modules_with_params:
+            update_parameters(run, {"modules": modules_with_params})
 
-                # remove stop criteria
-                CalibrationStopCriteria.objects.filter(calibration_run=run).delete()
+        # Delete existing Sloth params for this run and re-add them if enabled
+        CalibrationSlothParam.objects.filter(calibration_run=run).delete()
+        if use_sloth:
+            error_message = add_sloth_parameters(run, sloth_parameters, new_module_names)
+            if error_message:
+                logger.error(f"Error adding Sloth parameters: {error_message}")
+                return ResponseError(error_message)
 
-                # No optimization inputs
-                write_optimization_inputs(run, [])
+        # If formulation uses LSTM, we need to clear all irrelevant fields
+        if have_lstm:
+            # clear core CalibrationRun fields
+            run.optimization = None
+            run.objective_function = None
+            run.streamflow_threshold = None
+            run.peak_flow_threshold = None
+            run.save_plot_iteration_frequency = None
+            run.save_output_iteration = False
 
-            run.save()
+            # remove stop criteria
+            CalibrationStopCriteria.objects.filter(calibration_run=run).delete()
+
+            # No optimization inputs
+            write_optimization_inputs(run, [])
+
+        run.save()
 
     ngen_cal_input.ready_to_run(run)
 
