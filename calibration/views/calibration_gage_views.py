@@ -72,21 +72,19 @@ def load_gage_tab(request: Request) -> Response:
     forcing_source_values = ForcingSourceEnum.get_choices_with_fields(fields=['name', 'description'])
     observational_source_values = ObservationalSourceEnum.get_choices_with_fields(fields=['name', 'description'])
     geopackage_source_values = GeopackageSourceEnum.get_choices_with_fields(fields=['name', 'description'])
-    domain_values = [
-        {
-            **item,
-            'name': item['name'].replace('_', ' ')
-        }
-        for item in DomainEnum.get_choices_with_fields(fields=['name', 'description'])
-    ]
+    domain_values = DomainEnum.get_choices_with_fields(fields=['name', 'display_name', 'description'])
 
     # Retrieve cached active gages with necessary fields
-    gages = [{
-        'gage_id': gage.get('gage_id'),
-        'headwater_calibration': gage.get('headwater_calibration'),
-        'nws_id': gage.get('nws_id'),
-        'domain': gage.get('domain').replace('_', ' ') if gage.get('domain') else None
-    } for gage in get_cached_gages().values() if gage.get('is_active')]
+    gages = [
+        {
+            'gage_id': gage.get('gage_id'),
+            'headwater_calibration': gage.get('headwater_calibration'),
+            'nws_id': gage.get('nws_id'),
+            'domain': gage.get('domain')
+        }
+        for gage in get_cached_gages().values()
+        if gage.get('is_active')
+    ]
 
     response = {
         'domain_values': domain_values,
@@ -318,11 +316,11 @@ def save_gage_tab(request: Request):
         )
 
         needs_forcing_fetch = (
-            forcing_source_requested_name
-            and (
-                not run.forcing_source_requested
-                or run.forcing_source_requested.name != forcing_source_requested_name
-            )
+                forcing_source_requested_name
+                and (
+                        not run.forcing_source_requested
+                        or run.forcing_source_requested.name != forcing_source_requested_name
+                )
         )
 
         # Persist the requested source selection even if we don't refetch

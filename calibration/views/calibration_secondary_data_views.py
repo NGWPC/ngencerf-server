@@ -18,7 +18,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType
 from calibration.enums_vanilla import SecondaryDataEnum
-from calibration.models import ValidationRun, Module, CalibrationRun
+from calibration.models import ValidationRun, Module
 from calibration.util.calibration_validators import GetImagesByDateResponseSerializer, \
     ErrorResponseSerializer, ValidationRunSerializer, GetTimeseriesDataResponseSerializer, GetSoilMoistureImagesByDateRequestSerializer, \
     GetSWEImagesByDateRequestSerializer
