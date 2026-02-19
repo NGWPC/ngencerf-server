@@ -46,8 +46,8 @@ RUN set -eux && \
     rm -rf /tmp/singularity
 
 
-# Install Boost 1.79.0 from source
-ARG BOOST_VERSION=1.79.0
+# Install Boost
+ARG BOOST_VERSION=1.86.0
 RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-boost \
     set -eux && \
     curl --location --output boost.tar.gz "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION//./_}.tar.gz" && \
