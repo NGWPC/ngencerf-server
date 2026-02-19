@@ -446,8 +446,8 @@ def update_parameters(run: CalibrationRun, module_metadata: dict, gage_changed: 
             for param in parameters:
                 # Build candidate parameters from Data Services metadata (new rows insert from this list).
                 initial_value = safe_float(
-                    param.get('default_value'),
-                    "Default value",
+                    param.get('initial_value'),
+                    "Initial value",
                     param.get('name'),
                     module_name
                 )

@@ -26,7 +26,7 @@ from calibration.views.calibration_gage_views import get_data_files_status, rese
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
 from calibration.views.calibration_run_views import map_path_to_host, normalize_failure_messages
-from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
+from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameter_values, \
     save_parameters, has_user_selected_tuning_parameters, compute_time_range, persist_time_range
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
@@ -310,7 +310,7 @@ def import_calibration_run_data(request: Request,
         # Only validate parameters if we didn't hit Data Services parameter metadata errors
         if parameters and not any(error.get('name') == 'parameters' for error in eds_errors):
             # These validations read from DB; saving persists selections
-            parameter_errors, parameter_warnings = validate_parameters(run, parameters)
+            parameter_errors, parameter_warnings = validate_parameter_values(run, parameters)
             if parameter_errors:
                 return None, None, ResponseError(parameter_errors)
             save_parameters(run, parameters, allow_nulls=True)

@@ -23,7 +23,7 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
 from calibration.views.calibration_formulation_views import validate_formulation
 from calibration.views.calibration_secondary_data_views import should_generate_swe, should_generate_soil_moisture
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data, \
-    validate_parameter_selection_rules
+    validate_parameter_rules
 from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
 from calibration.views.data_services import should_use_bmi_forcing, get_observational_data_from_data_services
@@ -479,7 +479,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
 
         selected_module_names = {p["model"] for p in params}  # after you set model
 
-        validate_parameter_selection_rules(
+        validate_parameter_rules(
             module_names_for_job=module_names_for_job,
             selected_module_names=selected_module_names,
             have_LSTM_flag=have_LSTM_flag,

@@ -207,62 +207,90 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             Module.objects.all().delete()
 
-        values = [{"name": "Topoflow-Glacier",
-                   "description": "A glacier energy balance module as part of TopoFlow, which calculates runoff based on snow/ice melt",
-                   "groups": ["Glacier"],
-                   "output_variables": ["ACSNOM", "SNOWH", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]},
-                  {"name": "Noah-OWP-Modular",
-                   "description": "An extended, refactored version of the Noah-MP land surface model",
-                   "groups": ["Snowmelt", "Evapotranspiration"],
-                   "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "FSNO", "SNOWH", "SNLIQ", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]},
-                  {"name": "Snow-17",
-                   "description": "Snow17 is a snow accumulation and melt model that has been used by the National Weather Service since the late 1970s for operational streamflow forecasting.  It is a temperature-index model",
-                   "groups": ["Snowmelt"],
-                   "output_variables": ["ACSNOM", "SNOWH", "SNEQV"]},
-                  {"name": "UEB", "display_name": "Utah Energy Balance (UEB)",
-                   "description": "description",
-                   "groups": ["Snowmelt"],
-                   "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]},
-                  {"name": "CFE-S", "display_name": "CFE-S (Schaake)",
-                   "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The X represents the Xinanjiang function (configuration: surface_partitioning_scheme= Xinanjiang)",
-                   "groups": ["Rainfall Runoff"],
-                   "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"]},
-                  {"name": "CFE-X", "display_name": "CFE-X (Xinanjiang)",
-                   "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The S represents the Schaake function (configuration: surface_partitioning_scheme=Schaake)",
-                   "groups": ["Rainfall Runoff"],
-                   "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"]},
-                  {"name": "LSTM",
-                   "description": "The Long Short-Term Memory (LSTM) network Module is dependent on a trained deep learning model. The forward pass of this LSTM model nextgen_cuda_lstm.py is heavily based on NeuralHydrology's CudaLSTM",
-                   "groups": ["Glacier", "Snowmelt", "Evapotranspiration", "Soil Moisture", "Rainfall Runoff"]},
-                  {"name": "PET",
-                   "description": "PET handles potential evapotranspiration functions: Aerodynamic method, Combination method, Energy balance method, Penman Monteith method and Priestly Taylor method.",
-                   "groups": ["Evapotranspiration"],
-                   "is_active": False},
-                  {"name": "TopModel",
-                   "description": "A physically based, distributed watershed model that simulates hydrologic fluxes of water.",
-                   "groups": ["Rainfall Runoff"],
-                   "output_variables": ["streamflow", "QRAIN", "SFCRNOFF"]},
-                  {"name": "Sac-SMA",
-                   "description": "A BMI enabled version of the Sacramento Soil Moisture Accounting (Sac-SMA) model.  This version of Sac-SMA allows for multiple hydrological response units (HRUs) to be modeled at once.",
-                   "groups": ["Rainfall Runoff"],
-                   "output_variables": ["qBucket", "streamflow", "SFCRNOFF"]},
-                  {"name": "LASAM", "display_name": "LASAM (Lumped Arid Semi-Arid Model)",
-                   "description": "Lumped Arid/Semi-arid Model (LASAM) for infiltration and surface runoff.  The LASAM simulates infiltration and runoff based on Layered Green & Ampt with redistribution (LGAR) model.).",
-                   "groups": ["Rainfall Runoff"],
-                   "output_variables": ["qBucket", "streamflow", "SOILSAT_TOP", "QRAIN", "SOIL_M", "SFCRNOFF"]},
-                  {"name": "SMP",
-                   "description": "The soil moisture profiles (SMP schemes provide soil moisture distributed over a one-dimensional vertical column and depth to water table. These schemes facilitate coupling among hydrological and thermal models such as (CFE and SFT or LASAM and SFT).",
-                   "groups": ["Soil Moisture"],
-                   "output_variables": ["SOILSAT_TOP", "SOIL_M"]},
-                  {"name": "SFT",
-                   "description": "The soil freeze-thaw model simulates the transport of heat in soil using a one-dimensional vertical column. The model uses a standard diffusion equation discretized using a fully-implicit scheme at the interior and a semi-implicit scheme at the top and bottom boundaries, similar to NOAH-MP. More details are provided below.",
-                   "groups": ["Soil Moisture"],
-                   "output_variables": ["SOILICE", "SOIL_T"]},
-                  {"name": "T-Route",
-                   "description": "Tree-Based Channel Routing -  a dynamic channel routing model, offers a comprehensive solution for river network routing problems. Provides a series lateral inflows for each node in a channel network and computes the resulting streamflows.",
-                   "groups": ["Routing"],
-                   "output_variables": ["inflow", "outflow", "reservoir_assimilated_value", "water_sfc_elev", "nudge", "streamflow", "velocity", ""]}
-                  ]
+        values = [
+            {
+                "name": "Topoflow-Glacier",
+                "description": "A glacier energy balance module as part of TopoFlow, which calculates runoff based on snow/ice melt",
+                "groups": ["Glacier"],
+                "output_variables": ["ACSNOM", "SNOWH", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]
+            },
+            {
+                "name": "Noah-OWP-Modular",
+                "description": "An extended, refactored version of the Noah-MP land surface model",
+                "groups": ["Snowmelt", "Evapotranspiration"],
+                "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "FSNO", "SNOWH", "SNLIQ", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]
+            },
+            {
+                "name": "Snow-17",
+                "description": "Snow17 is a snow accumulation and melt model that has been used by the National Weather Service since the late 1970s for operational streamflow forecasting.  It is a temperature-index model",
+                "groups": ["Snowmelt"],
+                "output_variables": ["ACSNOM", "SNOWH", "SNEQV"]
+            },
+            {
+                "name": "UEB", "display_name": "Utah Energy Balance (UEB)",
+                "description": "description",
+                "groups": ["Snowmelt"],
+                "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]
+            },
+            {
+                "name": "CFE-S", "display_name": "CFE-S (Schaake)",
+                "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The X represents the Xinanjiang function (configuration: surface_partitioning_scheme= Xinanjiang)",
+                "groups": ["Rainfall Runoff"],
+                "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"]
+            },
+            {
+                "name": "CFE-X", "display_name": "CFE-X (Xinanjiang)",
+                "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The S represents the Schaake function (configuration: surface_partitioning_scheme=Schaake)",
+                "groups": ["Rainfall Runoff"],
+                "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"]
+            },
+            {
+                "name": "LSTM",
+                "description": "The Long Short-Term Memory (LSTM) network Module is dependent on a trained deep learning model. The forward pass of this LSTM model nextgen_cuda_lstm.py is heavily based on NeuralHydrology's CudaLSTM",
+                "groups": ["Glacier", "Snowmelt", "Evapotranspiration", "Soil Moisture", "Rainfall Runoff"]
+            },
+            {
+                "name": "PET",
+                "description": "PET handles potential evapotranspiration functions: Aerodynamic method, Combination method, Energy balance method, Penman Monteith method and Priestly Taylor method.",
+                "groups": ["Evapotranspiration"],
+                "is_active": False
+            },
+            {
+                "name": "TopModel",
+                "description": "A physically based, distributed watershed model that simulates hydrologic fluxes of water.",
+                "groups": ["Rainfall Runoff"],
+                "output_variables": ["streamflow", "QRAIN", "SFCRNOFF"]
+            },
+            {
+                "name": "Sac-SMA",
+                "description": "A BMI enabled version of the Sacramento Soil Moisture Accounting (Sac-SMA) model.  This version of Sac-SMA allows for multiple hydrological response units (HRUs) to be modeled at once.",
+                "groups": ["Rainfall Runoff"],
+                "output_variables": ["qBucket", "streamflow", "SFCRNOFF"]
+            },
+            {
+                "name": "LASAM", "display_name": "LASAM (Lumped Arid Semi-Arid Model)",
+                "description": "Lumped Arid/Semi-arid Model (LASAM) for infiltration and surface runoff.  The LASAM simulates infiltration and runoff based on Layered Green & Ampt with redistribution (LGAR) model.).",
+                "groups": ["Rainfall Runoff"],
+                "output_variables": ["qBucket", "streamflow", "SOILSAT_TOP", "QRAIN", "SOIL_M", "SFCRNOFF"]
+            },
+            {
+                "name": "SMP",
+                "description": "The soil moisture profiles (SMP schemes provide soil moisture distributed over a one-dimensional vertical column and depth to water table. These schemes facilitate coupling among hydrological and thermal models such as (CFE and SFT or LASAM and SFT).",
+                "groups": ["Soil Moisture"],
+                "output_variables": ["SOILSAT_TOP", "SOIL_M"]
+            },
+            {
+                "name": "SFT",
+                "description": "The soil freeze-thaw model simulates the transport of heat in soil using a one-dimensional vertical column. The model uses a standard diffusion equation discretized using a fully-implicit scheme at the interior and a semi-implicit scheme at the top and bottom boundaries, similar to NOAH-MP. More details are provided below.",
+                "groups": ["Soil Moisture"],
+                "output_variables": ["SOILICE", "SOIL_T"]},
+            {
+                "name": "T-Route",
+                "description": "Tree-Based Channel Routing -  a dynamic channel routing model, offers a comprehensive solution for river network routing problems. Provides a series lateral inflows for each node in a channel network and computes the resulting streamflows.",
+                "groups": ["Routing"],
+                "output_variables": ["inflow", "outflow", "reservoir_assimilated_value", "water_sfc_elev", "nudge", "streamflow", "velocity", ""]
+            }
+        ]
 
         for v in values:
             module_instance, _ = Module.objects.update_or_create(

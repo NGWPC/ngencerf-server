@@ -1003,6 +1003,11 @@ class GetModulesResponseSerializer(BaseSerializer):
 ##################################
 # Tuning Tab
 ##################################
+class ValidateParametersResponseSerializer(BaseSerializer):
+    parameter_errors = serializers.JSONField(required=False)
+    parameter_warnings = serializers.JSONField(required=False)
+
+
 class UploadUserParameterFile(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     user_parameter_file = serializers.FileField(required=True)
@@ -1064,6 +1069,11 @@ class SaveTuningRequestSerializer(BaseSerializer):
     calibration_times = CalibrationTimeControls(required=False, allow_empty=False)
     validation_times = ValidationTimeControls(required=False, allow_empty=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
+
+
+class SaveTuningResponseSerializer(GenericResponseSerializer):
+    parameter_errors = serializers.JSONField(required=False)
+    parameter_warnings = serializers.JSONField(required=False)
 
 
 class LoadTuningResponseSerializer(BaseSerializer):

@@ -76,6 +76,7 @@ urlpatterns = [
     path('calibration/load_tuning_tab/', calibration_tuning_views.load_tuning_tab, name="loadTuningTab"),
     path('calibration/save_tuning_tab/', calibration_tuning_views.save_tuning_tab, name="saveTuningTab"),
     path('calibration/upload_user_parameters/', calibration_tuning_views.upload_user_parameters, name="uploadUserParameters"),
+    path('calibration/validate_parameters/', calibration_tuning_views.validate_parameters, name="validateParameters"),
 
     ##################################
     # Optimizations/Metrics tab

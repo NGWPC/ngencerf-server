@@ -458,8 +458,8 @@ def split_routing_modules(
     return routing, non_routing
 
 
-def validate_formulation(module_names: set[str], geopackage_path: str | None, return_group_info: bool = False) -> tuple[
-    list[str], list[str], list[str]]:
+def validate_formulation(module_names: set[str], geopackage_path: str | None, return_group_info: bool = False) \
+        -> tuple[list[str], list[str], list[str]]:
     """
     Validate formulation rules based on group requirements and exclusions.
 
