@@ -31,26 +31,35 @@ def enum_validator(enum_class, *, allow_blank: bool = True):
     By default, blanks (None or empty/whitespace strings) are allowed so that optional
     fields can represent "no selection". Set allow_blank=False for contexts where blanks
     are not meaningful (e.g., list elements).
-    """
-    # Build the valid name list once per validator
-    if hasattr(enum_class, "get_all_valid_names"):
-        original_valid_names = list(enum_class.get_all_valid_names())
-    elif hasattr(enum_class, "get_names"):
-        original_valid_names = list(enum_class.get_names())
-    else:
-        raise RuntimeError(
-            f"Enum class '{enum_class.__name__}' must define either "
-            f"'get_names()' or 'get_all_valid_names()' to work with enum_validator()."
-        )
 
-    valid_names_lc = {str(name).lower() for name in original_valid_names}
+    NOTE:
+    Valid names are loaded lazily on the first validation call and cached for the
+    lifetime of the process. This avoids database access at import time (important
+    during migrations) while still preventing repeated lookups during validation.
+    """
+    valid_names_lc: set[str] | None = None
+    original_valid_names: list[str] | None = None
 
     def validate_enum(value):
+        nonlocal valid_names_lc, original_valid_names
+
         # Skip validation for blanks (handled as no-op)
         if value is None or (isinstance(value, str) and value.strip() == ""):
             if allow_blank:
                 return
             raise serializers.ValidationError("This field may not be blank.")
+
+        if valid_names_lc is None or original_valid_names is None:
+            if hasattr(enum_class, "get_all_valid_names"):
+                original_valid_names = list(enum_class.get_all_valid_names())
+            elif hasattr(enum_class, "get_names"):
+                original_valid_names = list(enum_class.get_names())
+            else:
+                raise RuntimeError(
+                    f"Enum class '{enum_class.__name__}' must define either "
+                    f"'get_names()' or 'get_all_valid_names()'."
+                )
+            valid_names_lc = {str(name).lower() for name in original_valid_names}
 
         # Normalize to string for comparison (prevents .lower() crashes on non-str types)
         original_value = value
