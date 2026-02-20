@@ -69,6 +69,12 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
     local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
     copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
+    image_name = 'nwm-verf'
+    container_name = f'{image_name}_temp_container'
+    container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name}_git_info.json")
+    local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
+
     image_name = 'ngen-bmi-forcing'
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name}_git_info.json")
