@@ -48,7 +48,7 @@ ARG NGEN_FORCING_TAG=development
 ARG CACHE_BUST=1
 RUN set -eux && \
     echo $CACHE_BUST && pip3 install "git+https://github.com/${MSWM_ORG}/nwm-msw-mgr.git@${MSWM_TAG}" && \
-    echo $CACHE_BUST && pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/data-assimilation-engine.git@${DATA_ASSIMILATION_TAG}" && \
+    echo $CACHE_BUST && pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_TAG}" && \
     pip3 cache purge
 
 # Should parallel similar functionality in the run_cerf.sh

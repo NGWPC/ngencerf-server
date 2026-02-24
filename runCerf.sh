@@ -1,7 +1,7 @@
 #! /bin/bash
 
 MSWM_REPO="https://github.com/NGWPC/nwm-msw-mgr.git"
-DATA_ASSIM_REPO="https://github.com/NGWPC/data-assimilation-engine.git"
+DATA_ASSIM_REPO="https://github.com/NGWPC/nwm-data-assimilation.git"
 
 # Branches/tags for git repos
 #MSWM_BRANCH='jwade_NGWPC-7589_add_aet_rootzone'
