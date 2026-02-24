@@ -12,6 +12,8 @@ from calibration.models import Domain, ObservationalSource, Optimization, Metric
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.module import Module
 from calibration.models.module_group import ModuleGroup
+from calibration.models.module_property import ModuleProperty
+from calibration.models.module_property_choice import ModulePropertyChoice
 from calibration.models.output_variable import OutputVariable
 from calibration.models.rfc import Rfc
 from calibration.models.status import Status
@@ -125,6 +127,8 @@ class Command(BaseCommand):
             self.define_module_groups,
             self.define_output_variables,
             self.define_modules,
+            self.define_module_properties,
+            self.define_module_property_choices,
             self.define_domains,
             self.define_rfc,
             self.define_forcing_source,
@@ -313,6 +317,189 @@ class Command(BaseCommand):
             # noinspection PyUnresolvedReferences
             module_instance.output_variables.set(output_variables)
             module_instance.save()
+
+    def define_module_properties(self):
+
+        """
+        Example sent to UI
+          {
+  "modules": [
+    {
+      "name": "CFE-S",
+      "properties": [
+        {
+          "name": "rootzone",
+          "description": "Enable rootzone option.",
+          "data_type": "boolean",
+          "default_value": "false"
+        }
+      ]
+    },
+
+    {
+      "name": "CFE-X",
+      "properties": [
+        {
+          "name": "rootzone",
+          "description": "Enable rootzone option.",
+          "data_type": "boolean",
+          "default_value": "false"
+        }
+      ]
+    },
+
+    {
+      "name": "PET",
+      "properties": [
+        {
+          "name": "method",
+          "description": "Potential evapotranspiration method selection.",
+          "data_type": "integer",
+          "default_value": "1",
+          "choices": [
+            {
+              "value": 1,
+              "label": "Priestley–Taylor",
+              "description": "Priestley–Taylor method."
+            },
+            {
+              "value": 2,
+              "label": "Penman–Monteith",
+              "description": "Penman–Monteith method."
+            },
+            {
+              "value": 3,
+              "label": "Aerodynamic",
+              "description": "Aerodynamic method."
+            },
+            {
+              "value": 4,
+              "label": "Combination",
+              "description": "Combination method."
+            },
+            {
+              "value": 5,
+              "label": "Energy balance",
+              "description": "Energy balance method."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+        """
+
+        if self.DELETE_FLAG:
+            ModuleProperty.objects.all().delete()
+
+        # All modules referenced below must exist in define_modules()
+        cfe_s = Module.objects.get(name="CFE-S")
+        cfe_x = Module.objects.get(name="CFE-X")
+        pet = Module.objects.get(name="PET")
+
+        values = [
+            # CFE Rootzone (boolean)
+            {
+                "module": cfe_s,
+                "name": "rootzone",
+                "data_type": DataTypeEnum.BOOLEAN.value,
+                "default_value": "false",
+                "description": "Enable rootzone option.",
+                "is_active": True,
+            },
+            {
+                "module": cfe_x,
+                "name": "rootzone",
+                "data_type": DataTypeEnum.BOOLEAN.value,
+                "default_value": "false",
+                "description": "Enable rootzone option.",
+                "is_active": True,
+            },
+
+            # PET Method (dropdown)
+            {
+                "module": pet,
+                "name": "method",
+                "data_type": DataTypeEnum.INTEGER.value,
+                "default_value": "1",
+                "description": "Potential evapotranspiration method selection.",
+                "is_active": True,
+            },
+        ]
+
+        for v in values:
+            ModuleProperty.objects.update_or_create(
+                module=v["module"],
+                name=v["name"],
+                defaults={
+                    "is_active": v.get("is_active", True),
+                    "description": v["description"],
+                    "data_type": v["data_type"],
+                    "default_value": v.get("default_value", ""),
+                    "created_by": self.user,
+                },
+            )
+
+    def define_module_property_choices(self):
+        if self.DELETE_FLAG:
+            ModulePropertyChoice.objects.all().delete()
+
+        # Lookup properties by their natural key (module + name)
+        pet = Module.objects.get(name="PET")
+        pet_method = ModuleProperty.objects.get(module=pet, name="method")
+
+        values = [
+            {
+                "module_property": pet_method,
+                "value_int": 1,
+                "label": "Priestley–Taylor",
+                "sort_order": 1,
+                "description": "Priestley–Taylor method."
+            },
+            {
+                "module_property": pet_method,
+                "value_int": 2,
+                "label": "Penman–Monteith",
+                "sort_order": 2,
+                "description": "Penman–Monteith method."
+            },
+            {
+                "module_property": pet_method,
+                "value_int": 3,
+                "label": "Aerodynamic",
+                "sort_order": 3,
+                "description": "Aerodynamic method."
+            },
+            {
+                "module_property": pet_method,
+                "value_int": 4,
+                "label": "Combination",
+                "sort_order": 4,
+                "description": "Combination method."
+            },
+            {
+                "module_property": pet_method,
+                "value_int": 5,
+                "label": "Energy balance",
+                "sort_order": 5,
+                "description": "Energy balance method."
+            },
+        ]
+
+        for v in values:
+            ModulePropertyChoice.objects.update_or_create(
+                module_property=v["module_property"],
+                value_int=v["value_int"],
+                defaults={
+                    "is_active": v.get("is_active", True),
+                    "label": v["label"],
+                    "value_str": None,  # values are all int
+                    "sort_order": v.get("sort_order", 0),
+                    "description": v["description"],
+                    "created_by": self.user,
+                },
+            )
 
     def define_domains(self):
         if self.DELETE_FLAG:

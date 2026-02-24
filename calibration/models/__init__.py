@@ -1,4 +1,5 @@
 from .calibration_formulation import CalibrationFormulation
+from .calibration_module_property_value import CalibrationModulePropertyValue
 from .calibration_optimization_input import CalibrationOptimizationInput
 from .calibration_parameter import CalibrationParameter
 from .calibration_run import CalibrationRun
@@ -18,6 +19,8 @@ from .iteration_result import IterationResult
 from .metric import Metric
 from .module import Module
 from .module_group import ModuleGroup
+from .module_property import ModuleProperty
+from .module_property_choice import ModulePropertyChoice
 from .nwm_retrospective_metrics import NWMRetrospectiveMetrics
 from .observational_source import ObservationalSource
 from .optimization import Optimization
