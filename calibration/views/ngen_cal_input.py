@@ -222,18 +222,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             calibration['station_name'] = run.gage.station_name
 
             if not is_missing(run.geopackage_source, 'Geopackage source', error_object):
-                # geopackage_dir = get_geopackage_dir_for_job(run)
-
-                # Remove normalization
-                # if run.geopackage_eds_file_path and build:
-                #     # For data from Data Services, normalize the CRS and copy to job-specific location
-                #     try:
-                #         normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
-                #     except FileNotFoundError:
-                #         run.geopackage_eds_file_path = None
-
-                # geopackage_file = get_single_file(geopackage_dir)
-                # if geopackage_file:
                 datafile['hydrofab_file'] = get_geopackage_file_path(run)
 
             # Determine the source of the forcing data
