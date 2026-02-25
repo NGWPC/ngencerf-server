@@ -166,8 +166,7 @@ ngen-static-files/
 │  ├── lasam
 │  ├── noah-owp-modular
 │  └── ueb
-├── nwm_retrospective
-└── parquet
+└── nwm_retrospective
 
 
 
@@ -352,8 +351,6 @@ peter.a.kronenberg@U-12SMBYD5450YI:~$ tree /ngencerf -L 4 -n -A
         │       ├── GENPARM.TBL
         │       ├── MPTABLE.TBL
         │       └── SOILPARM.TBL
-        ├── parquet
-        │   └── conus_model_attributes.parquet
         └── nwm_retrospective
             ├── 01118000.csv
             ├── 01121000.csv

@@ -123,10 +123,6 @@ CONFIG_TEMPLATE = {
         "sac-sma_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'sac-sma'),
         "snow-17_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'snow-17'),
 
-        # TODO Get rid of this file
-        # Parquet file - base on domain
-        # "attributes_file": "",
-
         "sloth_parameter_file": "",
 
         "ngen_exe_file": NGEN_EXE,
@@ -288,8 +284,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             if error_message:
                 error_object.add_warning(error_message)
 
-            # Need to set parquet file based on domain
-            # datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
             general['formulation'] = run.job_name
 
