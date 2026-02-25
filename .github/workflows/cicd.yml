@@ -2,11 +2,55 @@ name: CI/CD Pipeline
 
 on:
   pull_request:
-    branches: [ngwpc-candidate, ngwpc-release, main, nwm-main, development, release-candidate]
+    branches:
+      - ngwpc-candidate
+      - ngwpc-release
+      - main
+      - nwm-main
+      - development
+      - release-candidate
   push:
-    branches: [ngwpc-candidate, ngwpc-release, main, nwm-main, development, release-candidate]
-  release:
-    types: [published]
+    branches:
+      - ngwpc-candidate
+      - ngwpc-release
+      - main
+      - nwm-main
+      - development
+      - release-candidate
+  workflow_dispatch:
+    inputs:
+      NGEN_ORG:
+        description: 'NGEN_ORG'
+        required: false
+        type: string
+      NGEN_REF:
+        description: 'NGEN_REF'
+        required: false
+        type: string
+      MSWM_ORG:
+        description: 'MSWM_ORG'
+        required: false
+        type: string
+      MSWM_REF:
+        description: 'MSWM_REF'
+        required: false
+        type: string
+      DATA_ASSIMILATION_ORG:
+        description: 'DATA_ASSIMILATION_ORG'
+        required: false
+        type: string
+      DATA_ASSIMILATION_REF:
+        description: 'DATA_ASSIMILATION_REF'
+        required: false
+        type: string
+      NGEN_FORCING_ORG:
+        description: 'NGEN_FORCING_ORG'
+        required: false
+        type: string
+      NGEN_FORCING_REF:
+        description: 'NGEN_FORCING_REF'
+        required: false
+        type: string
 
 permissions:
   contents: read
