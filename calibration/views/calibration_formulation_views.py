@@ -8,9 +8,9 @@ from mswm.build_inputs import validate_topoflow_glacier
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
+from calibration.enums import StatusEnum, DataTypeEnum
 from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, \
-    CalibrationStopCriteria
+    CalibrationStopCriteria, CalibrationModulePropertyValue, ModuleProperty, ModulePropertyChoice
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups, get_cached_modules_by_id
 from calibration.util.calibration_validators import ValidateFormulationRequestSerializer, \
     SaveFormulationRequestSerializer, ErrorResponseSerializer, ValidateFormulationResponseSerializer, \
@@ -112,6 +112,42 @@ def get_sloth_parameters(run: CalibrationRun) -> list[dict[str, str]]:
     return sloth_parameters
 
 
+def _property_value_to_str(v: CalibrationModulePropertyValue | None, data_type: str) -> str | None:
+    """
+    Convert CalibrationModulePropertyValue's typed storage columns into the UI wire format (string).
+
+    The UI submits property_value as a string, and ModuleProperty.data_type drives interpretation.
+    To keep the API round-trip stable, we send values back as strings too.
+    """
+    if not v:
+        return None
+
+    if data_type == DataTypeEnum.BOOLEAN.value:
+        if v.value_bool is None:
+            return None
+        return "true" if v.value_bool else "false"
+
+    if data_type == DataTypeEnum.INTEGER.value:
+        return None if v.value_int is None else str(v.value_int)
+
+    if data_type == DataTypeEnum.DOUBLE.value:
+        return None if v.value_double is None else str(v.value_double)
+
+    # STRING (or unknown fallback)
+    return None if v.value_str is None else str(v.value_str)
+
+
+def _choice_value_to_str(c: ModulePropertyChoice) -> str:
+    """
+    Convert ModulePropertyChoice's storage columns into the UI wire format (string).
+
+    Exactly one of (value_int, value_str) is set (enforced by ck_choice_exactly_one_value).
+    """
+    if c.value_int is not None:
+        return str(c.value_int)
+    return c.value_str or ""  # should not happen if constraint is enforced
+
+
 @extend_schema(
     request=ValidateFormulationRequestSerializer,
     responses={
@@ -129,12 +165,16 @@ def get_sloth_parameters(run: CalibrationRun) -> list[dict[str, str]]:
 )
 @api_view(['POST'])
 @handle_exceptions
+# TODO Rename to load_formulation_tab
 def validate_formulation_tab(request) -> Response:
     """
     Validate the module list from the formulation tab.
 
+    In addition to validation messages, returns module property definitions needed by the UI
+    to render inputs for the selected modules, including current saved values (if any).
+
     :param request: The HTTP request containing POST data with a list of modules.
-    :return: A JSON response with any warnings or errors.
+    :return: A JSON response with any warnings or errors, plus module property schemas.
     """
     data = request.data
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -150,15 +190,127 @@ def validate_formulation_tab(request) -> Response:
     if error_return:
         return error_return
 
-    formulation_errors, formulation_warnings, formulation_messages = validate_formulation(new_module_names, get_geopackage_file_path(run))
+    formulation_errors, formulation_warnings, formulation_messages = validate_formulation(
+        new_module_names,
+        get_geopackage_file_path(run)
+    )
 
-    response = {}
+    # ---------------------------------------------------------------------
+    # Module properties schema for selected modules (and current values, if any)
+    # ---------------------------------------------------------------------
+    # 1) Find formulations for selected modules in this run
+    formulations_for_run = list(
+        CalibrationFormulation.objects
+        .filter(calibration_run=run, module__name__in=new_module_names)
+        .select_related("module")
+        .only("id", "module_id", "module__name")
+    )
+
+    formulation_ids = [f.id for f in formulations_for_run]
+    module_ids = [f.module_id for f in formulations_for_run]
+
+    # 2) Pull ModuleProperty definitions for those modules (single query)
+    prop_defs = list(
+        ModuleProperty.objects
+        .filter(module_id__in=module_ids)
+        .select_related("module")
+        .only("id", "module_id", "name", "description", "data_type", "default_value", "module__name")
+    )
+
+    prop_ids = [p.id for p in prop_defs]
+
+    # 2b) Pull choices for those properties (single query), ordered for UI
+    choices = list(
+        ModulePropertyChoice.objects
+        .filter(module_property_id__in=prop_ids)
+        .select_related("module_property")
+        .only(
+            "id",
+            "module_property_id",
+            "label",
+            "description",
+            "sort_order",
+            "value_int",
+            "value_str",
+        )
+        .order_by("module_property_id", "sort_order", "id")
+    )
+    choices_by_property_id: dict[int, list[ModulePropertyChoice]] = {}
+    for c in choices:
+        choices_by_property_id.setdefault(c.module_property_id, []).append(c)
+
+    # 3) Pull current values for this run (single query) and map by (formulation_id, property_id)
+    current_values = list(
+        CalibrationModulePropertyValue.objects
+        .filter(calibration_formulation_id__in=formulation_ids)
+        .select_related("module_property", "calibration_formulation")
+        .only(
+            "calibration_formulation_id",
+            "module_property_id",
+            "value_bool",
+            "value_int",
+            "value_double",
+            "value_str",
+        )
+    )
+    current_value_map = {
+        (v.calibration_formulation_id, v.module_property_id): v
+        for v in current_values
+    }
+
+    # Build a formulation_id lookup by module_id for quick joins
+    formulation_id_by_module_id = {f.module_id: f.id for f in formulations_for_run}
+
+    # Group properties by module name for output
+    props_by_module_name: dict[str, list[dict[str, Any]]] = {}
+    for p in prop_defs:
+        module_name = p.module.name
+        props_by_module_name.setdefault(module_name, [])
+
+        formulation_id = formulation_id_by_module_id.get(p.module_id)
+        current_v = current_value_map.get((formulation_id, p.id)) if formulation_id else None
+
+        prop_payload: dict[str, Any] = {
+            "name": p.name,
+            "description": p.description,
+            "data_type": p.data_type,
+            "default_value": p.default_value,  # already a string
+            "value": _property_value_to_str(current_v, p.data_type),
+        }
+
+        # If choices exist, return them with choice.value as a string for stable round-trip.
+        prop_choices = choices_by_property_id.get(p.id, [])
+        if prop_choices:
+            prop_payload["choices"] = [
+                {
+                    "value": _choice_value_to_str(c),  # always string
+                    "label": c.label,
+                    "description": c.description,
+                }
+                for c in prop_choices
+            ]
+
+        props_by_module_name[module_name].append(prop_payload)
+
+    module_properties_payload = {
+        "modules": [
+            {
+                "name": module_name,
+                "properties": props_by_module_name.get(module_name, []),
+            }
+            for module_name in sorted(new_module_names)
+        ]
+    }
+
+    response = {
+        "module_properties_schema": module_properties_payload
+    }
     if formulation_warnings:
-        response['formulation_warnings'] = formulation_warnings
+        response["formulation_warnings"] = formulation_warnings
     if formulation_errors:
-        response['formulation_errors'] = formulation_errors
+        response["formulation_errors"] = formulation_errors
     if formulation_messages:
-        response['formulation_messages'] = formulation_messages
+        response["formulation_messages"] = formulation_messages
 
     response_validator, error_response = validate_response(ValidateFormulationResponseSerializer, response)
     if error_response:
@@ -197,6 +349,7 @@ def save_formulation_tab(request) -> Response:
         * Delete unused CalibrationFormulation rows and their parameters.
         * Bulk-create missing CalibrationFormulation rows.
         * Persist CalibrationParameter rows via update_parameters().
+        * Persist CalibrationModulePropertyValue rows for module properties (replace-all for the run).
         * Refresh Sloth and optimization-related state as required.
 
     Error handling:
@@ -217,6 +370,7 @@ def save_formulation_tab(request) -> Response:
     calibration_run_id = validator.get('calibration_run_id')
     use_sloth = validator.get('use_sloth')
     sloth_parameters = validator.get('sloth_parameters')
+    module_properties: list[dict] = validator.get('module_properties')
 
     have_lstm = 'LSTM' in new_module_names
     if have_lstm and (sloth_parameters or use_sloth):
@@ -229,14 +383,6 @@ def save_formulation_tab(request) -> Response:
     if not run.gage:
         return ResponseError('Gage must be specified before selecting formulation')
 
-    # TODO Eventually, we will have more user properties that are specific to certain modules
-    # so we'll need a separate table to control those.
-    # For now, we are forced to hard-code module names and specific flags
-    # Only allow AET Rootzone to be True if CFE is included in the formulation
-    run.is_aet_rootzone = validator.get('is_aet_rootzone', False)
-    if run.is_aet_rootzone and not any(cfe in new_module_names for cfe in ('CFE-S', 'CFE-X')):
-        return ResponseError('AET Rootzone cannot be True for formulations not using CFE.')
-
     formulation_errors, formulation_warnings, _ = validate_formulation(new_module_names, get_geopackage_file_path(run))
 
     if not use_sloth and sloth_parameters:
@@ -248,21 +394,20 @@ def save_formulation_tab(request) -> Response:
     eds_errors: list[dict] = []
 
     # Fetch all formulations and determine changes
-    existing_formulations_qs = CalibrationFormulation.objects.filter(calibration_run=run)
-    existing_formulations_list = list(existing_formulations_qs.only("id", "module_id"))
-
-    existing_module_ids = {f.module_id for f in existing_formulations_list}
+    existing_module_ids = set(
+        CalibrationFormulation.objects
+        .filter(calibration_run=run)
+        .values_list("module_id", flat=True)
+    )
 
     modules_by_id = get_cached_modules_by_id()
+    modules_by_name = {m.name: m for m in modules_by_id.values()}
+
     existing_module_names = {
         modules_by_id[mid].name
         for mid in existing_module_ids
         if mid in modules_by_id
     }
-
-    # Debug: confirm reverse accessor name for CalibrationParameter
-    accessors = [r.get_accessor_name() for r in CalibrationFormulation._meta.related_objects]
-    logger.debug("CalibrationFormulation reverse accessors: %s", accessors)
 
     # Determine which modules to delete and add
     to_be_added: set[str] = new_module_names - existing_module_names
@@ -280,29 +425,29 @@ def save_formulation_tab(request) -> Response:
         # Add modules that already exist but have no parameters, limited to the current selection to avoid refetching for soon-to-be-deleted modules
         to_be_added.update(set(formulations_without_params) & new_module_names)
 
-    # TODO for dev only
-    #####################
-    # to_be_added = new_module_names
-    #####################
     # Fetch module metadata from Data Services (outside write transaction)
-    module_metadata, errors = get_module_metadata_from_data_services(run, to_be_added)
-    if errors:
-        eds_errors.extend(errors)
+    module_metadata, ds_errors = get_module_metadata_from_data_services(run, to_be_added)
+    if ds_errors:
+        eds_errors.extend(ds_errors)
 
     with transaction.atomic():
+        # ------------------------------------------------------------
         # Delete unused formulations
+        # ------------------------------------------------------------
         if to_be_unused:
             logger.info(f"Deleting unused modules: {to_be_unused}")
             delete_unused_formulations(to_be_unused, run)
 
-        # Refresh the list after inserts/deletes
+        # ------------------------------------------------------------
+        # Create missing formulations
+        # ------------------------------------------------------------
         existing_module_ids = set(
             CalibrationFormulation.objects
             .filter(calibration_run=run)
             .values_list("module_id", flat=True)
         )
 
-        to_create = []
+        to_create: list[CalibrationFormulation] = []
         for module_name in to_be_added:
             m = get_cached_module_by_name(module_name)
             if m and m.id not in existing_module_ids:
@@ -311,7 +456,9 @@ def save_formulation_tab(request) -> Response:
         if to_create:
             CalibrationFormulation.objects.bulk_create(to_create, ignore_conflicts=True)
 
+        # ------------------------------------------------------------
         # Persist parameters only for modules that actually returned them
+        # ------------------------------------------------------------
         modules_with_params = [
             m for m in (module_metadata or {}).get("modules", [])
             if not m.get("error")
@@ -319,6 +466,87 @@ def save_formulation_tab(request) -> Response:
 
         if modules_with_params:
             update_parameters(run, {"modules": modules_with_params})
+
+        # ------------------------------------------------------------
+        # Persist module properties into CalibrationModulePropertyValue
+        # Replace-all semantics for the run:
+        #   - delete existing rows for this run
+        #   - insert rows from request payload (if any)
+        # ------------------------------------------------------------
+        # Build {module_name -> CalibrationFormulation} map (one DB hit)
+        formulations_for_run = list(
+            CalibrationFormulation.objects
+            .filter(calibration_run=run)
+            .only("id", "module_id")
+        )
+        formulations_by_module_id = {f.module_id: f for f in formulations_for_run}
+
+        # Delete existing property values for this run
+        CalibrationModulePropertyValue.objects.filter(
+            calibration_formulation__calibration_run=run
+        ).delete()
+
+        if module_properties:
+            # Pull all ModuleProperty definitions for the modules in this request in one query.
+            # Natural key: (module_id, property_name)
+            # requested_module_names = {p["module"] for p in module_properties}
+            requested_module_ids = {
+                modules_by_name[p["module"]].id
+                for p in module_properties
+                if p["module"] in modules_by_name
+            }
+
+            prop_defs = list(
+                ModuleProperty.objects
+                .filter(module_id__in=requested_module_ids)
+                .only("id", "module_id", "name", "data_type")
+            )
+            prop_def_map = {(p.module_id, p.name): p for p in prop_defs}
+
+            rows: list[CalibrationModulePropertyValue] = []
+            errors: list[str] = []
+
+            for i, p in enumerate(module_properties):
+                module_name = p["module"]
+                prop_name = p["property_name"]
+                raw_value = p["property_value"]
+
+                module_obj = modules_by_name.get(module_name)
+                if not module_obj:
+                    errors.append(f"[{i}] Unknown module '{module_name}'")
+                    continue
+
+                formulation = formulations_by_module_id.get(module_obj.id)
+                if not formulation:
+                    errors.append(f"[{i}] No formulation found for module '{module_name}' in run {run.id}")
+                    continue
+
+                prop_def = prop_def_map.get((module_obj.id, prop_name))
+                if not prop_def:
+                    errors.append(f"[{i}] Unknown property '{prop_name}' for module '{module_name}'")
+                    continue
+
+                typed_value, parse_err = _parse_property_value(raw_value, prop_def.data_type)
+                if parse_err:
+                    errors.append(f"[{i}] module.{module_name}.{prop_name}: {parse_err['message']}")
+                    continue
+
+                cols = _value_columns_for_type(typed_value, prop_def.data_type)
+
+                rows.append(
+                    CalibrationModulePropertyValue(
+                        calibration_formulation=formulation,
+                        module_property=prop_def,
+                        created_by=request.user,
+                        **cols,
+                    )
+                )
+
+            if errors:
+                return ResponseError({"module_properties": errors})
+
+            if rows:
+                CalibrationModulePropertyValue.objects.bulk_create(rows, ignore_conflicts=False)
 
         # Delete existing Sloth params for this run and re-add them if enabled
         CalibrationSlothParam.objects.filter(calibration_run=run).delete()
@@ -367,6 +595,85 @@ def save_formulation_tab(request) -> Response:
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
+
+
+def _parse_property_value(raw: str, data_type: str) -> tuple[str | int | float | bool, dict[str, Any] | None]:
+    """
+    Convert the UI's raw string `property_value` into a typed Python value based on ModuleProperty.data_type.
+
+    UI contract:
+    - The UI submits property_value as a string.
+    - ModuleProperty.data_type (DataTypeEnum.*.value) determines how that string is interpreted.
+
+    :param raw: Raw string value from the UI (e.g., "false", "123", "0.25", "ABC").
+    :param data_type: DataTypeEnum value from ModuleProperty.data_type.
+    :return: (typed_value, error_dict_or_none) where error_dict has shape {"message": "..."}.
+    """
+    # Keep parsing strict and deterministic. We only accept a limited boolean vocabulary.
+    # Numeric parsing uses int()/float() and will error on invalid values.
+    try:
+        if data_type == DataTypeEnum.BOOLEAN.value:
+            v = raw.strip().lower()  # normalize user input like " True " -> "true"
+            if v in ("true", "1", "yes", "y", "on"):
+                return True, None
+            if v in ("false", "0", "no", "n", "off"):
+                return False, None
+            return False, {"message": f"Invalid boolean '{raw}' (expected true/false)."}
+
+        if data_type == DataTypeEnum.INTEGER.value:
+            # Reject floats/strings that are not valid base-10 integers.
+            return int(raw), None
+
+        if data_type == DataTypeEnum.DOUBLE.value:
+            # Accept values that float() can parse (e.g., "1", "1.0", "1e-3").
+            return float(raw), None
+
+        if data_type == DataTypeEnum.STRING.value:
+            # Preserve as-is; the DB column will store the literal string.
+            return raw, None
+
+        return raw, {"message": f"Unsupported data_type '{data_type}'."}
+
+    except (ValueError, TypeError) as e:
+        return raw, {"message": f"Invalid value '{raw}' for data_type '{data_type}': {e}"}
+
+
+def _value_columns_for_type(value: str | int | float | bool, data_type: str) -> dict[str, Any]:
+    """
+    Map a typed Python value into the correct single value_* column for CalibrationModulePropertyValue.
+
+    IMPORTANT:
+    - The returned dict keys MUST match the column names in CalibrationModulePropertyValue:
+        value_bool, value_int, value_double, value_str
+    - Exactly one of these keys will be non-null.
+    - This relies on CalibrationModulePropertyValue's DB check constraint enforcing exactly one non-null.
+
+    :param value: Typed value produced by _parse_property_value().
+    :param data_type: DataTypeEnum value from ModuleProperty.data_type.
+    :return: Dict suitable for **cols when creating CalibrationModulePropertyValue(**cols).
+    """
+    # Start with all-null columns, then set exactly one.
+    cols: dict[str, Any] = {
+        "value_bool": None,
+        "value_int": None,
+        "value_double": None,
+        "value_str": None
+    }
+
+    # Choose the destination column based on ModuleProperty.data_type (not Python type),
+    if data_type == DataTypeEnum.BOOLEAN.value:
+        cols["value_bool"] = bool(value)
+    elif data_type == DataTypeEnum.INTEGER.value:
+        cols["value_int"] = int(value)
+    elif data_type == DataTypeEnum.DOUBLE.value:
+        cols["value_double"] = float(value)
+    elif data_type == DataTypeEnum.STRING.value:
+        cols["value_str"] = str(value)
+    else:
+        # Should not happen if ModuleProperty.data_type is constrained, but keep a safe fallback.
+        cols["value_str"] = str(value)
+
+    return cols
 
 
 def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun) -> None:

@@ -127,8 +127,8 @@ class Command(BaseCommand):
             self.define_module_groups,
             self.define_output_variables,
             self.define_modules,
-            # self.define_module_properties,
-            # self.define_module_property_choices,
+            self.define_module_properties,
+            self.define_module_property_choices,
             self.define_domains,
             self.define_rfc,
             self.define_forcing_source,
@@ -528,29 +528,26 @@ class Command(BaseCommand):
             # CFE Rootzone (boolean)
             {
                 "module": cfe_s,
-                "name": "rootzone",
+                "name": "AET Rootzone",
                 "data_type": DataTypeEnum.BOOLEAN.value,
                 "default_value": "false",
-                "description": "Enable rootzone option.",
-                "is_active": True,
+                "description": "Enable AET Rootzone option."
             },
             {
                 "module": cfe_x,
-                "name": "rootzone",
+                "name": "AET Rootzone",
                 "data_type": DataTypeEnum.BOOLEAN.value,
                 "default_value": "false",
-                "description": "Enable rootzone option.",
-                "is_active": True,
+                "description": "Enable AET Rootzone option."
             },
 
             # PET Method (dropdown)
             {
                 "module": pet,
-                "name": "method",
+                "name": "Method",
                 "data_type": DataTypeEnum.INTEGER.value,
                 "default_value": "1",
-                "description": "Potential evapotranspiration method selection.",
-                "is_active": True,
+                "description": "Potential evapotranspiration method selection."
             },
         ]
 
@@ -559,7 +556,6 @@ class Command(BaseCommand):
                 module=v["module"],
                 name=v["name"],
                 defaults={
-                    "is_active": v.get("is_active", True),
                     "description": v["description"],
                     "data_type": v["data_type"],
                     "default_value": v.get("default_value", ""),
@@ -573,7 +569,7 @@ class Command(BaseCommand):
 
         # Lookup properties by their natural key (module + name)
         pet = Module.objects.get(name="PET")
-        pet_method = ModuleProperty.objects.get(module=pet, name="method")
+        pet_method = ModuleProperty.objects.get(module=pet, name="Method")
 
         values = [
             {
@@ -618,7 +614,6 @@ class Command(BaseCommand):
                 module_property=v["module_property"],
                 value_int=v["value_int"],
                 defaults={
-                    "is_active": v.get("is_active", True),
                     "label": v["label"],
                     "value_str": None,  # values are all int
                     "sort_order": v.get("sort_order", 0),

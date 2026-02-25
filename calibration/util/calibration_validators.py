@@ -972,18 +972,52 @@ class ValidateFormulationRequestSerializer(CalibrationRunSerializer):
     modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
 
 
+class ModulePropertiesSerializer(BaseSerializer):
+    module = ModuleNameField(required=True)
+    property_name = serializers.CharField(required=True)
+    property_value = serializers.CharField(required=True)
+
+
 class SaveFormulationRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    is_aet_rootzone = serializers.BooleanField(required=False)
-    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
+    # is_aet_rootzone = serializers.BooleanField(required=False)
+    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True, default=list)
     use_sloth = serializers.BooleanField(required=True)
     sloth_parameters = SlothParameters(required=False, many=True)
+    module_properties = ModulePropertiesSerializer(many=True, required=False, default=list)
+
+    def validate(self, attrs: dict) -> dict:
+        attrs = super().validate(attrs)
+
+        new_module_names = set(attrs.get("modules") or [])
+        props: list[dict] = attrs.get("module_properties") or []
+
+        errors: list[str] = []
+        for i, p in enumerate(props):
+            if p["module"] not in new_module_names:
+                errors.append(
+                    f"[{i}] module_properties.module '{p['module']}' is not included in modules"
+                )
+
+        # Make sure there are no duplicates
+        seen: set[tuple[str, str]] = set()
+        for i, p in enumerate(props):
+            key = (p["module"], p["property_name"])
+            if key in seen:
+                errors.append(f"[{i}] duplicate property for module '{key[0]}' and property '{key[1]}'")
+            seen.add(key)
+
+        if errors:
+            raise serializers.ValidationError({"module_properties": errors})
+
+        return attrs
 
 
 class ValidateFormulationResponseSerializer(BaseSerializer):
     formulation_errors = serializers.JSONField(required=False)
     formulation_warnings = serializers.JSONField(required=False)
     formulation_messages = serializers.JSONField(required=False)
+    module_properties_schema = serializers.JSONField(required=False)
 
 
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
