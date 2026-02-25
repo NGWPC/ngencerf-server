@@ -84,8 +84,13 @@ WORKDIR /ngencerf/ngen-sparse
 RUN --mount=type=cache,target=/ngencerf/partitionGenerator_build,id=partition-generator-build \
     --mount=type=cache,target=/root/.cache/cmake,id=cmake-cache \
     set -eux && \
-    # Clone only the required directories
-    git clone --depth 1 --filter=blob:none --branch "${NGEN_TAG}" --single-branch --sparse "https://github.com/${NGEN_ORG}/ngen.git" . && \
+    # Clone only the required directories; allow branch, tag, or commit refs
+    git clone --filter=blob:none --no-checkout --sparse "https://github.com/${NGEN_ORG}/ngen.git" . && \
+    (git fetch --depth 1 origin "${NGEN_TAG}" \
+     || git fetch --depth 1 origin "refs/tags/${NGEN_TAG}:refs/tags/${NGEN_TAG}" \
+     || git fetch origin "${NGEN_TAG}" \
+     || git fetch origin "refs/tags/${NGEN_TAG}:refs/tags/${NGEN_TAG}") && \
+    git checkout FETCH_HEAD && \
     git sparse-checkout init --cone && \
     git sparse-checkout set \
         src \
@@ -201,18 +206,22 @@ RUN set -eux && \
     PREBUILT_DIR="/ngencerf/prebuilt/bmi_forcing_templates" && \
     NGEN_FORCING_URL="https://github.com/${NGEN_FORCING_ORG}/ngen-forcing.git" && \
     \
-    echo "Preparing bmi_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_TAG}" && \
+    echo "Preparing bmi_forcing_templates from ${NGEN_FORCING_URL}, ref (branch/tag/commit): ${NGEN_FORCING_TAG}" && \
     \
     # Ensure prebuilt directory exists and is empty
     rm -rf "$PREBUILT_DIR" && \
     mkdir -p "$PREBUILT_DIR" && \
     \
-    # Clone sparse repo
-    git clone --depth 1 --filter=blob:none --sparse \
-        -b "${NGEN_FORCING_TAG}" \
+    # Clone sparse repo; allow branch, tag, or commit refs
+    git clone --filter=blob:none --no-checkout --sparse \
         "$NGEN_FORCING_URL" tmp-ngen-forcing && \
-    \
     cd tmp-ngen-forcing && \
+    (git fetch --depth 1 origin "${NGEN_FORCING_TAG}" \
+     || git fetch --depth 1 origin "refs/tags/${NGEN_FORCING_TAG}:refs/tags/${NGEN_FORCING_TAG}" \
+     || git fetch origin "${NGEN_FORCING_TAG}" \
+     || git fetch origin "refs/tags/${NGEN_FORCING_TAG}:refs/tags/${NGEN_FORCING_TAG}") && \
+    git checkout FETCH_HEAD && \
+    \
     git sparse-checkout set \
         NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates && \
     \
