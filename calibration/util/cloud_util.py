@@ -759,20 +759,20 @@ def is_dir(path: str) -> bool:
         return False
 
 
-def open_file(path: str, mode: str = "r", **kwargs):
-    """
-    Open a local or cloud file for reading or writing.
-
-    Uses fsspec under the hood, so `s3://`, `gs://`, `az://`, etc. all work.
-    This does not use the caching layer — it always streams directly.
-
-    :param path: Local path or cloud URL.
-    :param mode: File mode, e.g. "r", "rb", "w".
-    :param kwargs: Passed through to fsspec.open().
-    :return: A file-like object.
-    """
-    fs, norm_url = get_filesystem(path)
-    return fs.open(norm_url, mode, **kwargs)
+# def open_file(path: str, mode: str = "r", **kwargs):
+#     """
+#     Open a local or cloud file for reading or writing.
+#
+#     Uses fsspec under the hood, so `s3://`, `gs://`, `az://`, etc. all work.
+#     This does not use the caching layer — it always streams directly.
+#
+#     :param path: Local path or cloud URL.
+#     :param mode: File mode, e.g. "r", "rb", "w".
+#     :param kwargs: Passed through to fsspec.open().
+#     :return: A file-like object.
+#     """
+#     fs, norm_url = get_filesystem(path)
+#     return fs.open(norm_url, mode, **kwargs)
 
 
 def list_files(path: str, pattern: str = "*.csv") -> list[str]:

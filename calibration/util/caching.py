@@ -104,17 +104,31 @@ def get_cached_modules_by_id() -> dict[int, Module]:
 
 def get_cached_module_by_name(module_name: str) -> Module | None:
     """
-    Convenience lookup: name → Module
+    Convenience lookup: name → Module (case-insensitive)
 
     We DO NOT directly hit the cache backend here.
     Instead, we derive from the canonical name-based module cache.
 
-    :param module_name: Exact name of module to fetch.
+    :param module_name: Name of module to fetch (case-insensitive).
     :return: Module instance, or None if not found.
     """
-    modules_by_id = get_cached_modules_by_id()  # derived from the shared Redis-backed module cache
-    modules_by_name = {m.name: m for m in modules_by_id.values()}  # derived lightweight view
-    return modules_by_name.get(module_name)
+    if not module_name:
+        return None
+
+    modules_by_name = get_cached_modules_with_groups()  # canonical cache: {name -> Module}
+
+    # Fast path: exact match (keeps behavior for already-correct callers)
+    m = modules_by_name.get(module_name)
+    if m is not None:
+        return m
+
+    # Case-insensitive fallback (O(n), but only when exact key not found)
+    target = module_name.casefold()
+    for name, module in modules_by_name.items():
+        if name.casefold() == target:
+            return module
+
+    return None
 
 
 _CACHED_GAGES_KEY = f"{CACHE_PREFIX}cached_gages"

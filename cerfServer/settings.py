@@ -207,12 +207,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # -----------------------------
 # Enterprise Data
 # -----------------------------
-ENTERPRISE_DATA_VERSION = "2.2"
-ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT = [True, 'hydrofabric/geopackages?gage_id={gage_id}&source={source}&domain={domain}&version={version}']
-ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = [True, 'hydrofabric/modules/parameters/']
-ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = [True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}']
+HYDROFABRIC_SOURCE = 'hf'
+ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = 'v1/modules/parameter_metadata/'
+ENTERPRISE_DATA_OBSERVATION_DATA_INFO_ENDPOINT = 'v1/streamflow_observations/{gage_id}/info'
+ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = 'v1/streamflow_observations/{gage_id}/csv'
 
-ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL', 'http://localhost:8001')
+ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL')
+ENTERPRISE_DATA_ENV = os.getenv('ENTERPRISE_DATA_ENV')
 
 # Due to circular imports, can't use the enums as keys.  But the values must match exactly
 FORCING_DATA_DIRS_AORC = {

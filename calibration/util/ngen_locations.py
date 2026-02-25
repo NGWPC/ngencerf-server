@@ -7,13 +7,13 @@ from django.conf import settings
 from calibration.enums import ValidationType
 from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun, VerificationRun
+from calibration.util.file_util import get_single_file
 from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
 
 static_dirs = [
     NWM_RETROSPECTIVE_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'nwm_retrospective'),
-    PARQUET_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'parquet'),
     NGEN_MODULE_PARAMETERS := os.path.join(settings.NGEN_STATIC_DIR, 'module_parameter_files'),
     BMI_FORCING_TEMPLATES := os.path.join(settings.NGEN_STATIC_DIR, 'bmi_forcing_templates'),
     VERF_DATA := os.path.join(settings.NGEN_STATIC_DIR, 'verification_data')
@@ -72,16 +72,16 @@ def get_forcing_filename_pattern() -> str:
     return r"^cat-\d+\.csv$"
 
 
-def get_bmi_config_dir_for_job(run: CalibrationRun) -> str:
-    return os.path.join(run.job_data_dir, 'bmi_config')
+# def get_bmi_config_dir_for_job(run: CalibrationRun) -> str:
+#     return os.path.join(run.job_data_dir, 'bmi_config')
+#
+#
+# def get_bmi_config_dir_for_module(run: CalibrationRun, module_name: str) -> str:
+#     return os.path.join(get_bmi_config_dir_for_job(run), module_name.lower())
 
 
-def get_bmi_config_dir_for_module(run: CalibrationRun, module_name: str) -> str:
-    return os.path.join(get_bmi_config_dir_for_job(run), module_name.lower())
-
-
-def get_bmi_config_key(module_name: str) -> str:
-    return f"{module_name.lower().replace('-', '_')}_bmi_dir"
+# def get_bmi_config_key(module_name: str) -> str:
+#     return f"{module_name.lower().replace('-', '_')}_bmi_dir"
 
 
 # Job-specific forcing directory
@@ -103,9 +103,12 @@ def get_observational_file_for_job(run: CalibrationRun) -> str:
     return os.path.join(get_observational_dir_for_job(run), get_observational_filename(run)) if run.gage else None
 
 
-# Job-specific geopackage directory
 def get_geopackage_dir_for_job(run: CalibrationRun) -> str:
     return os.path.join(run.job_data_dir, 'geopackage')
+
+
+def get_geopackage_file_path(run: CalibrationRun) -> str | None:
+    return get_single_file(get_geopackage_dir_for_job(run))
 
 
 def get_ngen_stdout_log_filename() -> str:

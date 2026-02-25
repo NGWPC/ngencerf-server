@@ -311,7 +311,8 @@ class SlothParameters(BaseSerializer):
     param_units = serializers.CharField(required=True, validators=[enum_validator(UnitsEnum)])
     param_location = serializers.CharField(required=True, validators=[enum_validator(LocationEnum)])
     param_value = serializers.FloatField(required=True)
-    maps_to_module = serializers.CharField(required=True, allow_blank=False)
+    maps_to_module = ModuleNameField(required=True)
+
     maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
 
 
@@ -371,7 +372,7 @@ class SaveTuningParametersSerializer(BaseSerializer):
     minimum = serializers.FloatField(required=True, allow_null=False)
     maximum = serializers.FloatField(required=True, allow_null=False)
     initial_value = serializers.FloatField(required=True, allow_null=False)
-    module = serializers.CharField(required=True, allow_blank=False)
+    module = ModuleNameField(required=True)
 
     def __init__(self, *args, allow_empty=False, **kwargs):
         super().__init__(*args, **kwargs)
@@ -430,16 +431,15 @@ class EdsErrorsSerializer(BaseSerializer):
     status_code = serializers.IntegerField(required=True, allow_null=True)
 
 
-# This class extends the original serializers.Serializer, since we want to ignore extra fields
-# Parameters from Data Services
-# initial_value, min and max are strings, since Data Services sometimes has some extra crap in there, like units
+# initial_value is a strings, since Data Services sometimes has some extra crap in there, like units
 # We save them in the db as floats, so we'll have to sanitize them
-class ModuleParametersSerializer(serializers.Serializer):
+class ModuleParametersSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     data_type = serializers.CharField(required=True, validators=[enum_validator(DataTypeEnum)])
     description = serializers.CharField(required=True, allow_blank=False)
-    min = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    max = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    # TODO min and max really should not be null
+    min = serializers.FloatField(required=True, allow_null=True)
+    max = serializers.FloatField(required=True, allow_null=True)
     initial_value = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     units = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
@@ -479,7 +479,7 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     is_downloadable = serializers.BooleanField(required=True, allow_null=False)
     is_lstm = serializers.BooleanField(required=True, allow_null=False)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True)
-    modules = serializers.ListField(child=serializers.CharField(required=True), required=False)
+    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
 
 
 class GetCalibrationJobsResponseSerializer(BaseSerializer):
@@ -542,7 +542,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     geopackage_image_url = serializers.CharField(required=False)
     external_data_status = serializers.JSONField(required=False)
-    modules = serializers.ListField(child=serializers.CharField(required=True))
+    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
     is_aet_rootzone = serializers.BooleanField(required=False)
     job_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     formulation_errors = serializers.JSONField(required=False)
@@ -956,19 +956,20 @@ class S3DirectoryValidator(BaseSerializer):
     uri = S3UriField(validate_directory=True)
 
 
+# TODO Might be able to get rid of this soon
 class S3FileValidator(BaseSerializer):
     # TODO We need to allow_null due to EDS error handling.  Need to get EDS to change their data when an error is returned
     uri = S3UriField(allow_null=True)
 
 
-class ValidateFormulationRequestSerializer(BaseSerializer):
-    modules = serializers.ListField(child=serializers.CharField(required=True), required=False)
+class ValidateFormulationRequestSerializer(CalibrationRunSerializer):
+    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
 
 
 class SaveFormulationRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     is_aet_rootzone = serializers.BooleanField(required=False)
-    modules = serializers.ListField(child=serializers.CharField(required=True), required=False)
+    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
     use_sloth = serializers.BooleanField(required=True)
     sloth_parameters = SlothParameters(required=False, many=True)
 
@@ -987,7 +988,7 @@ class SaveFormulationResponseSerializer(GenericResponseSerializer):
 
 
 class ModuleStaticSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
+    name = ModuleNameField(required=True)
     display_name = serializers.CharField(required=True, allow_blank=False)
     description = serializers.CharField(required=True, allow_blank=False)
     groups = serializers.ListField(child=serializers.CharField(required=True))
@@ -1002,6 +1003,11 @@ class GetModulesResponseSerializer(BaseSerializer):
 ##################################
 # Tuning Tab
 ##################################
+class ValidateParametersResponseSerializer(BaseSerializer):
+    parameter_errors = serializers.JSONField(required=False)
+    parameter_warnings = serializers.JSONField(required=False)
+
+
 class UploadUserParameterFile(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     user_parameter_file = serializers.FileField(required=True)
@@ -1031,11 +1037,25 @@ class UserParameterFileUploadResponse(BaseSerializer):
 # Module object from Data Services containing module parameters and output variables
 class ModuleMetadataSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
-    calibrate_parameters = ModuleParametersSerializer(many=True)
-    # TODO We are ignoring this so EDS can get rid of it
-    output_variables = serializers.JSONField(required=False)
-    parameter_file = S3FileValidator(required=True)
-    error = serializers.CharField(required=False)
+    error = serializers.CharField(required=False, allow_blank=False)
+
+    calibratable_parameters = ModuleParametersSerializer(many=True, required=False, allow_empty=True)
+
+    def validate(self, data):
+        has_error = bool(data.get("error"))
+        has_params = "calibratable_parameters" in data
+
+        # If Data Services returns an error for a module, it may omit calibratable_parameters.
+        if has_error:
+            return data
+
+        # If no error, calibratable_parameters must be present.
+        if not has_params:
+            raise serializers.ValidationError({
+                "calibratable_parameters": "This field is required unless 'error' is provided."
+            })
+
+        return data
 
 
 # List of module objects from Data Services containing module parameters and output variables
@@ -1049,6 +1069,11 @@ class SaveTuningRequestSerializer(BaseSerializer):
     calibration_times = CalibrationTimeControls(required=False, allow_empty=False)
     validation_times = ValidationTimeControls(required=False, allow_empty=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
+
+
+class SaveTuningResponseSerializer(GenericResponseSerializer):
+    parameter_errors = serializers.JSONField(required=False)
+    parameter_warnings = serializers.JSONField(required=False)
 
 
 class LoadTuningResponseSerializer(BaseSerializer):
@@ -1401,12 +1426,9 @@ class ExportResponseSerializer(BaseSerializer):
     run_after_import = serializers.BooleanField(default=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    # forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
-    # observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    # geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
-    modules = serializers.ListField(child=serializers.CharField(required=True), default=[])
+    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
     is_aet_rootzone = serializers.BooleanField(required=False)
     job_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
@@ -1432,13 +1454,9 @@ class ImportDataSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_null=True)
     forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     forcing_user_dir = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    # forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
-    # observational_user_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    # observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    # geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    modules = serializers.ListField(child=serializers.CharField(required=True), required=False, allow_empty=True)
+    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
     is_aet_rootzone = serializers.BooleanField(required=False)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     job_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])

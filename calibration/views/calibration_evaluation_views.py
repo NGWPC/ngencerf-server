@@ -827,7 +827,7 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
             ngen_log_path = potential_log_path
             return True  # stop searching
 
-        return False # keep searching
+        return False  # keep searching
 
     # Call process_worker_dirs to iterate through the worker directories
     process_worker_dirs(run, check_worker)

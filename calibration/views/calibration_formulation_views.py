@@ -1,23 +1,27 @@
 import json
 import logging
+from typing import Any
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
+from mswm.build_inputs import validate_topoflow_glacier
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from calibration.enums import StatusEnum
 from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, \
     CalibrationStopCriteria
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups, get_cached_modules_by_id
 from calibration.util.calibration_validators import ValidateFormulationRequestSerializer, \
     SaveFormulationRequestSerializer, ErrorResponseSerializer, ValidateFormulationResponseSerializer, \
     SaveFormulationResponseSerializer, EmptySerializer, GetModulesResponseSerializer
+from calibration.util.ngen_locations import get_geopackage_file_path
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_optimization_views import write_optimization_inputs
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, \
-    get_user_email, join_with_or, get_elapsed_str
-from calibration.views.data_services import get_module_metadata_from_data_services, DataServicesException
+    get_user_email, join_with_or, get_elapsed_str, readonly_transaction
+from calibration.views.data_services import get_module_metadata_from_data_services, update_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -139,9 +143,14 @@ def validate_formulation_tab(request) -> Response:
     if error_return:
         return error_return
 
+    calibration_run_id = validator.get('calibration_run_id')
     new_module_names = set(validator.get('modules'))
 
-    formulation_errors, formulation_warnings, formulation_messages = validate_formulation(new_module_names)
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+    if error_return:
+        return error_return
+
+    formulation_errors, formulation_warnings, formulation_messages = validate_formulation(new_module_names, get_geopackage_file_path(run))
 
     response = {}
     if formulation_warnings:
@@ -181,9 +190,18 @@ def save_formulation_tab(request) -> Response:
     """
     Save or update calibration formulations for a calibration run.
 
-    Uses cached modules to avoid repeated SELECT queries on the Module table.
-    The formulations are runtime data, but module lookups are resolved via
-    the cache, eliminating ORM joins.
+   High-level flow:
+    - Determine which modules are new, removed, or missing parameters.
+    - Fetch module metadata from Data Services outside of any write transaction.
+    - In a single atomic block:
+        * Delete unused CalibrationFormulation rows and their parameters.
+        * Bulk-create missing CalibrationFormulation rows.
+        * Persist CalibrationParameter rows via update_parameters().
+        * Refresh Sloth and optimization-related state as required.
+
+    Error handling:
+    - Data Services errors are accumulated in eds_errors as a list of error objects.
+    - Database writes are only performed after metadata has been successfully fetched.
 
     :param request: The HTTP request containing POST data with formulation details.
     :return: A JSON response confirming the update along with any warnings or errors.
@@ -199,6 +217,7 @@ def save_formulation_tab(request) -> Response:
     calibration_run_id = validator.get('calibration_run_id')
     use_sloth = validator.get('use_sloth')
     sloth_parameters = validator.get('sloth_parameters')
+
     have_lstm = 'LSTM' in new_module_names
     if have_lstm and (sloth_parameters or use_sloth):
         return ResponseError("You cannot specify sloth_parameters or use_sloth when using LSTM")
@@ -210,11 +229,6 @@ def save_formulation_tab(request) -> Response:
     if not run.gage:
         return ResponseError('Gage must be specified before selecting formulation')
 
-    # Validate modules and formulation constraints
-    error_message = validate_modules(new_module_names)
-    if error_message:
-        return ResponseError(error_message)
-
     # TODO Eventually, we will have more user properties that are specific to certain modules
     # so we'll need a separate table to control those.
     # For now, we are forced to hard-code module names and specific flags
@@ -223,7 +237,7 @@ def save_formulation_tab(request) -> Response:
     if run.is_aet_rootzone and not any(cfe in new_module_names for cfe in ('CFE-S', 'CFE-X')):
         return ResponseError('AET Rootzone cannot be True for formulations not using CFE.')
 
-    formulation_errors, formulation_warnings, _ = validate_formulation(new_module_names)
+    formulation_errors, formulation_warnings, _ = validate_formulation(new_module_names, get_geopackage_file_path(run))
 
     if not use_sloth and sloth_parameters:
         return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
@@ -246,9 +260,34 @@ def save_formulation_tab(request) -> Response:
         if mid in modules_by_id
     }
 
+    # Debug: confirm reverse accessor name for CalibrationParameter
+    accessors = [r.get_accessor_name() for r in CalibrationFormulation._meta.related_objects]
+    logger.debug("CalibrationFormulation reverse accessors: %s", accessors)
+
     # Determine which modules to delete and add
-    to_be_added = new_module_names - existing_module_names
+    to_be_added: set[str] = new_module_names - existing_module_names
     to_be_unused = existing_module_names - new_module_names
+
+    # We also want to fetch for those Formulations that have no parameters, in case there was an error previously
+    with readonly_transaction():
+        formulations_without_params = (
+            CalibrationFormulation.objects
+            .filter(calibration_run=run)
+            .filter(calibrationparameter__isnull=True)
+            .values_list("module__name", flat=True)
+            .distinct()
+        )
+        # Add modules that already exist but have no parameters, limited to the current selection to avoid refetching for soon-to-be-deleted modules
+        to_be_added.update(set(formulations_without_params) & new_module_names)
+
+    # TODO for dev only
+    #####################
+    # to_be_added = new_module_names
+    #####################
+    # Fetch module metadata from Data Services (outside write transaction)
+    module_metadata, errors = get_module_metadata_from_data_services(run, to_be_added)
+    if errors:
+        eds_errors.extend(errors)
 
     with transaction.atomic():
         # Delete unused formulations
@@ -272,45 +311,22 @@ def save_formulation_tab(request) -> Response:
         if to_create:
             CalibrationFormulation.objects.bulk_create(to_create, ignore_conflicts=True)
 
-        # Refresh formulations after delete/add
-        existing_formulations_qs = CalibrationFormulation.objects.filter(calibration_run=run)
-        existing_formulations_list = list(existing_formulations_qs.select_related('module'))
+        # Persist parameters only for modules that actually returned them
+        modules_with_params = [
+            m for m in (module_metadata or {}).get("modules", [])
+            if not m.get("error")
+        ]
 
-        # Identify formulations without any calibration parameters, in case there was an error retrieving them
-        param_formulation_ids = set(
-            CalibrationParameter.objects
-            .filter(calibration_formulation__calibration_run=run)
-            .values_list('calibration_formulation_id', flat=True)
-        )
+        if modules_with_params:
+            update_parameters(run, {"modules": modules_with_params})
 
-        formulations_without_params_qs = existing_formulations_qs.exclude(id__in=param_formulation_ids)
-
-        required_formulations_qs = existing_formulations_qs.filter(
-            module__name__in=to_be_added
-        ) | formulations_without_params_qs  # type: ignore
-
-        # Retrieve metadata for required formulations
-        if required_formulations_qs.exists() and run.gage:
-            logger.info(f"Fetching metadata for modules: {list(to_be_added)}")
-            try:
-                # TODO Need to move ths outside of the atomic transaction
-                # Append new errors to the existing list
-                eds_errors.extend(get_module_metadata_from_data_services(run, required_formulations_qs))
-            except DataServicesException as e:
-                logger.exception("Error retrieving module parameter data from Data Services")
-                eds_errors.append({
-                    'name': 'parameters',
-                    'message': str(e),
-                    'status_code': e.status_code if e.status_code else None
-                })
-
-        # Delete existing Sloth params for this run and re-add them
+        # Delete existing Sloth params for this run and re-add them if enabled
         CalibrationSlothParam.objects.filter(calibration_run=run).delete()
-
-        error_message = add_sloth_parameters(run, sloth_parameters, new_module_names)
-        if error_message:
-            logger.error(f"Error adding Sloth parameters: {error_message}")
-            return ResponseError(error_message)
+        if use_sloth:
+            error_message = add_sloth_parameters(run, sloth_parameters, new_module_names)
+            if error_message:
+                logger.error(f"Error adding Sloth parameters: {error_message}")
+                return ResponseError(error_message)
 
         # If formulation uses LSTM, we need to clear all irrelevant fields
         if have_lstm:
@@ -355,10 +371,13 @@ def save_formulation_tab(request) -> Response:
 
 def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun) -> None:
     """
-    Delete unused formulations and related parameters for a given calibration run.
+    Delete unused CalibrationFormulation rows (and their dependent parameters) for modules
+    that are no longer part of the current formulation selection.
 
-    :param to_delete_modules: A set of module names for formulations to delete.
-    :param run: The calibration run instance.
+    This function performs database writes and must be called inside a write transaction.
+
+    :param to_delete_modules: Set of module names to delete for the given run.
+    :param run: CalibrationRun instance whose formulations will be pruned.
     :return: None.
     """
     formulations_to_delete_qs = CalibrationFormulation.objects.filter(
@@ -373,21 +392,6 @@ def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun)
 
     # Finally, delete the formulations
     formulations_to_delete_qs.delete()
-
-
-def validate_modules(module_names: set[str]) -> str | None:
-    """
-    Validate that all the provided module names exist in the cached modules.
-
-    :param module_names: A set of module names to validate.
-    :return: An error message if any module name is invalid; otherwise, None.
-    """
-    modules_by_id = get_cached_modules_by_id()
-    modules_by_name = {m.name: m for m in modules_by_id.values()}
-    invalid = module_names - set(modules_by_name.keys())
-    if invalid:
-        return f"Invalid modules - {invalid}"
-    return None
 
 
 formulation_validations = {
@@ -432,13 +436,37 @@ formulation_validations = {
 }
 
 
-def validate_formulation(module_names: set[str], return_group_info: bool = False) -> tuple[list[str], list[str], list[str]]:
+def split_routing_modules(
+        module_names: set[str],
+        cached_modules: dict[str, Any],
+) -> tuple[set[str], set[str]]:
+    """
+    Split module names into (routing_modules, non_routing_modules) using cached module group membership.
+
+    Assumes module_names are already validated and present in cached_modules.
+    """
+    routing: set[str] = set()
+    non_routing: set[str] = set()
+
+    for name in module_names:
+        group_names = {g.name for g in cached_modules[name].groups.all()}
+        if "Routing" in group_names:
+            routing.add(name)
+        else:
+            non_routing.add(name)
+
+    return routing, non_routing
+
+
+def validate_formulation(module_names: set[str], geopackage_path: str | None, return_group_info: bool = False) \
+        -> tuple[list[str], list[str], list[str]]:
     """
     Validate formulation rules based on group requirements and exclusions.
 
     Uses cached modules/groups to avoid repeated DB hits.
 
     :param module_names: A set of module names to validate.
+    :param geopackage_path: Path to geopackage file used if Topoflow is specified
     :param return_group_info: If true, then include a message about the groups in Info messages
     :return: A tuple of lists (fatal_errors, nonfatal_errors, info_messages).
              Each list contains validation messages of the corresponding severity.
@@ -461,22 +489,16 @@ def validate_formulation(module_names: set[str], return_group_info: bool = False
 
         if len(module_names) < 2:
             # LSTM alone (no other module) is not allowed
-            fatal_errors.append(
-                "When LSTM is specified, exactly one other Routing module must be included."
-            )
+            fatal_errors.append("When LSTM is specified, exactly one other Routing module must be included.")
             return fatal_errors, nonfatal_errors, info_messages
 
-        # At this point, len(module_names) == 2 and one of them is LSTM
-        other_name = next(name for name in module_names if name != "LSTM")
-        other_module = cached_modules.get(other_name)
-        if not other_module:
-            fatal_errors.append(f"Unknown module '{other_name}' in LSTM formulation.")
-            return fatal_errors, nonfatal_errors, info_messages
+        routing, non_routing = split_routing_modules(module_names - {"LSTM"}, cached_modules)
 
-        other_groups = [g.name for g in other_module.groups.all()]
-        if "Routing" not in other_groups:
+        if len(routing) != 1 or non_routing:
+            other_names = sorted(module_names - {"LSTM"})
             fatal_errors.append(
-                f"When LSTM is specified, the other module must be in the Routing group; found: {other_name}"
+                "When LSTM is specified, exactly one other Routing module must be included; "
+                f"found: {', '.join(other_names)}"
             )
             return fatal_errors, nonfatal_errors, info_messages
 
@@ -497,6 +519,18 @@ def validate_formulation(module_names: set[str], return_group_info: bool = False
         return fatal_errors, nonfatal_errors, info_messages
 
     # --- End of LSTM special case. All further checks assume LSTM is NOT present. ---
+
+    # Topoflow-Glacier composition rule:
+    # Topoflow-Glacier cannot be specified by itself (routing modules don't count).
+    # If Topoflow-Glacier is present, there must be at least 1 other non-routing module.
+    if "Topoflow-Glacier" in module_names:
+        _, non_routing = split_routing_modules(module_names - {"Topoflow-Glacier"}, cached_modules)
+        if not non_routing:
+            fatal_errors.append(
+                "Topoflow-Glacier cannot be used by itself. When Topoflow-Glacier is specified, "
+                "at least one additional non-Routing module must be included."
+            )
+            return fatal_errors, nonfatal_errors, info_messages
 
     # Perform checks for non-LSTM case
     modules_by_id = get_cached_modules_by_id()  # canonical cache
@@ -551,7 +585,13 @@ def validate_formulation(module_names: set[str], return_group_info: bool = False
     # 3) Check for completeness
     check_completeness(module_names, fatal_errors, nonfatal_errors, info_messages)
 
-    # 4) If no fatal errors, indicate that the formulation is Calibratable
+    # 4) Special case for Topoflow
+    if 'Topoflow-Glacier' in module_names and geopackage_path:
+        glacier_status = validate_topoflow_glacier(geopackage_path)
+        if not glacier_status.get('result'):
+            nonfatal_errors.append(glacier_status.get('message'))
+
+    # 5) If no fatal errors, indicate that the formulation is Calibratable
     if not fatal_errors:
         info_messages.append('Formulation is Calibratable.')
 
@@ -628,6 +668,8 @@ def check_completeness(module_names: set[str], fatal_errors: list[str], nonfatal
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], module_names: set[str]) -> str | None:
     """
     Add Sloth parameters to a calibration run, validating module associations.
+
+    This function performs database writes and must be called inside a write transaction.
 
     :param run: The calibration run instance.
     :param sloth_parameters: A list of dictionaries containing Sloth parameter data.

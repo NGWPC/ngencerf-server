@@ -113,6 +113,8 @@ The data for the `ngen-static-files` directory is in 2 locations.  Copy everythi
 `/ngencerf/data/ngen-static-files` or `/ngencerf-app/data/ngen-cal-data/ngen-static-files`
 ```
 aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
+aws s3 cp s3://ngwpc-hydrofabric/sac_sma_params_2.2.csv /ngencerf/data/ngen-static-files/module_parameter_files/sac-sma/
+aws s3 cp s3://ngwpc-hydrofabric/snow17_params_2.2.csv /ngencerf/data/ngen-static-files/module_parameter_files/snow-17/
 ```
 
 In addition, copy the directory `module_parameter_files` and all its contents from 
@@ -164,8 +166,7 @@ ngen-static-files/
 │  ├── lasam
 │  ├── noah-owp-modular
 │  └── ueb
-├── nwm_retrospective
-└── parquet
+└── nwm_retrospective
 
 
 
@@ -350,8 +351,6 @@ peter.a.kronenberg@U-12SMBYD5450YI:~$ tree /ngencerf -L 4 -n -A
         │       ├── GENPARM.TBL
         │       ├── MPTABLE.TBL
         │       └── SOILPARM.TBL
-        ├── parquet
-        │   └── conus_model_attributes.parquet
         └── nwm_retrospective
             ├── 01118000.csv
             ├── 01121000.csv
