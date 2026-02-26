@@ -62,7 +62,7 @@ env:
   PYTHON_VERSION: '3.11'
 
 jobs:
-  # set variables for use in other jobs
+  # set variables to use in other jobs
   setup:
     name: setup
     runs-on: ubuntu-latest
