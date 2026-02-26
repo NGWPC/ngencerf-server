@@ -156,7 +156,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: ${ env.PYTHON_VERSION }
+          python-version: ${{ env.PYTHON_VERSION }}
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
