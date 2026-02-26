@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 
 from calibration.models.base_model import BaseModel
 
@@ -8,7 +9,7 @@ class ModuleProperty(BaseModel):
     description = models.TextField(null=False)
     name = models.CharField(max_length=50)
     data_type = models.CharField(max_length=50)
-    default_value = models.CharField(max_length=200, blank=True, default="")  # store as string; parse by data_type
+    default_value = models.CharField(max_length=200, null=False)
 
     class Meta:
         db_table = "module_property"

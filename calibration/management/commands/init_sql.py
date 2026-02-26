@@ -264,7 +264,7 @@ class Command(BaseCommand):
                 "name": "PET",
                 "description": "PET handles potential evapotranspiration functions: Aerodynamic method, Combination method, Energy balance method, Penman Monteith method and Priestly Taylor method.",
                 "groups": ["Evapotranspiration"],
-                "is_active": False,
+                "is_active": True,
                 "use_edfs": False
             },
             {
@@ -307,7 +307,7 @@ class Command(BaseCommand):
                 "description": "Tree-Based Channel Routing -  a dynamic channel routing model, offers a comprehensive solution for river network routing problems. Provides a series lateral inflows for each node in a channel network and computes the resulting streamflows.",
                 "groups": ["Routing"],
                 "output_variables": ["inflow", "outflow", "reservoir_assimilated_value", "water_sfc_elev", "nudge", "streamflow", "velocity", ""],
-                "use_edfs": True
+                "use_edfs": False
             }
         ]
 
@@ -317,6 +317,7 @@ class Command(BaseCommand):
                     "display_name": v.get('display_name', v['name']),
                     "is_active": v.get('is_active', True),
                     "description": v['description'],
+                    "use_edfs": v['use_edfs'],
                     "created_by": self.user
                 }
             )
@@ -344,7 +345,7 @@ class Command(BaseCommand):
       "properties": [
         {
           "name": "sample",
-          "description": "Enable rootzone option.",
+          "description": "Sample data string.",
           "data_type": "string",
           "default_value": "ABC"
         }
@@ -355,10 +356,11 @@ class Command(BaseCommand):
       "name": "CFE-S",
       "properties": [
         {
-          "name": "rootzone",
+          "name": "AET Rootzone",
           "description": "Enable rootzone option.",
           "data_type": "boolean",
-          "default_value": "false"
+          "default_value": "false",
+          "value": "true"
         }
       ]
     },
@@ -367,10 +369,11 @@ class Command(BaseCommand):
       "name": "CFE-X",
       "properties": [
         {
-          "name": "rootzone",
+          "name": "AET Rootzone",
           "description": "Enable rootzone option.",
           "data_type": "boolean",
-          "default_value": "false"
+          "default_value": "false",
+          "value": null
         }
       ]
     },
@@ -379,10 +382,11 @@ class Command(BaseCommand):
       "name": "PET",
       "properties": [
         {
-          "name": "method",
+          "name": "Method",
           "description": "Potential evapotranspiration method selection.",
           "data_type": "integer",
           "default_value": "1",
+          "value": "2",
           "choices": [
             {
               "value": 1,

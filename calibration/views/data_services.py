@@ -371,7 +371,7 @@ def get_module_metadata_from_data_services(
     edfs_modules = sorted(
         name
         for name in modules
-        if name in cached_modules and getattr(cached_modules[name], "use_edfs", False)
+        if name in cached_modules and getattr(cached_modules[name], "use_edfs", True)
     )
 
     # If nothing requires EDFS, skip the external call entirely.
