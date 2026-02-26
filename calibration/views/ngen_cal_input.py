@@ -469,24 +469,22 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             error_object=error_object,
         )
 
-        if have_LSTM_flag:
-            # Do not validate or write parameter files for LSTM jobs.
-            pass
-        else:
+        param_error = False
+        if not have_LSTM_flag:
             # Validate parameter values and write parameter files
-            param_error = False
             for p in params:
                 if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
-                    # module_name = modules_by_id[p['calibration_formulation__module_id']].name
                     param_error = True
                     error_object.add_warning(
                         f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) "
                         f"must be specified for parameter '{p['name']}' (module {p['model']})"
                     )
 
-            if params and (not param_error) and build:
-                calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
-                write_parameter_files(params, calibration['calib_parameter_file'])
+        # Write parameter files when build is true and there were no param errors.
+        # This intentionally allows writing with an empty params list (e.g., LSTM jobs),
+        if not param_error and build:
+            calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
+            write_parameter_files(params, calibration['calib_parameter_file'])
 
         if build and NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
             config['Parallel'] = parallel
