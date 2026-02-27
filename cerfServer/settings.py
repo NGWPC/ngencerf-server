@@ -107,14 +107,6 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3001",
 ]
 
-# Needed for zip file download
-CORS_EXPOSE_HEADERS = ['Content-Disposition']
-
-ZIP_DIR = os.path.join('/tmp', 'ngencerf-zips')
-os.makedirs(ZIP_DIR, exist_ok=True)
-ZIP_TTL_SECONDS = 7200  # 2 hours
-ZIP_DOWNLOAD_URL_TTL_SECONDS = 300  # 5 minutes to allow for large downloads
-
 ROOT_URLCONF = 'cerfServer.urls'
 
 TEMPLATES = [
@@ -233,6 +225,20 @@ USE_BMI_FORCING = str(os.getenv('USE_BMI_FORCING', 'true')).lower() == 'true'
 
 # Location of archive files
 NGENCERF_ARCHIVE_S3_PATH = os.getenv('NGENCERF_ARCHIVE_S3_PATH')
+
+# Location of download zip files on S3
+NGENCERF_ZIPS_S3_PATH = os.getenv('NGENCERF_ZIPS_S3_PATH')
+
+# Local temp directory for building ZIPs before upload (and for CLI zips)
+ZIP_TEMP_DIR = os.path.join('/tmp', 'ngencerf-zips')
+os.makedirs(ZIP_TEMP_DIR, exist_ok=True)
+
+# How long a presigned download URL is valid
+ZIP_DOWNLOAD_URL_TTL_SECONDS = 300
+
+# How long the ZIP object is kept in S3 (and how long status is cached) before cleanup may delete it
+ZIP_RETENTION_SECONDS = 3600
+
 
 # -----------------------------
 # ngen/nwm-cal-mgr Locations

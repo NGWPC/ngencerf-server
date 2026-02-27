@@ -114,6 +114,38 @@ def get_filesystem(url: str) -> tuple[fsspec.AbstractFileSystem, str]:
     return fs, url
 
 
+def _parse_s3_uri(s3_uri: str) -> tuple[str, str]:
+    """
+    Parse an S3 URI into bucket and object key components.
+
+    Validates that the input is a properly formed S3 object URI and extracts
+    the bucket name and key. The URI must include both a bucket and a non-empty
+    object key.
+
+    Accepted format:
+        s3://bucket-name/path/to/object.ext
+
+    This function does not verify that the object actually exists in S3.
+    It only validates structure and performs parsing.
+
+    :param s3_uri: Fully-qualified S3 object URI.
+    :return: Tuple of (bucket, key).
+    :raises ValueError: If the URI is invalid or missing required components.
+    """
+    if not s3_uri or not isinstance(s3_uri, str):
+        raise ValueError("s3_uri must be a non-empty string")
+
+    p = urlparse(s3_uri)
+    if p.scheme != "s3" or not p.netloc:
+        raise ValueError(f"Invalid S3 URI: {s3_uri}")
+
+    key = (p.path or "").lstrip("/")
+    if key == "":
+        raise ValueError(f"S3 URI must include an object key: {s3_uri}")
+
+    return p.netloc, key
+
+
 def _norm_prefix(url: str) -> tuple[str, str]:
     """
     Split a URL into (base, path) without trailing slashes in base.
@@ -1105,3 +1137,166 @@ def check_aws_credentials(*, timeout_seconds: int = 3) -> None:
         # Any other STS error at startup still indicates unusable credentials
         # (e.g. wrong account, broken assume-role chain, signature issues).
         raise S3CredentialsExpired(f"AWS credential check failed: {code}") from None
+
+
+def upload_file_to_s3(*, local_path: str, s3_uri: str) -> str:
+    """
+    Upload a local file to S3.
+
+    Transfers a file from the local filesystem to an S3 object location
+    specified by a fully-qualified S3 URI. The destination object will be
+    overwritten if it already exists.
+
+    This function performs a direct upload using boto3 and does not use
+    fsspec or the caching layer.
+
+    Authentication is handled via standard AWS credential resolution
+    (environment variables, IAM role, shared credentials file, etc.).
+
+    :param local_path: Path to the local file to upload.
+    :param s3_uri: Destination S3 object URI (s3://bucket/key).
+    :return: The destination S3 URI.
+    :raises ValueError: If the S3 URI is invalid.
+    :raises S3CredentialsExpired: If AWS credentials are missing, expired, or invalid.
+    :raises botocore.exceptions.ClientError: For other AWS errors.
+    """
+    if not local_path:
+        raise ValueError("local_path is required")
+
+    bucket, key = _parse_s3_uri(s3_uri)
+
+    s3 = boto3.client("s3")
+    try:
+        s3.upload_file(local_path, bucket, key)
+    except botocore.exceptions.ClientError as e:
+        code = e.response.get("Error", {}).get("Code")
+        if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired or invalid") from e
+        raise
+
+    try:
+        size = os.path.getsize(local_path)
+        logger.info(
+            f"S3 upload complete: {local_path} -> {s3_uri} "
+            f"({size / 1024 / 1024:.2f} MB)"
+        )
+    except Exception:
+        logger.info(f"S3 upload complete: {local_path} -> {s3_uri}")
+
+    return s3_uri
+
+
+def generate_presigned_download_url(*, s3_uri: str, expires_seconds: int) -> str:
+    """
+    Generate a presigned HTTP URL for downloading an S3 object.
+
+    Creates a temporary signed URL that allows unauthenticated clients to
+    download the specified S3 object using HTTP GET. The URL remains valid
+    for the requested duration and then expires automatically.
+
+    This is typically used when:
+        • The backend controls access to objects
+        • The client should download directly from S3
+        • Authentication headers should not be required for the download
+
+    The URL is generated using AWS Signature Version 4 via boto3.
+
+    :param s3_uri: S3 object URI to download (s3://bucket/key).
+    :param expires_seconds: Lifetime of the URL in seconds.
+    :return: A fully-qualified HTTPS presigned download URL.
+    :raises ValueError: If the S3 URI is invalid or expiration is not positive.
+    :raises S3CredentialsExpired: If AWS credentials are missing, expired, or invalid.
+    :raises botocore.exceptions.ClientError: For other AWS errors.
+    """
+    if expires_seconds <= 0:
+        raise ValueError("expires_seconds must be > 0")
+
+    bucket, key = _parse_s3_uri(s3_uri)
+
+    s3 = boto3.client("s3")
+    try:
+        return s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=expires_seconds,
+        )
+    except botocore.exceptions.ClientError as e:
+        code = e.response.get("Error", {}).get("Code")
+        if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired or invalid") from e
+        raise
+
+
+def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_seconds: float) -> int:
+    """
+    Delete S3 objects under a prefix that are older than a cutoff timestamp.
+
+    This is intended for cleanup of "directory-like" S3 prefixes that store
+    transient artifacts (e.g., generated ZIP files). The deletion is based on
+    each object's LastModified time as returned by S3 listing.
+
+    Notes:
+    - S3 has no real directories; this lists objects by Prefix and deletes matching keys.
+    - This function does not validate that s3_dir_uri ends with "/"; callers may enforce that separately.
+    - If listing or deletion fails due to expired/invalid AWS credentials, raises S3CredentialsExpired.
+
+    :param s3_dir_uri: S3 directory URI (e.g., s3://bucket/prefix/).
+    :param cutoff_unix_seconds: Delete objects with LastModified.timestamp() < cutoff_unix_seconds.
+    :return: Number of objects successfully deleted.
+    :raises ValueError: If s3_dir_uri is not a valid S3 URI.
+    :raises S3CredentialsExpired: If AWS credentials are missing, expired, or invalid.
+    :raises botocore.exceptions.ClientError: For other AWS errors.
+    """
+    if cutoff_unix_seconds is None:
+        raise ValueError("cutoff_unix_seconds is required")
+
+    if not s3_dir_uri or not isinstance(s3_dir_uri, str):
+        raise ValueError("s3_dir_uri must be a non-empty string")
+
+    p = urlparse(s3_dir_uri)
+    if p.scheme != "s3" or not p.netloc:
+        raise ValueError(f"Invalid S3 directory URI: {s3_dir_uri}")
+
+    bucket = p.netloc
+    prefix = (p.path or "").lstrip("/")
+
+    s3 = boto3.client("s3")
+
+    deleted = 0
+    continuation_token = None
+
+    while True:
+        kwargs = {"Bucket": bucket, "Prefix": prefix}
+        if continuation_token:
+            kwargs["ContinuationToken"] = continuation_token
+
+        try:
+            resp = s3.list_objects_v2(**kwargs)
+        except botocore.exceptions.ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
+                raise S3CredentialsExpired("Your AWS S3 credentials are expired or invalid") from e
+            raise
+
+        for obj in resp.get("Contents") or []:
+            key = obj.get("Key")
+            lm = obj.get("LastModified")  # datetime
+            if not key or lm is None:
+                continue
+
+            if lm.timestamp() < float(cutoff_unix_seconds):
+                try:
+                    s3.delete_object(Bucket=bucket, Key=key)
+                    deleted += 1
+                except botocore.exceptions.ClientError as e:
+                    code = e.response.get("Error", {}).get("Code")
+                    if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
+                        raise S3CredentialsExpired("Your AWS S3 credentials are expired or invalid") from e
+                    raise
+
+        if not resp.get("IsTruncated"):
+            break
+
+        continuation_token = resp.get("NextContinuationToken")
+
+    return deleted

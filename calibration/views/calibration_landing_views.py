@@ -681,6 +681,7 @@ def archive_jobs(request: Request) -> Response:
     except Exception:
         return ResponseError("NGENCERF_ARCHIVE_S3_PATH must be a valid S3 directory (e.g. s3://ngencerf_archive/<system_name>/)")
 
+    # This check requires at least one object to actually exist
     if not path_exists(settings.NGENCERF_ARCHIVE_S3_PATH):
         return ResponseError(
             f"NGENCERF_ARCHIVE_S3_PATH does not exist on S3: {settings.NGENCERF_ARCHIVE_S3_PATH}"
