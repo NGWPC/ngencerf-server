@@ -13,7 +13,7 @@ from mswm.utils.ginputfunc import call_icefabric_gpkg
 
 from calibration.enums import ForcingSourceEnum, DomainEnum
 from calibration.models import CalibrationParameter, CalibrationRun, CalibrationFormulation
-from calibration.util.caching import get_cached_module_by_name
+from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups
 from calibration.util.calibration_validators import ModuleDataListSerializer
 from calibration.util.cloud_util import join_url, is_dir
 from calibration.util.ngen_locations import get_geopackage_dir_for_job
@@ -330,18 +330,27 @@ def get_module_metadata_from_data_services(
         domain: str | None = None
 ) -> tuple[dict, list[dict]]:
     """
-    Fetch module parameter metadata for a set of modules from Data Services.
+    Fetch module parameter metadata from Data Services for modules that require EDFS.
 
-    This function performs an HTTP request and should be executed outside of a DB transaction.
+    This function performs an external HTTP request and should be executed outside of a DB transaction.
+
+    Behavior:
+    ----------
+    - The input `modules` is the full set of module names for the run.
+    - Only modules where Module.use_edfs == True are sent to Data Services.
+    - Module definitions are resolved from the shared Redis-backed module cache (no DB queries).
+    - If no modules require EDFS, no HTTP request is made and ({}, []) is returned.
+    - Unknown module names that are not present in the cache are ignored.
+    - Only modules returned by Data Services are processed and normalized.
 
     Gage context:
-      - Data Services requires gage_id (Gage.gage_id) and domain as query params.
-      - If gage_id/domain are not provided, they are derived from run.gage.
-      - This avoids requiring run.gage to be saved before the call; it only needs to be set
-        in memory (run.gage = gage).
+    -------------
+    - Data Services requires gage_id (Gage.gage_id) and domain as query params.
+    - If gage_id/domain are not provided, they are derived from run.gage.
+    - run.gage only needs to be populated in memory; it does not need to be saved.
 
-    :param run: CalibrationRun instance (used for context only; not mutated).
-    :param modules: Set of module names.
+    :param run: CalibrationRun instance used for context only (not mutated).
+    :param modules: Set of module names associated with the run. This may include modules that do not use EDFS; those will be filtered out automatically.
     :param gage_id: Optional gage identifier (Gage.gage_id). If not provided, uses run.gage.gage_id.
     :param domain: Optional domain name for Data Services. If not provided, uses run.gage.domain.name.
     :return: Tuple (module_metadata, eds_errors)
@@ -353,7 +362,28 @@ def get_module_metadata_from_data_services(
     if not modules:
         return {}, []
 
-    # Resolve gage_id/domain from args first, then from run.gage.
+    # -------------------------------------------------------
+    # Resolve module definitions from shared cache
+    # and keep only modules that require EDFS metadata.
+    # -------------------------------------------------------
+    cached_modules = get_cached_modules_with_groups()  # {module_name -> Module ORM instance}
+
+    edfs_modules = sorted(
+        name
+        for name in modules
+        if name in cached_modules and getattr(cached_modules[name], "use_edfs", False)
+    )
+
+    # If nothing requires EDFS, skip the external call entirely.
+    if not edfs_modules:
+        logger.info("No modules with use_edfs=True; skipping Data Services call.")
+        return {}, []
+
+    logger.info("Fetching module metadata from Data Services")
+
+    # -------------------------------------------------------
+    # Resolve gage context (explicit args take precedence)
+    # -------------------------------------------------------
     resolved_gage_id = gage_id or (run.gage.gage_id if run.gage else None)
     resolved_domain = domain or (run.gage.domain.name if run.gage and run.gage.domain_id else None)
 
@@ -365,7 +395,7 @@ def get_module_metadata_from_data_services(
 
     # urlencode(doseq=True) only repeats keys when the value is a sequence (e.g., list)
     params = {
-        "modules": sorted(modules),
+        "modules": edfs_modules,
         "gage_id": resolved_gage_id,
         "domain": resolved_domain,
         "source": settings.HYDROFABRIC_SOURCE
@@ -381,17 +411,17 @@ def get_module_metadata_from_data_services(
     try:
         module_json = fetch_from_data_services("GET", url, headers=default_headers)
     except DataServicesException as e:
-        logger.exception(f"Error retrieving module parameter data from Data Services")
+        logger.exception("Error retrieving module parameter data from Data Services")
         return {}, [{
-            'name': 'parameters',
-            'message': str(e),
-            'status_code': e.status_code if e.status_code else None
+            "name": "parameters",
+            "message": str(e),
+            "status_code": e.status_code if e.status_code else None
         }]
 
     module_metadata = validate_response_data(
         ModuleDataListSerializer,
         module_json,
-        'Module metadata from Data Services is not in the expected format'
+        "Module metadata from Data Services is not in the expected format"
     )
 
     # Check for any error fields from EDFS
@@ -399,10 +429,10 @@ def get_module_metadata_from_data_services(
     for module_data in module_metadata.get("modules", []):
         err = module_data.get("error")
         if err:
-            module_name = module_data.get('module_name')
+            module_name = module_data.get("module_name")
             eds_errors.append({
                 "name": "parameters",
-                "message": f'{module_name} - {err}',
+                "message": f"{module_name} - {err}",
                 "status_code": None,
             })
 

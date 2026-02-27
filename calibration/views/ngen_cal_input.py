@@ -15,7 +15,7 @@ from toml import TomlEncoder
 from calibration.enums import StatusEnum, DataTypeEnum
 from calibration.enums_vanilla import NgenEnvironmentEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
-    CalibrationParameter, CalibrationFormulation, CalibrationRun
+    CalibrationParameter, CalibrationFormulation, CalibrationRun, CalibrationModulePropertyValue
 from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, get_cached_modules_by_id
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     get_observational_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, UEB_LIB, NGEN_MODULE_PARAMETERS, \
@@ -41,6 +41,7 @@ CONFIG_TEMPLATE = {
         "domain": "",
         "models": "",
         "formulation": "",
+        # TODO Remove this
         "is_aet_rootzone": False,
         "run_type": "calibration",
         "main_dir": "",
@@ -302,7 +303,79 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             if run.use_sloth:
                 general['models'] += f', {SLOTH}'
 
-            general['is_aet_rootzone'] = run.is_aet_rootzone
+            # general['is_aet_rootzone'] = run.is_aet_rootzone
+            # -------------------------------------------------------
+            # ModuleProperties
+            #   module.<module_name>.<property_name> = <typed value>
+            # Values come from CalibrationModulePropertyValue rows.
+            # -------------------------------------------------------
+            module_property_values = (
+                CalibrationModulePropertyValue.objects
+                .filter(calibration_formulation__calibration_run=run)
+                .select_related("calibration_formulation", "module_property")
+                .only(
+                    "id",
+                    "calibration_formulation_id",
+                    "calibration_formulation__module_id",
+                    "module_property__name",
+                    "module_property__data_type",
+                    "value_bool",
+                    "value_int",
+                    "value_double",
+                    "value_str",
+                )
+            )
+
+            for mpv in module_property_values:
+                module_id = mpv.calibration_formulation.module_id
+                module_obj = modules_by_id.get(module_id)
+                if not module_obj:
+                    continue
+
+                module_name = module_obj.name
+                prop_name = mpv.module_property.name
+                key = f"module.{module_name}.{prop_name}"
+
+                value: str | int | float | bool
+
+                # Pick the single stored value (constraint enforces exactly one)
+                if mpv.value_bool is not None:
+                    value = mpv.value_bool
+                elif mpv.value_int is not None:
+                    value = mpv.value_int
+                elif mpv.value_double is not None:
+                    value = mpv.value_double
+                elif mpv.value_str is not None:
+                    value = mpv.value_str
+                else:
+                    # Should not happen if ck constraint is enforced, but don't crash config generation
+                    error_object.add_warning(f"Missing value for module property {key} (row id={mpv.id})")
+                    continue
+
+                # Optional sanity check: ensure stored column matches declared data_type category
+                dt = mpv.module_property.data_type
+
+                if dt == DataTypeEnum.BOOLEAN.value:
+                    if not isinstance(value, bool):
+                        error_object.add_warning(
+                            f"Type mismatch for {key}: expected boolean, got {type(value).__name__}"
+                        )
+
+                elif dt in (DataTypeEnum.INTEGER.value, DataTypeEnum.DOUBLE.value):
+                    # treat all numeric types the same here
+                    if not isinstance(value, (int, float)):
+                        error_object.add_warning(
+                            f"Type mismatch for {key}: expected numeric, got {type(value).__name__}"
+                        )
+
+                elif dt == DataTypeEnum.STRING.value:
+                    if not isinstance(value, str):
+                        error_object.add_warning(
+                            f"Type mismatch for {key}: expected string, got {type(value).__name__}"
+                        )
+
+                general[key] = value
+        # End of module properties section
 
         job_data_dir = run.job_data_dir
         general['main_dir'] = job_data_dir
@@ -620,5 +693,3 @@ def get_node_type(num_catchments: int) -> str:
 
     logger.info(f'{num_catchments} catchments using node type {node_type}')
     return node_type
-
-

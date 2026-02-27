@@ -73,7 +73,8 @@ class CalibrationConfig(AppConfig):
             print_banner()
         else:
             # Management command
-            logger.info(f'*** Running {sys.argv[1]}')
+            cmd = sys.argv[1] if len(sys.argv) > 1 else os.path.basename(sys.argv[0])
+            logger.info(f'*** Running {cmd}')
 
         logger.info(f'Environment: {settings.NGEN_ENVIRONMENT_STR}')
         log_worker_info()

@@ -38,7 +38,7 @@ class CalibrationModulePropertyValue(BaseModel):
         ]
 
         indexes = [
-            models.Index(fields=["calibration_formulation"], name="idx_cal_mod_prop_val_formulation"),
+            models.Index(fields=["calibration_formulation"], name="idx_cal_mod_prop_val_form"),
             models.Index(fields=["module_property"], name="idx_cal_mod_prop_val_property"),
         ]
 
@@ -52,7 +52,6 @@ class CalibrationModulePropertyValue(BaseModel):
         if self.value_str is not None:
             return self.value_str
         return None  # should never happen if constraint is enforced
-
 
     def __str__(self):
         module_name = self.calibration_formulation.module.name
