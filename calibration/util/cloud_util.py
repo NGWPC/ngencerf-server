@@ -45,7 +45,6 @@ Environment:
   * Cache is stored in /var/tmp by default, which typically survives reboots.
 """
 
-import datetime
 import hashlib
 import json
 import logging
@@ -56,6 +55,7 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Tuple
 from urllib.parse import urlparse
@@ -1012,7 +1012,7 @@ def localize_to_path(
     size = int(meta_remote.get("Size") or meta_remote.get("size") or -1)
 
     lm = meta_remote.get("LastModified") or meta_remote.get("last_modified")
-    if isinstance(lm, datetime.datetime):
+    if isinstance(lm, datetime):
         mtime = int(lm.timestamp())
     elif isinstance(lm, (int, float)):
         mtime = int(lm)
@@ -1261,9 +1261,12 @@ def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_secon
     prefix = (p.path or "").lstrip("/")
 
     s3 = boto3.client("s3")
+    attempted_keys: set[str] = set()
 
     deleted = 0
     continuation_token = None
+
+    cutoff_dt = datetime.fromtimestamp(float(cutoff_unix_seconds), timezone.utc)
 
     while True:
         kwargs = {"Bucket": bucket, "Prefix": prefix}
@@ -1278,21 +1281,82 @@ def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_secon
                 raise S3CredentialsExpired("Your AWS S3 credentials are expired or invalid") from e
             raise
 
+        # Collect delete candidates for this page (batch delete max 1000)
+        delete_candidates: list[dict[str, str]] = []
+
         for obj in resp.get("Contents") or []:
             key = obj.get("Key")
             lm = obj.get("LastModified")  # datetime
+            size = obj.get("Size")
+
             if not key or lm is None:
                 continue
 
-            if lm.timestamp() < float(cutoff_unix_seconds):
-                try:
-                    s3.delete_object(Bucket=bucket, Key=key)
+            # Only manage zip artifacts under this prefix.
+            if not key.lower().endswith(".zip"):
+                logger.debug("S3 cleanup skipping non-zip: s3://%s/%s", bucket, key)
+                continue
+
+            if key in attempted_keys:
+                # If this ever happens, you’ll see it immediately.
+                logger.warning(
+                    "S3 cleanup saw duplicate key in listing; skipping duplicate: s3://%s/%s",
+                    bucket, key
+                )
+                continue
+
+            lm_dt = lm
+            if getattr(lm_dt, "tzinfo", None) is None:
+                lm_dt = lm_dt.replace(tzinfo=timezone.utc)
+
+            if lm_dt < cutoff_dt:
+                logger.info(
+                    "S3 cleanup will delete: s3://%s/%s (last_modified=%s < cutoff=%s, size=%s)",
+                    bucket,
+                    key,
+                    lm_dt.isoformat(),
+                    cutoff_dt.isoformat(),
+                    size,
+                )
+                attempted_keys.add(key)
+                delete_candidates.append({"Key": key})
+            else:
+                logger.debug(
+                    "S3 cleanup keeping: s3://%s/%s (last_modified=%s >= cutoff=%s)",
+                    bucket,
+                    key,
+                    lm_dt.isoformat(),
+                    cutoff_dt.isoformat(),
+                )
+
+        if delete_candidates:
+            # delete_objects supports up to 1000 keys per call; list_objects_v2 returns up to 1000.
+            try:
+                del_resp = s3.delete_objects(
+                    Bucket=bucket,
+                    Delete={"Objects": delete_candidates, "Quiet": False},
+                )
+            except botocore.exceptions.ClientError as e:
+                code = e.response.get("Error", {}).get("Code")
+                if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
+                    raise S3CredentialsExpired("Your AWS S3 credentials are expired or invalid") from e
+                raise
+
+            for d in del_resp.get("Deleted") or []:
+                k = d.get("Key")
+                if k:
+                    logger.info("S3 cleanup deleted: s3://%s/%s", bucket, k)
                     deleted += 1
-                except botocore.exceptions.ClientError as e:
-                    code = e.response.get("Error", {}).get("Code")
-                    if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
-                        raise S3CredentialsExpired("Your AWS S3 credentials are expired or invalid") from e
-                    raise
+
+            for err in del_resp.get("Errors") or []:
+                k = err.get("Key")
+                logger.error(
+                    "S3 cleanup failed deleting: s3://%s/%s code=%s message=%s",
+                    bucket,
+                    k,
+                    err.get("Code"),
+                    err.get("Message"),
+                )
 
         if not resp.get("IsTruncated"):
             break
