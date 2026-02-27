@@ -1,5 +1,6 @@
 import logging
 import os
+import traceback
 from functools import lru_cache
 from io import BytesIO
 from itertools import cycle
@@ -10,15 +11,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 logger = logging.getLogger(__name__)
-logging.getLogger("pyogrio._io").setLevel(logging.WARNING)
-
-if not logging.getLogger().hasHandlers():
-    # We're likely running outside Django — configure basic logging to stderr
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
 
 # See https://stackoverflow.com/questions/27147300/matplotlib-tcl-asyncdelete-async-handler-deleted-by-the-wrong-thread
 matplotlib.use('Agg')  # Use a backend that doesn't require a display (like for generating images)
@@ -301,13 +293,13 @@ def find_gage_id(gpkg_path: str, layer_name: str = "hydrolocations", field_name:
         gdf = gpd.read_file(gpkg_path, layer=layer_name)
         if field_name in gdf.columns:
             gage_ids = gdf[field_name].astype(str).unique().tolist()
-            logger.info(f"Found gage_id(s) in layer '{layer_name}' from '{gpkg_path}': {gage_ids}")
+            logger.info(f"Found gage_id(s) in layer '{layer_name}': {gage_ids}")
             return gage_ids
 
         logger.info(f"Field '{field_name}' not found in layer '{layer_name}' for '{gpkg_path}'.")
         return []
     except Exception as e:
-        raise RuntimeError(f"Error while searching for gage_id in layer '{layer_name}' from '{gpkg_path}': {e}")
+        raise RuntimeError(f"Error while searching for gage_id in layer '{layer_name}': {e}")
 
 
 def validate_catchments_in_layer(gpkg_path: str, layer_name: str) -> list[str]:
@@ -328,6 +320,35 @@ def validate_catchments_in_layer(gpkg_path: str, layer_name: str) -> list[str]:
         return []
     except Exception as e:
         raise RuntimeError(f"Failed to validate catchments in layer '{layer_name}' from '{gpkg_path}': {e}")
+
+
+def find_catchments(gpkg_path: str, target_layers: list[str] = ["divides", "catchments", "watersheds"]) -> None:
+    """
+    Search for catchment geometries across a set of likely layer names and print findings.
+
+    Accepts a local path or a remote URL (downloaded to the persistent cache first).
+
+    :param gpkg_path: Path/URL to the GeoPackage file.
+    :param target_layers: Ordered list of candidate layer names to inspect for catchments.
+    :return: None. Prints results to stdout.
+    """
+    try:
+        layers = list_layers(gpkg_path)
+        for layer in target_layers:
+            if layer in layers:
+                logger.info('')
+                logger.info(f"Checking for catchments in layer '{layer}':")
+                catchments = validate_catchments_in_layer(gpkg_path, layer)
+                if catchments:
+                    logger.info(f"  Found {len(catchments)} catchments in layer '{layer}'.")
+                    logger.info(f"  Catchments: {', '.join(catchments)}")
+                    return
+                else:
+                    logger.info(f"  No catchments found in layer '{layer}'.")
+        logger.info("\nNo catchments found in the specified layers.")
+    except Exception as e:
+        logger.info(f"Error while searching for catchments from {gpkg_path}: {e}")
+        traceback.print_exc()
 
 
 def display_layer_metadata(gpkg_path: str, layer_name: str) -> None:
