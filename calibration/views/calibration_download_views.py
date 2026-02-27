@@ -137,7 +137,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
 
     # Launch zip process in background
     def zip_job():
-        start_time = datetime.now()
+        start_time = datetime.now(timezone.utc)
         tmp_path = None
         zip_path = None
         zip_size = None
@@ -214,15 +214,15 @@ def start_zip_for_calibration_job(request: Request) -> Response:
                 timeout=settings.ZIP_RETENTION_SECONDS,
             )
 
-            duration = datetime.now() - start_time
+            duration = datetime.now(timezone.utc) - start_time
             logger.info(
-                f"Zip job completed on s3 for Calibration Job {run.id} "
+                f"Zip job completed on S3 for Calibration Job {run.id} "
                 f"in {duration.total_seconds():.2f} seconds — "
                 f"size: {zip_size / 1024 / 1024:.2f} MB"
             )
 
         except Exception as e:
-            duration = datetime.now() - start_time
+            duration = datetime.now(timezone.utc) - start_time
             size_part = (
                 f", size: {zip_size / 1024 / 1024:.2f} MB"
                 if zip_size is not None
@@ -392,7 +392,15 @@ def cleanup_expired_zips() -> None:
         # Record that cleanup ran (even if nothing is deleted) to prevent repeated scans.
         cache.set(_CLEANUP_LAST_RUN_KEY, now, timeout=24 * 3600)
 
-        cutoff = now - settings.ZIP_RETENTION_SECONDS
+        cutoff_unix = now - settings.ZIP_RETENTION_SECONDS
+        cutoff_dt = datetime.fromtimestamp(cutoff_unix, timezone.utc).isoformat()
+
+        logger.debug(
+            "ZIP cleanup cutoff=%s (retention=%ss, now=%s)",
+            cutoff_dt,
+            settings.ZIP_RETENTION_SECONDS,
+            datetime.fromtimestamp(now, timezone.utc).isoformat(),
+        )
 
         # ------------------------------------------------------------
         # Delete expired ZIP objects from S3
@@ -404,7 +412,7 @@ def cleanup_expired_zips() -> None:
             try:
                 deleted_s3 = cloud_util.delete_expired_s3_objects_under_prefix(
                     s3_dir_uri=s3_dir,
-                    cutoff_unix_seconds=cutoff,
+                    cutoff_unix_seconds=cutoff_unix,
                 )
             except Exception:
                 # Keep behavior minimal: log and skip S3 cleanup rather than failing endpoints.
@@ -435,9 +443,15 @@ def cleanup_expired_zips() -> None:
                     continue
 
                 # Delete files older than the retention window.
-                if st.st_mtime < cutoff:
+                if st.st_mtime < cutoff_unix:
                     try:
                         os.remove(path)
+                        logger.info(
+                            "Lazy cleanup deleted local artifact: %s (mtime=%s, cutoff=%s)",
+                            path,
+                            datetime.fromtimestamp(st.st_mtime, timezone.utc).isoformat(),
+                            cutoff_dt,
+                        )
                         if is_zip:
                             deleted_zip += 1
                         else:
