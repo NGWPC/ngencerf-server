@@ -1038,11 +1038,35 @@ class SaveFormulationRequestSerializer(BaseSerializer):
         return attrs
 
 
+class ModulePropertyChoiceResponseSerializer(BaseSerializer):
+    value = serializers.CharField(required=True, allow_blank=False)  # always string on the wire
+    label = serializers.CharField(required=True, allow_blank=False)
+    description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class ModulePropertyResponseSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    display_name = serializers.CharField(required=True)
+    description = serializers.CharField(required=True)
+    data_type = serializers.CharField(required=True, validators=[enum_validator(DataTypeEnum)])
+    value = serializers.CharField(required=True)
+    choices = ModulePropertyChoiceResponseSerializer(many=True, required=False)
+
+
+class ModulePropertiesByModuleResponseSerializer(BaseSerializer):
+    name = ModuleNameField(required=True)
+    properties = ModulePropertyResponseSerializer(many=True, required=True, allow_empty=True)
+
+
+class ModulePropertiesResponseSerializer(BaseSerializer):
+    modules = ModulePropertiesByModuleResponseSerializer(many=True, required=True, allow_empty=True)
+
+
 class ValidateFormulationResponseSerializer(BaseSerializer):
     formulation_errors = serializers.JSONField(required=False)
     formulation_warnings = serializers.JSONField(required=False)
     formulation_messages = serializers.JSONField(required=False)
-    module_properties_schema = serializers.JSONField(required=False)
+    module_properties = ModulePropertiesResponseSerializer(required=False)
 
 
 class SaveFormulationResponseSerializer(GenericResponseSerializer):

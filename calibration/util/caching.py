@@ -150,7 +150,7 @@ def get_cached_module_properties() -> list[ModuleProperty]:
         qs = (
             ModuleProperty.objects
             .select_related("module")
-            .only("id", "module_id", "module__name", "name", "description", "data_type", "default_value")
+            .only("id", "module_id", "module__name", "name", "display_name", "description", "data_type", "default_value")
         )
         props = list(qs)
 

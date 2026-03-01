@@ -272,6 +272,7 @@ def validate_formulation_tab(request) -> Response:
         )
         prop_payload: dict[str, Any] = {
             "name": p.name,
+            "display_name": p.display_name,
             "description": p.description,
             "data_type": p.data_type,
             "value": effective_value
@@ -304,7 +305,7 @@ def validate_formulation_tab(request) -> Response:
     }
 
     response: dict[str, Any] = {
-        "module_properties_schema": module_properties_payload
+        "module_properties": module_properties_payload
     }
     if formulation_warnings:
         response["formulation_warnings"] = formulation_warnings
@@ -660,7 +661,7 @@ formulation_validations = {
             },
             "Evapotranspiration": {
                 "expected_counts": [1],
-                "fatal": True
+                "fatal": False
             },
             "Rainfall Runoff": {
                 "expected_counts": [1],

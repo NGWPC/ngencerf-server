@@ -335,191 +335,6 @@ class Command(BaseCommand):
             module_instance.save()
 
     def define_module_properties(self):
-
-        """
-        Example sent to UI
-          {
-  "modules": [
-      {
-      "name": "foo",
-      "properties": [
-        {
-          "name": "sample",
-          "description": "Sample data string.",
-          "data_type": "string",
-          "default_value": "ABC"
-        }
-      ]
-    },
-
-    {
-      "name": "CFE-S",
-      "properties": [
-        {
-          "name": "AET Rootzone",
-          "description": "Enable rootzone option.",
-          "data_type": "boolean",
-          "default_value": "false",
-          "value": "true"
-        }
-      ]
-    },
-
-    {
-      "name": "CFE-X",
-      "properties": [
-        {
-          "name": "AET Rootzone",
-          "description": "Enable rootzone option.",
-          "data_type": "boolean",
-          "default_value": "false",
-          "value": null
-        }
-      ]
-    },
-
-    {
-      "name": "PET",
-      "properties": [
-        {
-          "name": "Method",
-          "description": "Potential evapotranspiration method selection.",
-          "data_type": "integer",
-          "default_value": "1",
-          "value": "2",
-          "choices": [
-            {
-              "value": 1,
-              "label": "Priestley–Taylor",
-              "description": "Priestley–Taylor method."
-            },
-            {
-              "value": 2,
-              "label": "Penman–Monteith",
-              "description": "Penman–Monteith method."
-            },
-            {
-              "value": 3,
-              "label": "Aerodynamic",
-              "description": "Aerodynamic method."
-            },
-            {
-              "value": 4,
-              "label": "Combination",
-              "description": "Combination method."
-            },
-            {
-              "value": 5,
-              "label": "Energy balance",
-              "description": "Energy balance method."
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-
-<!doctype html>
-<html>
-<head>
-  <title>Module Properties</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 30px; }
-    .module { margin-bottom: 25px; }
-    .module h3 { margin-bottom: 8px; }
-    .property { margin-left: 20px; margin-bottom: 10px; }
-    .description { font-size: 12px; color: #666; }
-    input[type="text"], select { padding: 4px; }
-  </style>
-</head>
-
-<body>
-
-<h2>Module Property Configuration</h2>
-
-<!-- ============================= -->
-<!-- foo (string example) -->
-<!-- ============================= -->
-<div class="module">
-  <h3>Foo</h3>
-
-  <div class="property">
-    <label for="foo_sample">Sample</label><br />
-    <input
-      type="text"
-      id="foo_sample"
-      name="module.foo.sample"
-      value="ABC"
-    />
-    <div class="description">
-      Sample string value.
-    </div>
-  </div>
-</div>
-
-<!-- ============================= -->
-<!-- CFE-S -->
-<!-- ============================= -->
-<div class="module">
-  <h3>CFE-S</h3>
-
-  <div class="property">
-    <label>
-      <input type="checkbox" name="module.CFE-S.rootzone" />
-      Rootzone
-    </label>
-    <div class="description">
-      Enable rootzone option.
-    </div>
-  </div>
-</div>
-
-<!-- ============================= -->
-<!-- CFE-X -->
-<!-- ============================= -->
-<div class="module">
-  <h3>CFE-X</h3>
-
-  <div class="property">
-    <label>
-      <input type="checkbox" name="module.CFE-X.rootzone" />
-      Rootzone
-    </label>
-    <div class="description">
-      Enable rootzone option.
-    </div>
-  </div>
-</div>
-
-<!-- ============================= -->
-<!-- PET -->
-<!-- ============================= -->
-<div class="module">
-  <h3>PET</h3>
-
-  <div class="property">
-    <label for="pet_method">Method</label><br />
-
-    <select id="pet_method" name="module.PET.method">
-      <option value="1" selected>Priestley–Taylor</option>
-      <option value="2">Penman–Monteith</option>
-      <option value="3">Aerodynamic</option>
-      <option value="4">Combination</option>
-      <option value="5">Energy balance</option>
-    </select>
-
-    <div class="description">
-      Potential evapotranspiration method selection.
-    </div>
-  </div>
-</div>
-
-</body>
-</html>
-
-        """
-
         if self.DELETE_FLAG:
             ModuleProperty.objects.all().delete()
 
@@ -532,14 +347,16 @@ class Command(BaseCommand):
             # CFE Rootzone (boolean)
             {
                 "module": cfe_s,
-                "name": "AET Rootzone",
+                "name": "aet_rootzone",
+                "display_name": "AET Rootzone",
                 "data_type": DataTypeEnum.BOOLEAN.value,
                 "default_value": "false",
                 "description": "Enable AET Rootzone option."
             },
             {
                 "module": cfe_x,
-                "name": "AET Rootzone",
+                "name": "aet_rootzone",
+                "display_name": "AET Rootzone",
                 "data_type": DataTypeEnum.BOOLEAN.value,
                 "default_value": "false",
                 "description": "Enable AET Rootzone option."
@@ -548,7 +365,8 @@ class Command(BaseCommand):
             # PET Method (dropdown)
             {
                 "module": pet,
-                "name": "Method",
+                "name": "method",
+                "display_name": "Method",
                 "data_type": DataTypeEnum.INTEGER.value,
                 "default_value": "1",
                 "description": "Potential evapotranspiration method selection."
@@ -560,6 +378,7 @@ class Command(BaseCommand):
                 module=v["module"],
                 name=v["name"],
                 defaults={
+                    "display_name": v["display_name"],
                     "description": v["description"],
                     "data_type": v["data_type"],
                     "default_value": v.get("default_value", ""),
@@ -573,7 +392,7 @@ class Command(BaseCommand):
 
         # Lookup properties by their natural key (module + name)
         pet = Module.objects.get(name="PET")
-        pet_method = ModuleProperty.objects.get(module=pet, name="Method")
+        pet_method = ModuleProperty.objects.get(module=pet, name="method")
 
         values = [
             {

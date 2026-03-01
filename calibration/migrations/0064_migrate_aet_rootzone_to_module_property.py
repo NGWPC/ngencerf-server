@@ -4,7 +4,8 @@ from django.db import migrations
 
 
 MODULE_NAMES = ("CFE-S", "CFE-X")
-PROP_NAME = "rootzone"
+PROP_NAME = "aet_rootzone"
+DISPLAY_NAME = "AET Rootzone"
 DESCRIPTION = "Enable rootzone option."
 DATA_TYPE = "boolean"
 DEFAULT_VALUE = "false"
@@ -41,10 +42,11 @@ def forwards(apps, schema_editor):
         if not m:
             continue
 
-        prop, _ = ModuleProperty.objects.get_or_create(
+        prop, created = ModuleProperty.objects.get_or_create(
             module_id=m.id,
             name=PROP_NAME,
             defaults={
+                "display_name": DISPLAY_NAME,
                 "description": DESCRIPTION,
                 "data_type": DATA_TYPE,
                 "default_value": DEFAULT_VALUE,
@@ -52,6 +54,13 @@ def forwards(apps, schema_editor):
                 "updated_by": None,
             },
         )
+
+        # Safety: ensure display_name is correct if property already existed
+        if not created and prop.display_name != DISPLAY_NAME:
+            prop.display_name = DISPLAY_NAME
+            prop.updated_by = None
+            prop.save(update_fields=["display_name", "updated_by"])
+
         prop_by_module_id[m.id] = prop
 
     if not prop_by_module_id:
