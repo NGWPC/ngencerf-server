@@ -166,8 +166,7 @@ def _choice_value_to_str(c: ModulePropertyChoice) -> str:
 )
 @api_view(['POST'])
 @handle_exceptions
-# TODO Rename to load_formulation_tab
-def validate_formulation_tab(request) -> Response:
+def load_formulation_tab(request) -> Response:
     """
     Validate the module list from the formulation tab.
 

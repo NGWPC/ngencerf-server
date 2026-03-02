@@ -41,8 +41,6 @@ CONFIG_TEMPLATE = {
         "domain": "",
         "models": "",
         "formulation": "",
-        # TODO Remove this
-        # "is_aet_rootzone": False,
         "run_type": "calibration",
         "main_dir": "",
         # Snow Water equivalent output - Only True for snow models
@@ -51,6 +49,10 @@ CONFIG_TEMPLATE = {
         "output_sm": False,
         # Always true
         "output_precip": True,
+    },
+
+    "ModuleProperties": {
+        # Properties such as aet_rootzone will be automatically generated
     },
 
     "Calibration": {
@@ -196,6 +198,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
         config: dict[str, dict[str, str | int | float | bool]] = copy.deepcopy(CONFIG_TEMPLATE)
 
         general = config['General']
+        module_properties = config['ModuleProperties']
         calibration = config['Calibration']
         datafile = config['DataFile']
         forcing = config['Forcing']
@@ -302,7 +305,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             if run.use_sloth:
                 general['models'] += f', {SLOTH}'
 
-            # general['is_aet_rootzone'] = run.is_aet_rootzone
             # -------------------------------------------------------
             # ModuleProperties
             #   module.<module_name>.<property_name> = <typed value>
@@ -377,7 +379,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
 
                 module_name = module_obj.name
                 prop_name = prop_def.name
-                key = f"{module_name}.{prop_name}"
+                key = f"{module_name.lower()}_{prop_name}"
 
                 # Look up the saved value row (if any) for this module+property
                 mpv = saved_value_by_module_id_and_prop_id.get((module_id, prop_def.id))
@@ -407,7 +409,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                     if err:
                         error_object.add_warning(f"{key}: {err}")
 
-                general[key] = value
+                module_properties[key] = value
             # End of module properties section
 
         job_data_dir = run.job_data_dir
