@@ -454,6 +454,12 @@ class ModuleMetadataStaticSerializer(BaseSerializer):
 # Landing page
 ##################################
 
+class GetCalibrationJobsSummaryResponseSerializer(BaseSerializer):
+    running_count = serializers.IntegerField()
+    ready_count = serializers.IntegerField()
+    saved_count = serializers.IntegerField()
+
+
 class ValidationStatusSerializer(ValidationRunSerializer):
     validation_type = serializers.CharField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])

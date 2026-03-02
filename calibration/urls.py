@@ -35,6 +35,7 @@ urlpatterns = [
     path('calibration/get_validation_jobs/', calibration.views.get_jobs_views.get_validation_jobs, name="getValidationJobs"),
     path('calibration/get_forecast_jobs/', calibration.views.get_jobs_views.get_forecast_jobs, name="getForecastJobs"),
     path('calibration/get_verification_jobs/', calibration.views.get_jobs_views.get_verification_jobs, name="getVerificationJobs"),
+    path('calibration/get_calibration_jobs_summary/', calibration.views.get_jobs_views.get_calibration_jobs_summary, name="getCalibrationJobsSummary"),
     path('calibration/get_forecast_jobs_for_verification/', calibration.views.get_jobs_views.get_forecast_jobs_for_verification,
          name="getForecastJobsForVerification"),
     path('calibration/get_calibration_gages/', calibration.views.get_jobs_views.get_calibration_gages, name="getCalibrationGages"),
