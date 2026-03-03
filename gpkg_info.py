@@ -43,8 +43,6 @@ def main():
     render_parser = subparsers.add_parser("render", help="Generate PNG from selected layers in a GeoPackage")
     render_parser.add_argument("gpkg_path", type=str, help="Path to the GeoPackage file")
     render_parser.add_argument("png_path", type=str, help="Path to save the generated PNG file")
-    render_parser.add_argument("--layers", nargs="+", default=["nexus", "flowpaths", "flowlines"],
-                               help="Layers to include in the PNG (default: nexus, flowpaths, flowlines)")
 
     args = parser.parse_args()
 
@@ -59,7 +57,7 @@ def main():
                 display_layer_metadata(args.gpkg_path, args.layer)
             else:
                 logger.info('')
-                logger.info("Searching for gage_id in the 'hydrolocations' layer:")
+                # logger.info("Searching for gage_id in the GeoPackag:")
                 find_gage_id(args.gpkg_path)
 
                 try:
@@ -89,10 +87,7 @@ def main():
             logger.info(json.dumps(result, indent=4, default=str))
 
         elif args.command == "render":
-            img = gpkg_to_png_selected_layers(
-                gpkg_path=args.gpkg_path,
-                layers_to_include=tuple(args.layers)
-            )
+            img = gpkg_to_png_selected_layers(gpkg_path=args.gpkg_path)
             with open(args.png_path, "wb") as f:
                 f.write(img.getvalue())
             logger.info(f"PNG image saved to: {args.png_path}")
