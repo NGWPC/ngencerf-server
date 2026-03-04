@@ -382,7 +382,6 @@ def import_calibration_run_data(request: Request,
         # Final persistence of run fields updated above
         run.use_sloth = use_sloth
         run.job_name = calibration_run_data.get('job_name')
-        run.is_aet_rootzone = calibration_run_data.get('is_aet_rootzone', False)
         run.save()
 
     # ---------------------------------------------------------------------
@@ -613,7 +612,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     modules_by_id = get_cached_modules_by_id()
     module_names = {modules_by_id[mid].name for mid in module_ids if mid in modules_by_id}
     calibration_run_data['modules'] = sorted(module_names)
-    calibration_run_data['is_aet_rootzone'] = run.is_aet_rootzone
 
     # ---------------------------------------------------------
     # Module properties (export only): flat list in import format

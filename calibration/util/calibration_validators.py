@@ -549,7 +549,6 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     geopackage_image_url = serializers.CharField(required=False)
     external_data_status = serializers.JSONField(required=False)
     modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
-    is_aet_rootzone = serializers.BooleanField(required=False)
     job_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     formulation_errors = serializers.JSONField(required=False)
     formulation_warnings = serializers.JSONField(required=False)
@@ -1021,7 +1020,6 @@ def validate_module_properties_against_modules(
 
 class SaveFormulationRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    # is_aet_rootzone = serializers.BooleanField(required=False)
     modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True, default=list)
     use_sloth = serializers.BooleanField(required=True)
     sloth_parameters = SlothParameters(required=False, many=True)
@@ -1519,8 +1517,6 @@ class ExportResponseSerializer(BaseSerializer):
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
     module_properties = ModulePropertiesSerializer(many=True, required=False, default=list)
-    # TODO Get rid of this
-    is_aet_rootzone = serializers.BooleanField(required=False)
     job_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=list)
@@ -1549,8 +1545,6 @@ class ImportDataSerializer(BaseSerializer):
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
     module_properties = ModulePropertiesSerializer(many=True, required=False, default=list)
-    # TODO Get rid of this
-    is_aet_rootzone = serializers.BooleanField(required=False)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     job_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)
