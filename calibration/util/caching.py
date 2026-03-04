@@ -31,7 +31,8 @@ from django.core.cache import cache
 
 from calibration.enums import PlotDefinitionsEnum, ForecastConfigEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import Module, ModuleGroup, Gage, CalibrationRun, ValidationRun, CalibrationFormulation, OptimizationInput
+from calibration.models import Module, ModuleGroup, Gage, CalibrationRun, ValidationRun, CalibrationFormulation, OptimizationInput, \
+    ModulePropertyChoice, ModuleProperty
 from calibration.views.cache_prefix import CACHE_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ def get_cached_modules_with_groups() -> dict[str, Module]:
         qs = (
             Module.objects.filter(is_active=True)
             .prefetch_related("groups", "output_variables")
-            .only("id", "name", "display_name", "description", "is_active")
+            .only("id", "name", "display_name", "description", "is_active", "use_edfs")
         )
         modules = {m.name: m for m in qs}
 
@@ -129,6 +130,79 @@ def get_cached_module_by_name(module_name: str) -> Module | None:
             return module
 
     return None
+
+
+_CACHED_MODULE_PROPERTIES_KEY = f"{CACHE_PREFIX}cached_module_properties"
+
+
+def get_cached_module_properties() -> list[ModuleProperty]:
+    """
+    Retrieve all ModuleProperty ORM objects, fully-hydrated for safe reuse.
+
+    These rows are treated as static for the lifetime of the server, so we cache
+    them indefinitely. We select_related('module') and force-access the relation
+    to avoid accidental lazy DB hits when callers do p.module.name, etc.
+
+    :return: List of ModuleProperty ORM objects.
+    """
+    props = cache.get(_CACHED_MODULE_PROPERTIES_KEY)
+    if props is None:
+        qs = (
+            ModuleProperty.objects
+            .select_related("module")
+            .only("id", "module_id", "module__name", "name", "display_name", "description", "data_type", "default_value")
+        )
+        props = list(qs)
+
+        # Force evaluate related module to prevent lazy DB hits later
+        for p in props:
+            _ = p.module.name
+
+        cache.set(_CACHED_MODULE_PROPERTIES_KEY, props, timeout=None)
+
+    return props
+
+
+_CACHED_MODULE_PROPERTY_CHOICES_KEY = f"{CACHE_PREFIX}cached_module_property_choices"
+
+
+def get_cached_module_property_choices() -> list[ModulePropertyChoice]:
+    """
+    Retrieve all ModulePropertyChoice ORM objects, fully-hydrated for safe reuse.
+
+    These rows are treated as static for the lifetime of the server, so we cache
+    them indefinitely. We select_related('module_property') and force-access the
+    relation to avoid accidental lazy DB hits.
+
+    Ordering: we store them ordered, so callers can group without re-sorting.
+
+    :return: List of ModulePropertyChoice ORM objects.
+    """
+    choices = cache.get(_CACHED_MODULE_PROPERTY_CHOICES_KEY)
+    if choices is None:
+        qs = (
+            ModulePropertyChoice.objects
+            .select_related("module_property")
+            .only(
+                "id",
+                "module_property_id",
+                "label",
+                "description",
+                "sort_order",
+                "value_int",
+                "value_str",
+            )
+            .order_by("module_property_id", "sort_order", "id")
+        )
+        choices = list(qs)
+
+        # Force evaluate related module_property to prevent lazy DB hits later
+        for c in choices:
+            _ = c.module_property_id
+
+        cache.set(_CACHED_MODULE_PROPERTY_CHOICES_KEY, choices, timeout=None)
+
+    return choices
 
 
 _CACHED_GAGES_KEY = f"{CACHE_PREFIX}cached_gages"

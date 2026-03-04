@@ -12,6 +12,8 @@ from calibration.models import Domain, ObservationalSource, Optimization, Metric
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.module import Module
 from calibration.models.module_group import ModuleGroup
+from calibration.models.module_property import ModuleProperty
+from calibration.models.module_property_choice import ModulePropertyChoice
 from calibration.models.output_variable import OutputVariable
 from calibration.models.rfc import Rfc
 from calibration.models.status import Status
@@ -125,6 +127,8 @@ class Command(BaseCommand):
             self.define_module_groups,
             self.define_output_variables,
             self.define_modules,
+            self.define_module_properties,
+            self.define_module_property_choices,
             self.define_domains,
             self.define_rfc,
             self.define_forcing_source,
@@ -212,83 +216,98 @@ class Command(BaseCommand):
                 "name": "Topoflow-Glacier",
                 "description": "A glacier energy balance module as part of TopoFlow, which calculates runoff based on snow/ice melt",
                 "groups": ["Glacier"],
-                "output_variables": ["ACSNOM", "SNOWH", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]
+                "output_variables": ["ACSNOM", "SNOWH", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"],
+                "use_edfs": True
             },
             {
                 "name": "Noah-OWP-Modular",
                 "description": "An extended, refactored version of the Noah-MP land surface model",
                 "groups": ["Snowmelt", "Evapotranspiration"],
-                "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "FSNO", "SNOWH", "SNLIQ", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]
+                "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "FSNO", "SNOWH", "SNLIQ", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"],
+                "use_edfs": True
             },
             {
                 "name": "Snow-17",
                 "description": "Snow17 is a snow accumulation and melt model that has been used by the National Weather Service since the late 1970s for operational streamflow forecasting.  It is a temperature-index model",
                 "groups": ["Snowmelt"],
-                "output_variables": ["ACSNOM", "SNOWH", "SNEQV"]
+                "output_variables": ["ACSNOM", "SNOWH", "SNEQV"],
+                "use_edfs": True
             },
             {
                 "name": "UEB", "display_name": "Utah Energy Balance (UEB)",
                 "description": "description",
                 "groups": ["Snowmelt"],
-                "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"]
+                "output_variables": ["ACSNOM", "SNOWT_AVG", "QRAIN", "SNEQV", "QSNOW", "TRAD", "LH", "FIRA", "HFX"],
+                "use_edfs": True
             },
             {
                 "name": "CFE-S", "display_name": "CFE-S (Schaake)",
                 "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The X represents the Xinanjiang function (configuration: surface_partitioning_scheme= Xinanjiang)",
                 "groups": ["Rainfall Runoff"],
-                "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"]
+                "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"],
+                "use_edfs": True
             },
             {
                 "name": "CFE-X", "display_name": "CFE-X (Xinanjiang)",
                 "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The S represents the Schaake function (configuration: surface_partitioning_scheme=Schaake)",
                 "groups": ["Rainfall Runoff"],
-                "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"]
+                "output_variables": ["sfcheadsubrt", "qBucket", "streamflow", "QRAIN", "SFCRNOFF"],
+                "use_edfs": True
             },
             {
                 "name": "LSTM",
                 "description": "The Long Short-Term Memory (LSTM) network Module is dependent on a trained deep learning model. The forward pass of this LSTM model nextgen_cuda_lstm.py is heavily based on NeuralHydrology's CudaLSTM",
-                "groups": ["Glacier", "Snowmelt", "Evapotranspiration", "Soil Moisture", "Rainfall Runoff"]
+                "groups": ["Glacier", "Snowmelt", "Evapotranspiration", "Soil Moisture", "Rainfall Runoff"],
+                "use_edfs": True
             },
             {
                 "name": "PET",
                 "description": "PET handles potential evapotranspiration functions: Aerodynamic method, Combination method, Energy balance method, Penman Monteith method and Priestly Taylor method.",
                 "groups": ["Evapotranspiration"],
-                "is_active": False
+                "is_active": True,
+                "use_edfs": False
             },
             {
                 "name": "TopModel",
                 "description": "A physically based, distributed watershed model that simulates hydrologic fluxes of water.",
                 "groups": ["Rainfall Runoff"],
-                "output_variables": ["streamflow", "QRAIN", "SFCRNOFF"]
+                "output_variables": ["streamflow", "QRAIN", "SFCRNOFF"],
+                "use_edfs": True
             },
             {
                 "name": "Sac-SMA",
                 "description": "A BMI enabled version of the Sacramento Soil Moisture Accounting (Sac-SMA) model.  This version of Sac-SMA allows for multiple hydrological response units (HRUs) to be modeled at once.",
                 "groups": ["Rainfall Runoff"],
-                "output_variables": ["qBucket", "streamflow", "SFCRNOFF"]
+                "output_variables": ["qBucket", "streamflow", "SFCRNOFF"],
+                "use_edfs": True
             },
             {
                 "name": "LASAM", "display_name": "LASAM (Lumped Arid Semi-Arid Model)",
                 "description": "Lumped Arid/Semi-arid Model (LASAM) for infiltration and surface runoff.  The LASAM simulates infiltration and runoff based on Layered Green & Ampt with redistribution (LGAR) model.).",
                 "groups": ["Rainfall Runoff"],
-                "output_variables": ["qBucket", "streamflow", "SOILSAT_TOP", "QRAIN", "SOIL_M", "SFCRNOFF"]
+                "output_variables": ["qBucket", "streamflow", "SOILSAT_TOP", "QRAIN", "SOIL_M", "SFCRNOFF"],
+                "use_edfs": True
             },
             {
                 "name": "SMP",
                 "description": "The soil moisture profiles (SMP schemes provide soil moisture distributed over a one-dimensional vertical column and depth to water table. These schemes facilitate coupling among hydrological and thermal models such as (CFE and SFT or LASAM and SFT).",
                 "groups": ["Soil Moisture"],
-                "output_variables": ["SOILSAT_TOP", "SOIL_M"]
+                "output_variables": ["SOILSAT_TOP", "SOIL_M"],
+                "use_edfs": False
             },
             {
                 "name": "SFT",
                 "description": "The soil freeze-thaw model simulates the transport of heat in soil using a one-dimensional vertical column. The model uses a standard diffusion equation discretized using a fully-implicit scheme at the interior and a semi-implicit scheme at the top and bottom boundaries, similar to NOAH-MP. More details are provided below.",
                 "groups": ["Soil Moisture"],
-                "output_variables": ["SOILICE", "SOIL_T"]},
+                "output_variables": ["SOILICE", "SOIL_T"],
+                "use_edfs": False
+            },
             {
                 "name": "T-Route",
                 "description": "Tree-Based Channel Routing -  a dynamic channel routing model, offers a comprehensive solution for river network routing problems. Provides a series lateral inflows for each node in a channel network and computes the resulting streamflows.",
                 "groups": ["Routing"],
-                "output_variables": ["inflow", "outflow", "reservoir_assimilated_value", "water_sfc_elev", "nudge", "streamflow", "velocity", ""]
+                "output_variables": ["inflow", "outflow", "reservoir_assimilated_value", "water_sfc_elev", "nudge", "streamflow", "velocity", ""],
+                "use_edfs": False
             }
         ]
 
@@ -298,6 +317,7 @@ class Command(BaseCommand):
                     "display_name": v.get('display_name', v['name']),
                     "is_active": v.get('is_active', True),
                     "description": v['description'],
+                    "use_edfs": v['use_edfs'],
                     "created_by": self.user
                 }
             )
@@ -313,6 +333,117 @@ class Command(BaseCommand):
             # noinspection PyUnresolvedReferences
             module_instance.output_variables.set(output_variables)
             module_instance.save()
+
+    def define_module_properties(self):
+        if self.DELETE_FLAG:
+            ModuleProperty.objects.all().delete()
+
+        # All modules referenced below must exist in define_modules()
+        cfe_s = Module.objects.get(name="CFE-S")
+        cfe_x = Module.objects.get(name="CFE-X")
+        pet = Module.objects.get(name="PET")
+
+        values = [
+            # CFE Rootzone (boolean)
+            {
+                "module": cfe_s,
+                "name": "aet_rootzone",
+                "display_name": "AET Rootzone",
+                "data_type": DataTypeEnum.BOOLEAN.value,
+                "default_value": "false",
+                "description": "Enable AET Rootzone option."
+            },
+            {
+                "module": cfe_x,
+                "name": "aet_rootzone",
+                "display_name": "AET Rootzone",
+                "data_type": DataTypeEnum.BOOLEAN.value,
+                "default_value": "false",
+                "description": "Enable AET Rootzone option."
+            },
+
+            # PET Method (dropdown)
+            {
+                "module": pet,
+                "name": "method",
+                "display_name": "Method",
+                "data_type": DataTypeEnum.INTEGER.value,
+                "default_value": "1",
+                "description": "Potential evapotranspiration method selection."
+            },
+        ]
+
+        for v in values:
+            ModuleProperty.objects.update_or_create(
+                module=v["module"],
+                name=v["name"],
+                defaults={
+                    "display_name": v["display_name"],
+                    "description": v["description"],
+                    "data_type": v["data_type"],
+                    "default_value": v.get("default_value", ""),
+                    "created_by": self.user,
+                },
+            )
+
+    def define_module_property_choices(self):
+        if self.DELETE_FLAG:
+            ModulePropertyChoice.objects.all().delete()
+
+        # Lookup properties by their natural key (module + name)
+        pet = Module.objects.get(name="PET")
+        pet_method = ModuleProperty.objects.get(module=pet, name="method")
+
+        values = [
+            {
+                "module_property": pet_method,
+                "value_int": 1,
+                "label": "Priestley–Taylor",
+                "sort_order": 1,
+                "description": "Priestley–Taylor method."
+            },
+            {
+                "module_property": pet_method,
+                "value_int": 2,
+                "label": "Penman–Monteith",
+                "sort_order": 2,
+                "description": "Penman–Monteith method."
+            },
+            {
+                "module_property": pet_method,
+                "value_int": 3,
+                "label": "Aerodynamic",
+                "sort_order": 3,
+                "description": "Aerodynamic method."
+            },
+            {
+                "module_property": pet_method,
+                "value_int": 4,
+                "label": "Combination",
+                "sort_order": 4,
+                "description": "Combination method."
+            },
+            {
+                "module_property": pet_method,
+                "value_int": 5,
+                "label": "Energy balance",
+                "sort_order": 5,
+                "description": "Energy balance method."
+            },
+        ]
+
+        for v in values:
+            ModulePropertyChoice.objects.update_or_create(
+                module_property=v["module_property"],
+                value_int=v["value_int"],
+                defaults={
+                    "label": v["label"],
+                    "value_str": None,  # values are all int
+                    "sort_order": v.get("sort_order", 0),
+                    "description": v["description"],
+                    "created_by": self.user,
+                },
+            )
 
     def define_domains(self):
         if self.DELETE_FLAG:

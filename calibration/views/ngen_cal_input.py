@@ -15,8 +15,8 @@ from toml import TomlEncoder
 from calibration.enums import StatusEnum, DataTypeEnum
 from calibration.enums_vanilla import NgenEnvironmentEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
-    CalibrationParameter, CalibrationFormulation, CalibrationRun
-from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, get_cached_modules_by_id
+    CalibrationParameter, CalibrationFormulation, CalibrationRun, CalibrationModulePropertyValue
+from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, get_cached_modules_by_id, get_cached_module_properties
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     get_observational_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, UEB_LIB, NGEN_MODULE_PARAMETERS, \
     PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES, get_forcing_dir_for_job, get_geopackage_file_path
@@ -41,7 +41,6 @@ CONFIG_TEMPLATE = {
         "domain": "",
         "models": "",
         "formulation": "",
-        "is_aet_rootzone": False,
         "run_type": "calibration",
         "main_dir": "",
         # Snow Water equivalent output - Only True for snow models
@@ -50,6 +49,10 @@ CONFIG_TEMPLATE = {
         "output_sm": False,
         # Always true
         "output_precip": True,
+    },
+
+    "ModuleProperties": {
+        # Properties such as aet_rootzone will be automatically generated
     },
 
     "Calibration": {
@@ -195,6 +198,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
         config: dict[str, dict[str, str | int | float | bool]] = copy.deepcopy(CONFIG_TEMPLATE)
 
         general = config['General']
+        module_properties = config['ModuleProperties']
         calibration = config['Calibration']
         datafile = config['DataFile']
         forcing = config['Forcing']
@@ -272,7 +276,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             if error_message:
                 error_object.add_warning(error_message)
 
-
             general['formulation'] = run.job_name
 
         formulations = CalibrationFormulation.objects.filter(calibration_run=run).only("module_id")
@@ -302,7 +305,112 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             if run.use_sloth:
                 general['models'] += f', {SLOTH}'
 
-            general['is_aet_rootzone'] = run.is_aet_rootzone
+            # -------------------------------------------------------
+            # ModuleProperties
+            #   module.<module_name>.<property_name> = <typed value>
+            #
+            # Requirement:
+            #   - Always emit ALL module properties for the job's modules.
+            #   - If a value is saved in CalibrationModulePropertyValue, use it.
+            #   - Otherwise, use ModuleProperty.default_value (string) converted to the typed value.
+            # -------------------------------------------------------
+
+            def _parse_default_value(raw: str, data_type: str) -> tuple[bool | int | float | str, str | None]:
+                """
+                Parse ModuleProperty.default_value (stored as a string) into a typed Python value.
+                Returns (value, error_message_or_none).
+                """
+                try:
+                    if data_type == DataTypeEnum.BOOLEAN.value:
+                        v = (raw or "").strip().lower()
+                        if v in ("true", "1", "yes", "y", "on"):
+                            return True, None
+                        if v in ("false", "0", "no", "n", "off"):
+                            return False, None
+                        return False, f"Invalid boolean default '{raw}'"
+
+                    if data_type == DataTypeEnum.INTEGER.value:
+                        return int((raw or "").strip()), None
+
+                    if data_type == DataTypeEnum.DOUBLE.value:
+                        return float((raw or "").strip()), None
+
+                    # STRING (or unknown fallback)
+                    return "" if raw is None else str(raw), None
+
+                except (ValueError, TypeError) as e:
+                    return ("" if data_type == DataTypeEnum.STRING.value else 0), f"Invalid default '{raw}' for {data_type}: {e}"
+
+            # 1) Pull ALL ModuleProperty defs for modules in this job from cache.
+
+            all_prop_defs = get_cached_module_properties()
+            prop_defs_for_job = [p for p in all_prop_defs if p.module_id in {modules_by_name[name].id for name in module_names_for_job}]
+
+            # 2) Pull current saved values for this run (single query) and map by (formulation_id, property_id).
+            module_property_values = list(
+                CalibrationModulePropertyValue.objects
+                .filter(calibration_formulation__calibration_run=run)
+                .select_related("calibration_formulation", "module_property")
+                .only(
+                    "id",
+                    "calibration_formulation_id",
+                    "calibration_formulation__module_id",
+                    "module_property_id",
+                    "module_property__name",
+                    "module_property__data_type",
+                    "value_bool",
+                    "value_int",
+                    "value_double",
+                    "value_str",
+                )
+            )
+
+            saved_value_by_module_id_and_prop_id: dict[tuple[int, int], CalibrationModulePropertyValue] = {}
+            for mpv in module_property_values:
+                saved_value_by_module_id_and_prop_id[(mpv.calibration_formulation.module_id, mpv.module_property_id)] = mpv
+
+            # 3) Emit every property key for each job module:
+            #    saved value wins; otherwise default_value.
+            for prop_def in prop_defs_for_job:
+                module_id = prop_def.module_id
+                module_obj = modules_by_id.get(module_id)
+                if not module_obj:
+                    continue
+
+                module_name = module_obj.name
+                prop_name = prop_def.name
+                key = f"{module_name.lower()}_{prop_name}"
+
+                # Look up the saved value row (if any) for this module+property
+                mpv = saved_value_by_module_id_and_prop_id.get((module_id, prop_def.id))
+
+                value: str | int | float | bool
+
+                if mpv is not None:
+                    # Pick the single stored value (constraint enforces exactly one)
+                    if mpv.value_bool is not None:
+                        value = mpv.value_bool
+                    elif mpv.value_int is not None:
+                        value = mpv.value_int
+                    elif mpv.value_double is not None:
+                        value = mpv.value_double
+                    elif mpv.value_str is not None:
+                        value = mpv.value_str
+                    else:
+                        error_object.add_warning(
+                            f"Missing saved value for module property {key} (row id={mpv.id}); using default"
+                        )
+                        value, err = _parse_default_value(prop_def.default_value, prop_def.data_type)
+                        if err:
+                            error_object.add_warning(f"{key}: {err}")
+                else:
+                    # No saved value -> use default_value
+                    value, err = _parse_default_value(prop_def.default_value, prop_def.data_type)
+                    if err:
+                        error_object.add_warning(f"{key}: {err}")
+
+                module_properties[key] = value
+            # End of module properties section
 
         job_data_dir = run.job_data_dir
         general['main_dir'] = job_data_dir
@@ -620,5 +728,3 @@ def get_node_type(num_catchments: int) -> str:
 
     logger.info(f'{num_catchments} catchments using node type {node_type}')
     return node_type
-
-

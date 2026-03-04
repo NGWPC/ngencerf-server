@@ -374,12 +374,12 @@ class SaveTuningParametersSerializer(BaseSerializer):
     initial_value = serializers.FloatField(required=True, allow_null=False)
     module = ModuleNameField(required=True)
 
-    def __init__(self, *args, allow_empty=False, **kwargs):
+    def __init__(self, *args, allow_missing_bounds=False, **kwargs):
         super().__init__(*args, **kwargs)
-        self.allow_empty = allow_empty
+        self.allow_missing_bounds = allow_missing_bounds
 
-        # Adjust field requirements based on allow_empty
-        if self.allow_empty:
+        # Adjust field requirements based on allow_missing_bounds
+        if self.allow_missing_bounds:
             for field in ['minimum', 'maximum', 'initial_value']:
                 self.fields[field].required, self.fields[field].allow_null = False, True
 
@@ -549,7 +549,6 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     geopackage_image_url = serializers.CharField(required=False)
     external_data_status = serializers.JSONField(required=False)
     modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
-    is_aet_rootzone = serializers.BooleanField(required=False)
     job_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     formulation_errors = serializers.JSONField(required=False)
     formulation_warnings = serializers.JSONField(required=False)
@@ -969,21 +968,103 @@ class S3FileValidator(BaseSerializer):
 
 
 class ValidateFormulationRequestSerializer(CalibrationRunSerializer):
-    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
+    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True, default=list)
+
+
+class ModulePropertiesSerializer(BaseSerializer):
+    module = ModuleNameField(required=True)
+    property_name = serializers.CharField(required=True, allow_blank=False)
+    property_value = serializers.CharField(required=True, allow_blank=False)
+
+    def validate_property_name(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("property_name must not be blank.")
+        return value
+
+    def validate_property_value(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("property_value must not be blank.")
+        return value
+
+
+# Used by SaveFormulationRequestSerializer and ImportDataSerializer
+def validate_module_properties_against_modules(
+        modules: list[str] | set[str],
+        props: list[dict],
+) -> None:
+    module_names = set(modules or [])
+    errors: list[str] = []
+
+    if props and not module_names:
+        errors.append("module_properties cannot be specified unless modules is non-empty")
+
+    # membership check
+    for i, p in enumerate(props or []):
+        mod = p.get("module")
+        if mod not in module_names:
+            errors.append(f"[{i}] module '{mod}' is not included in modules")
+
+    # uniqueness check
+    seen: set[tuple[str, str]] = set()
+    for i, p in enumerate(props or []):
+        key = (p.get("module"), p.get("property_name"))
+        if key in seen:
+            errors.append(f"[{i}] duplicate property for module '{key[0]}' and property '{key[1]}'")
+        seen.add(key)
+
+    if errors:
+        raise serializers.ValidationError({"module_properties": errors})
 
 
 class SaveFormulationRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    is_aet_rootzone = serializers.BooleanField(required=False)
-    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
+    modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True, default=list)
     use_sloth = serializers.BooleanField(required=True)
     sloth_parameters = SlothParameters(required=False, many=True)
+    module_properties = ModulePropertiesSerializer(many=True, required=False, default=list)
+
+    def validate(self, attrs: dict) -> dict:
+        attrs = super().validate(attrs)
+
+        validate_module_properties_against_modules(
+            modules=attrs.get("modules") or [],
+            props=attrs.get("module_properties") or [],
+        )
+
+        return attrs
+
+
+class ModulePropertyChoiceResponseSerializer(BaseSerializer):
+    value = serializers.CharField(required=True, allow_blank=False)  # always string on the wire
+    label = serializers.CharField(required=True, allow_blank=False)
+    description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class ModulePropertyResponseSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    display_name = serializers.CharField(required=True)
+    description = serializers.CharField(required=True)
+    data_type = serializers.CharField(required=True, validators=[enum_validator(DataTypeEnum)])
+    value = serializers.CharField(required=True)
+    choices = ModulePropertyChoiceResponseSerializer(many=True, required=False)
+
+
+class ModulePropertiesByModuleResponseSerializer(BaseSerializer):
+    name = ModuleNameField(required=True)
+    properties = ModulePropertyResponseSerializer(many=True, required=True, allow_empty=True)
+
+
+class ModulePropertiesResponseSerializer(BaseSerializer):
+    modules = ModulePropertiesByModuleResponseSerializer(many=True, required=True, allow_empty=True)
 
 
 class ValidateFormulationResponseSerializer(BaseSerializer):
     formulation_errors = serializers.JSONField(required=False)
     formulation_warnings = serializers.JSONField(required=False)
     formulation_messages = serializers.JSONField(required=False)
+    module_properties = ModulePropertiesResponseSerializer(required=False)
 
 
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
@@ -1435,10 +1516,10 @@ class ExportResponseSerializer(BaseSerializer):
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
-    is_aet_rootzone = serializers.BooleanField(required=False)
+    module_properties = ModulePropertiesSerializer(many=True, required=False, default=list)
     job_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
-    sloth_parameters = SlothParameters(many=True, default={})
+    sloth_parameters = SlothParameters(many=True, default=list)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
@@ -1446,7 +1527,7 @@ class ExportResponseSerializer(BaseSerializer):
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     parameters = SaveTuningParametersSerializer(many=True, required=True)
     objective_function = serializers.CharField(required=True, allow_null=True)
-    optimization_inputs = OptimizationInputsSerializer(many=True, default={})
+    optimization_inputs = OptimizationInputsSerializer(many=True, default=list)
     optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[enum_validator(OptimizationEnum)])
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=True, allow_null=True)
     save_output_iteration = serializers.BooleanField(required=True, allow_null=True)
@@ -1463,7 +1544,7 @@ class ImportDataSerializer(BaseSerializer):
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     modules = serializers.ListField(child=ModuleNameField(required=True), required=False, allow_empty=True)
-    is_aet_rootzone = serializers.BooleanField(required=False)
+    module_properties = ModulePropertiesSerializer(many=True, required=False, default=list)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     job_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)
@@ -1472,7 +1553,7 @@ class ImportDataSerializer(BaseSerializer):
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
-    parameters = serializers.ListSerializer(child=SaveTuningParametersSerializer(allow_empty=True), required=False)
+    parameters = serializers.ListSerializer(child=SaveTuningParametersSerializer(allow_missing_bounds=True), required=False)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False, allow_null=True, validators=[enum_validator(OptimizationEnum)])
@@ -1480,6 +1561,16 @@ class ImportDataSerializer(BaseSerializer):
     save_output_iteration = serializers.BooleanField(required=False, allow_null=False, default=False)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True, min_value=2)
     logging_config = LoggingConfigSerializer(required=False)
+
+    def validate(self, attrs: dict) -> dict:
+        attrs = super().validate(attrs)
+
+        validate_module_properties_against_modules(
+            modules=attrs.get("modules") or [],
+            props=attrs.get("module_properties") or [],
+        )
+
+        return attrs
 
 
 class ImportSerializer(BaseSerializer):
