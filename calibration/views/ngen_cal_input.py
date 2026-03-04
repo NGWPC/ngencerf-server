@@ -715,7 +715,7 @@ def is_missing(value: Any, label: str, report: ErrorReport, have_LSTM_flag: bool
 # Global table of node type rules.
 # Each pair represents [max_catchments, node_type]
 NODE_TYPE_RULES = [
-    [500, 'c5n-18xlarge'],
+    [500, 'c5n-9xlarge'],
     [-1, 'r8a-12xlarge']
 ]
 
