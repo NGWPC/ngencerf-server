@@ -1,4 +1,27 @@
-FROM rockylinux:8
+ARG BASE_IMAGE=rockylinux:8
+FROM ${BASE_IMAGE}
+
+# OCI Metadata Arguments
+ARG BASE_IMAGE
+ARG BASE_IMAGE_DIGEST="unknown"
+ARG BASE_IMAGE_REVISION="unknown"
+ARG IMAGE_SOURCE="unknown"
+ARG IMAGE_VENDOR="unknown"
+ARG IMAGE_VERSION="unknown"
+ARG IMAGE_REVISION="unknown"
+ARG IMAGE_CREATED="unknown"
+
+# OCI Standard Labels
+LABEL org.opencontainers.image.base.name="${BASE_IMAGE}" \
+    org.opencontainers.image.base.digest="${BASE_IMAGE_DIGEST}" \
+    io.ngwpc.image.base.revision="${BASE_IMAGE_REVISION}" \
+    org.opencontainers.image.source="${IMAGE_SOURCE}" \
+    org.opencontainers.image.vendor="${IMAGE_VENDOR}" \
+    org.opencontainers.image.version="${IMAGE_VERSION}" \
+    org.opencontainers.image.revision="${IMAGE_REVISION}" \
+    org.opencontainers.image.created="${IMAGE_CREATED}" \
+    org.opencontainers.image.title="NGENCERF Server" \
+    org.opencontainers.image.description="Docker image for the NGENCERF server application"
 
 # Install build and runtime dependencies
 RUN set -eux && \
@@ -37,18 +60,18 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     rm -f requirements.txt
 
 ARG MSWM_ORG=NGWPC
-ARG MSWM_TAG=development
+ARG MSWM_REF=development
 
 ARG DATA_ASSIMILATION_ORG=NGWPC
-ARG DATA_ASSIMILATION_TAG=development
+ARG DATA_ASSIMILATION_REF=development
 
 ARG NGEN_FORCING_ORG=NGWPC
-ARG NGEN_FORCING_TAG=development
+ARG NGEN_FORCING_REF=development
 
 ARG CACHE_BUST=1
 RUN set -eux && \
-    echo $CACHE_BUST && pip3 install "git+https://github.com/${MSWM_ORG}/nwm-msw-mgr.git@${MSWM_TAG}" && \
-    echo $CACHE_BUST && pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_TAG}" && \
+    echo $CACHE_BUST && pip3 install "git+https://github.com/${MSWM_ORG}/nwm-msw-mgr.git@${MSWM_REF}" && \
+    echo $CACHE_BUST && pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}" && \
     pip3 cache purge
 
 # Should parallel similar functionality in the run_cerf.sh
@@ -78,16 +101,16 @@ RUN set -eux && \
     # ----- nwm-msw-mgr git_info -----
     GIT_INFO_PATH="/ngencerf/ngencerf-server/nwm-msw-mgr_git_info.json" && \
     tmpdir=$(mktemp -d) && \
-    if [ "$MSWM_TAG" = "development" ]; then \
+    if [ "$MSWM_REF" = "development" ]; then \
         git clone --depth 1 --branch development https://github.com/${MSWM_ORG}/nwm-msw-mgr.git "$tmpdir" && \
         cd "$tmpdir" && \
         branch="development" && \
         tags=""; \
     else \
-        git clone --depth 1 --branch "$MSWM_TAG" --single-branch https://github.com/${MSWM_ORG}/nwm-msw-mgr.git "$tmpdir" && \
+        git clone --depth 1 --branch "$MSWM_REF" --single-branch https://github.com/${MSWM_ORG}/nwm-msw-mgr.git "$tmpdir" && \
         cd "$tmpdir" && \
         branch="" && \
-        tags="$MSWM_TAG"; \
+        tags="$MSWM_REF"; \
     fi && \
     jq -n \
       --arg commit_hash "$(git rev-parse HEAD)" \
@@ -112,18 +135,22 @@ RUN set -eux && \
     PREBUILT_DIR="/ngencerf/prebuilt/bmi_forcing_templates" && \
     NGEN_FORCING_URL="https://github.com/${NGEN_FORCING_ORG}/ngen-forcing.git" && \
     \
-    echo "Preparing bmi_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_TAG}" && \
+    echo "Preparing bmi_forcing_templates from ${NGEN_FORCING_URL}, ref (branch/tag/commit): ${NGEN_FORCING_REF}" && \
     \
     # Ensure prebuilt directory exists and is empty
     rm -rf "$PREBUILT_DIR" && \
     mkdir -p "$PREBUILT_DIR" && \
     \
-    # Clone sparse repo
-    git clone --depth 1 --filter=blob:none --sparse \
-        -b "${NGEN_FORCING_TAG}" \
+    # Clone sparse repo; allow branch, tag, or commit refs
+    git clone --filter=blob:none --no-checkout --sparse \
         "$NGEN_FORCING_URL" tmp-ngen-forcing && \
-    \
     cd tmp-ngen-forcing && \
+    (git fetch --depth 1 origin "${NGEN_FORCING_REF}" \
+     || git fetch --depth 1 origin "refs/tags/${NGEN_FORCING_REF}:refs/tags/${NGEN_FORCING_REF}" \
+     || git fetch origin "${NGEN_FORCING_REF}" \
+     || git fetch origin "refs/tags/${NGEN_FORCING_REF}:refs/tags/${NGEN_FORCING_REF}") && \
+    git checkout FETCH_HEAD && \
+    \
     git sparse-checkout set \
         NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates && \
     \
@@ -133,7 +160,6 @@ RUN set -eux && \
     \
     cd /ngencerf/ngencerf-server && \
     rm -rf tmp-ngen-forcing || true
-
 
 # Build CLI executable in cli/dist
 RUN cli/build_cli.sh
