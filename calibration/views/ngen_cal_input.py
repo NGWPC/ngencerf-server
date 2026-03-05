@@ -123,8 +123,8 @@ CONFIG_TEMPLATE = {
         "ueb_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'ueb'),
         "lasam_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'lasam'),
         "lstm_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'lstm'),
-        "sac-sma_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'sac-sma'),
-        "snow-17_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'snow-17'),
+        "sac_sma_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'sac-sma'),
+        "snow_17_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'snow-17'),
 
         "sloth_parameter_file": "",
 
