@@ -675,15 +675,19 @@ formulation_validations = {
                 "fatal": True
             }
         },
-        "module_exclusions": {
-            "SMP": {
-                "must_have": ["CFE-S", "CFE-X", "LASAM", "TopModel"],
-                "fatal": True
-            },
-            "SFT": {
-                "must_have": ["CFE-S", "CFE-X", "LASAM", "TopModel"],
-                "fatal": True
-            }
+        "module_dependencies": {
+            "SMP": [
+                {
+                    "requires_any_of": ["Noah-OWP-Modular"],
+                    "fatal": True
+                }
+            ],
+            "SFT": [
+                {
+                    "requires_any_of": ["Noah-OWP-Modular"],
+                    "fatal": True
+                }
+            ]
         }
     }
 }
@@ -714,7 +718,7 @@ def split_routing_modules(
 def validate_formulation(module_names: set[str], geopackage_path: str | None, return_group_info: bool = False) \
         -> tuple[list[str], list[str], list[str]]:
     """
-    Validate formulation rules based on group requirements and exclusions.
+    Validate formulation rules based on group requirements and module dependencies.
 
     Uses cached modules/groups to avoid repeated DB hits.
 
@@ -801,16 +805,22 @@ def validate_formulation(module_names: set[str], geopackage_path: str | None, re
             if group.name in group_counts:  # Only count groups that are in the group_requirements
                 group_counts[group.name] += 1
 
-    # 1) Check module_exclusions
-    excl_defs = formulation_validations["formulation_rules"].get("module_exclusions", {})
-    for excluded_module, rules in excl_defs.items():
-        if excluded_module in module_names:
-            must_have_modules = rules.get("must_have", [])
-            # Check if any of the required modules are present
-            if not any(m in module_names for m in must_have_modules):
-                msg = f"{excluded_module} module cannot exist without one of: {', '.join(must_have_modules)}"  # type: ignore[arg-type]
+    # 1) Check module_dependencies
+    dependency_defs = formulation_validations["formulation_rules"].get("module_dependencies", {})
+    for module_name, rules_list in dependency_defs.items():
+        if module_name not in module_names:
+            continue
+
+        for rule in rules_list:
+            requires_any_of = rule.get("requires_any_of", [])
+
+            if requires_any_of and not any(required_module in module_names for required_module in requires_any_of):
+                if len(requires_any_of) == 1:
+                    msg = f"{module_name} module requires {requires_any_of[0]}"
+                else:
+                    msg = f"{module_name} module requires one of: {', '.join(requires_any_of)}"
                 logger.warning(msg)
-                if rules.get("fatal", True):
+                if rule.get("fatal", True):
                     fatal_errors.append(msg)
                 else:
                     nonfatal_errors.append(msg)
@@ -826,10 +836,25 @@ def validate_formulation(module_names: set[str], geopackage_path: str | None, re
             expected_str = join_with_or([str(c) for c in expected_counts])
             # Choose singular if exactly [1], otherwise plural
             word = "module" if len(expected_counts) == 1 and expected_counts[0] == 1 else "modules"
-            msg = f"{group_name} group is expected to have {expected_str} {word}, but it has {count}."
+
+            # Find which modules from this group are currently specified
+            modules_in_group = sorted(
+                m.name for m in my_modules
+                if any(g.name == group_name for g in m.groups.all())
+            )
+
+            msg = f"{group_name} group is expected to have {expected_str} {word}, but it currently has {count}"
+
+            if count > 0:
+                msg += f" ({', '.join(modules_in_group)})"
+
+            msg += "."
+
             if count > 1 and 'Noah-OWP-Modular' in module_names:
                 msg += f" Noah-OWP-Modular will not be used for {group_name}."
+
             logger.warning(msg)
+
             if group_rules.get("fatal", False):
                 fatal_errors.append(msg)
             else:
