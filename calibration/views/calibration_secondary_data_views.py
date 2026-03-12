@@ -499,28 +499,6 @@ def get_soil_moisture_timeseries_data(request: Request) -> Response:
     return _get_secondary_timeseries_data(request, SecondaryDataEnum.SOIL_MOISTURE)
 
 
-# def get_precipitation_timeseries_data(calibration_run: CalibrationRun) -> list[dict[str, str]]:
-#     """
-#     Load precipitation timeseries data for a calibration run.
-#
-#     This function reads the precipitation timeseries CSV (generated elsewhere) for the
-#     given calibration run and returns it as a list of row dictionaries.
-#
-#     Notes:
-#     - This is calibration-level output (i.e., not validation-run specific).
-#     - The CSV is expected to already exist at the path returned by
-#       get_precipitation_timeseries_data_filepath(calibration_run).
-#     - Any file I/O errors (missing file, unreadable CSV, etc.) will propagate unless
-#       caught by the caller.
-#
-#     :param calibration_run: CalibrationRun used to locate the precipitation timeseries CSV.
-#     :return: List of dictionaries, one per CSV row, keyed by the CSV header columns.
-#     """
-#     csv_filepath = get_precipitation_timeseries_data_filepath(calibration_run)
-#     ts_data = read_csv_as_json(csv_filepath)
-#     return ts_data
-
-
 def read_csv_as_json(csv_filepath: str, keys: list[str] | None = None) -> list[dict[str, str]]:
     """
     Reads a CSV file and returns a list of dictionaries.
