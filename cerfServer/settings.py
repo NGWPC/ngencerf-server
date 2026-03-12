@@ -24,9 +24,6 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = str(os.getenv('DJANGO_DEBUG', 'true')).lower() == 'true'
-
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 print(f'Loading values from {dotenv_path}')
 load_dotenv(dotenv_path)
@@ -34,6 +31,9 @@ load_dotenv(dotenv_path)
 version_path = os.path.join(BASE_DIR, 'version.env')
 print(f'Loading values from {version_path}')
 load_dotenv(version_path)
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = str(os.getenv('DJANGO_DEBUG', 'true')).lower() == 'true'
 
 NGENCERF_VERSION = os.getenv("NGENCERF_VERSION", "<unknown>")
 NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
