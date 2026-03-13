@@ -19,7 +19,7 @@ from calibration.enums import StatusEnum
 from calibration.util import cloud_util
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericMessageWithIdResponseSerializer, ErrorResponseSerializer, \
     GetZipStatusSerializer, GetZipDownloadUrlResponseSerializer, S3DirectoryValidator
-from calibration.util.cloud_util import path_exists
+from calibration.util.cloud_util import path_exists, delete_expired_s3_objects_under_prefix
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, get_user_email, validate_request, get_calibration_run, validate_response, get_elapsed_str, \
     ResponseError
@@ -106,7 +106,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
         return ResponseError("NGENCERF_ZIPS_S3_PATH must be a valid S3 directory (e.g. s3://bucket/prefix/)")
 
     # This check requires at least one object to actually exist
-    if not path_exists(settings.NGENCERF_ZIPS_S3_PATH):
+    if not path_exists(settings.NGENCERF_ZIPS_S3_PATH, profile_name=settings.NGENCERF_RW_PROFILE):
         return ResponseError(
             f"NGENCERF_ZIPS_S3_PATH does not exist on S3: {settings.NGENCERF_ZIPS_S3_PATH}"
         )
@@ -190,6 +190,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
             cloud_util.upload_file_to_s3(
                 local_path=zip_path,
                 s3_uri=s3_object,
+                profile_name=settings.NGENCERF_RW_PROFILE
             )
 
             # Remove local copy immediately
@@ -410,9 +411,10 @@ def cleanup_expired_zips() -> None:
         s3_dir = getattr(settings, "NGENCERF_ZIPS_S3_PATH", None)
         if s3_dir:
             try:
-                deleted_s3 = cloud_util.delete_expired_s3_objects_under_prefix(
+                deleted_s3 = delete_expired_s3_objects_under_prefix(
                     s3_dir_uri=s3_dir,
                     cutoff_unix_seconds=cutoff_unix,
+                    profile_name=settings.NGENCERF_RW_PROFILE
                 )
             except Exception:
                 # Keep behavior minimal: log and skip S3 cleanup rather than failing endpoints.
@@ -520,6 +522,7 @@ def get_calibration_zip_download_url(request: Request) -> Response:
     download_url = cloud_util.generate_presigned_download_url(
         s3_uri=s3_object,
         expires_seconds=settings.ZIP_DOWNLOAD_URL_TTL_SECONDS,
+        profile_name=settings.NGENCERF_RW_PROFILE
     )
 
     response = {
