@@ -10,7 +10,7 @@ storage (S3, GCS, Azure Blob/ADLS, etc.). It includes helpers for:
   Ensures that bare paths are converted into proper URLs so that fsspec can
   operate consistently across providers.
 
-- File operations (`open_file`, `path_exists`, `is_dir`, `list_files`):
+- File operations (`path_exists`, `is_dir`, `list_files`):
   Cloud/local agnostic wrappers that mimic Python’s built-in file and os.path
   utilities but work transparently with remote storage.
 
@@ -33,15 +33,15 @@ storage (S3, GCS, Azure Blob/ADLS, etc.). It includes helpers for:
   be re-fetched from the remote provider.
 
 Typical usage:
-  * Use `open_file` when you want to stream a file directly (no caching).
   * Use `localize_to_path` when the same remote file will be accessed multiple
     times within a workflow (e.g., geopackages or forcing CSVs).
   * Use `copy_tree` for bulk movement of files between providers or to local
     disk.
 
 Environment:
-  * Relies on fsspec’s standard authentication (AWS_*, GOOGLE_APPLICATION_CREDENTIALS,
-    AZURE_*).
+  * Uses fsspec / boto3 standard authentication mechanisms.
+  * For AWS S3, callers may optionally provide a named AWS profile for
+    operations that need non-default credentials.
   * Cache is stored in /var/tmp by default, which typically survives reboots.
 """
 
@@ -61,8 +61,10 @@ from typing import Iterator, Tuple
 from urllib.parse import urlparse
 
 import boto3
+import botocore.client
 import botocore.exceptions
 import fsspec
+from botocore.exceptions import ProfileNotFound
 
 from calibration.views.called_from import called_from
 
@@ -78,9 +80,9 @@ _UNC_RE = re.compile(r"^\\\\")  # UNC paths like \\server\share
 
 _REMOTE_SCHEMES = {"s3", "gs", "gcs", "az", "abfs", "abfss"}
 
-
-# You can pass auth via env (AWS_*, GOOGLE_APPLICATION_CREDENTIALS, AZURE_*),
-# or via storage_options in get_filesystem(). Keep it simple here.
+# Authentication may come from env/config as usual (AWS_*, shared credentials,
+# GOOGLE_APPLICATION_CREDENTIALS, AZURE_*, etc.). For S3, some helpers also
+# allow callers to provide an explicit AWS profile name.
 
 class CredentialsExpired(Exception):
     """Generic credential-expired error across all cloud providers."""
@@ -92,25 +94,48 @@ class S3CredentialsExpired(CredentialsExpired):
     pass
 
 
+class S3ProfileError(Exception):
+    """Raised when an AWS profile is missing or invalid."""
+    pass
+
+
 # ----------------------------------------------------------------------
 # Filesystem utilities
 # ----------------------------------------------------------------------
 
-def get_filesystem(url: str) -> tuple[fsspec.AbstractFileSystem, str]:
+def get_filesystem(
+        url: str,
+        *,
+        profile_name: str | None = None,
+) -> tuple[fsspec.AbstractFileSystem, str]:
     """
     Return an fsspec filesystem for the given URL and the normalized URL.
 
     - If passed a bare local path, we normalize to file://... so fsspec is happy.
     - The returned fs is created from the URL's scheme (s3, file, gs, az, ...).
+    - For S3 URLs, callers may optionally provide an AWS profile name.
 
     :param url: Full URL string for a resource (cloud or local).
+    :param profile_name: Optional AWS profile name used for S3 URLs only.
     :return: (filesystem, normalized_url) tuple
+    :raises S3ProfileError: If profile_name is provided for S3 and the AWS profile is missing or invalid.
     """
     url = normalize_url(url)
     parsed = urlparse(url)
     scheme = parsed.scheme or "file"
-    # fsspec auto-picks backend by scheme
-    fs = fsspec.filesystem(scheme)
+
+    try:
+        if scheme == "s3":
+            if profile_name:
+                fs = fsspec.filesystem("s3", profile=profile_name)
+            else:
+                fs = fsspec.filesystem("s3")
+        else:
+            fs = fsspec.filesystem(scheme)
+    except Exception as e:
+        _raise_if_s3_profile_error(e)
+        raise
+
     return fs, url
 
 
@@ -261,7 +286,8 @@ def copy_tree(src_url: str,
               dst_url: str,
               workers: int = 16,
               buffer_size: int = 8 * 1024 * 1024,
-              verify: bool = False) -> int:
+              verify: bool = False,
+              profile_name: str | None = None) -> int:
     """
     Generic and reliable tree copy between:
         • EFS → S3/GCS/Azure
@@ -329,6 +355,14 @@ def copy_tree(src_url: str,
     Use localize_to_path() yourself if you need persistent reuse of remote
     files (e.g., large GeoPackages reused across workflows).
 
+    Note:
+      * A single profile_name applies to both source and destination S3 URLs.
+      * This is sufficient for local↔S3 workflows or when both S3 endpoints
+        use the same AWS profile.
+      * If a future workflow needs different source/destination AWS profiles,
+        this function should be extended to accept separate src_profile_name
+        and dst_profile_name arguments.
+
     :param src_url: Source prefix. Accepts:
                         • A full cloud URL (s3://bucket/prefix, gs://…, az://…)
                         • A full local URL (file:///path/to/dir)
@@ -362,11 +396,19 @@ def copy_tree(src_url: str,
                 - Manifest must already exist at source
                 - Each file’s SHA256 is checked against manifest entries
                 - _manifest.json is copied but skipped during verification
+    :param profile_name:
+        Optional AWS profile name used for S3 source/destination URLs.
+        If omitted, the default credential chain is used.
 
     :return:
         Number of files successfully copied. If source prefix is empty,
         returns 0. Errors propagated to caller unless captured as
         S3CredentialsExpired for AWS credential issues.
+
+    :raises S3CredentialsExpired:
+        If AWS credentials are expired or invalid during S3 operations.
+    :raises S3ProfileError:
+        If an explicit AWS profile is missing or invalid.
     """
     logger.info(called_from())
 
@@ -375,8 +417,8 @@ def copy_tree(src_url: str,
     dst_url = normalize_url(dst_url)
 
     # Parse schemes
-    src_fs, _ = get_filesystem(src_url)
-    dst_fs, _ = get_filesystem(dst_url)
+    src_fs, _ = get_filesystem(src_url, profile_name=profile_name)
+    dst_fs, _ = get_filesystem(dst_url, profile_name=profile_name)
 
     src_scheme = urlparse(src_url).scheme or "file"
     dst_scheme = urlparse(dst_url).scheme or "file"
@@ -728,13 +770,15 @@ def copy_tree(src_url: str,
     return completed
 
 
-def path_exists(path: str) -> bool:
+def path_exists(path: str, *, profile_name: str | None = None) -> bool:
     """
     Cloud/local agnostic exists() check.
     Works for file://, s3://, gcs://, az://, etc.
     Raises S3CredentialsExpired if AWS credentials are expired.
+    Raises S3ProfileError if an explicit AWS profile is missing or invalid.
 
     :param path: URL or local filesystem path.
+    :param profile_name: Optional AWS profile name used for S3 paths only.
     :return: True if path exists, False otherwise.
     """
     if not path:
@@ -747,8 +791,10 @@ def path_exists(path: str) -> bool:
         return os.path.exists(parsed.path or path)
 
     try:
-        fs = fsspec.filesystem(scheme)
-        return fs.exists(path)
+        fs, norm_path = get_filesystem(path, profile_name=profile_name)
+        return fs.exists(norm_path)
+    except S3ProfileError:
+        raise
     except botocore.exceptions.ClientError as e:
         if e.response.get("Error", {}).get("Code") == "ExpiredToken":
             raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
@@ -757,17 +803,20 @@ def path_exists(path: str) -> bool:
         if "expired" in str(e).lower():
             raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
         raise
-    except Exception:
+    except Exception as e:
+        _raise_if_s3_profile_error(e)
         return False
 
 
-def is_dir(path: str) -> bool:
+def is_dir(path: str, *, profile_name: str | None = None) -> bool:
     """
     Cloud/local agnostic directory check.
     Works for file://, s3://, gcs://, az://, etc.
     Raises S3CredentialsExpired if AWS credentials are expired.
+    Raises S3ProfileError if an explicit AWS profile is missing or invalid.
 
     :param path: URL or local filesystem path.
+    :param profile_name: Optional AWS profile name used for S3 paths only.
     :return: True if path exists and is a directory/prefix, False otherwise.
     """
     parsed = urlparse(normalize_url(path))
@@ -777,8 +826,10 @@ def is_dir(path: str) -> bool:
         return os.path.isdir(parsed.path or path)
 
     try:
-        fs = fsspec.filesystem(scheme)
-        return fs.isdir(path)
+        fs, norm_path = get_filesystem(path, profile_name=profile_name)
+        return fs.isdir(norm_path)
+    except S3ProfileError:
+        raise
     except botocore.exceptions.ClientError as e:
         if e.response.get("Error", {}).get("Code") == "ExpiredToken":
             raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
@@ -787,32 +838,19 @@ def is_dir(path: str) -> bool:
         if "expired" in str(e).lower():
             raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
         raise
-    except Exception:
+    except Exception as e:
+        _raise_if_s3_profile_error(e)
         return False
 
 
-def open_file(path: str, mode: str = "r", **kwargs):
-    """
-    Open a local or cloud file for reading or writing.
 
-    Uses fsspec under the hood, so `s3://`, `gs://`, `az://`, etc. all work.
-    This does not use the caching layer — it always streams directly.
-
-    :param path: Local path or cloud URL.
-    :param mode: File mode, e.g. "r", "rb", "w".
-    :param kwargs: Passed through to fsspec.open().
-    :return: A file-like object.
-    """
-    fs, norm_url = get_filesystem(path)
-    return fs.open(norm_url, mode, **kwargs)
-
-
-def list_files(path: str, pattern: str = "*.csv") -> list[str]:
+def list_files(path: str, pattern: str = "*.csv", *, profile_name: str | None = None) -> list[str]:
     """
     List files under a local or cloud directory and return normalized URLs.
 
     Supports both local paths and cloud URLs (file://, s3://, gs://, az://, etc.).
     Raises S3CredentialsExpired if AWS credentials are expired.
+    Raises S3ProfileError if an explicit AWS profile is missing or invalid.
     Raises FileNotFoundError if the given path is not a directory.
 
     Behavior:
@@ -825,14 +863,20 @@ def list_files(path: str, pattern: str = "*.csv") -> list[str]:
 
     :param path: Directory path (local or cloud).
     :param pattern: Glob pattern for files (default "*.csv").
+    :param profile_name: Optional AWS profile name used for S3 paths only.
     :return: List of normalized file URLs.
     """
-    fs, norm_url = get_filesystem(path)
+    try:
+        fs, norm_url = get_filesystem(path, profile_name=profile_name)
+    except S3ProfileError:
+        raise
     # Ensure trailing slash on directory
     norm_url = norm_url.rstrip("/")
     try:
         if not fs.isdir(norm_url):
             raise FileNotFoundError(f"{norm_url} is not a directory")
+    except S3ProfileError:
+        raise
     except botocore.exceptions.ClientError as e:
         if e.response.get("Error", {}).get("Code") == "ExpiredToken":
             raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
@@ -840,11 +884,16 @@ def list_files(path: str, pattern: str = "*.csv") -> list[str]:
     except PermissionError as e:
         if "expired" in str(e).lower():
             raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
+    except Exception as e:
+        _raise_if_s3_profile_error(e)
         raise
 
     try:
         # fsspec.glob may return fully-qualified URLs or bare keys
         files = fs.glob(f"{norm_url}/{pattern}")
+    except S3ProfileError:
+        raise
     except botocore.exceptions.ClientError as e:
         if e.response.get("Error", {}).get("Code") == "ExpiredToken":
             raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
@@ -852,6 +901,9 @@ def list_files(path: str, pattern: str = "*.csv") -> list[str]:
     except PermissionError as e:
         if "expired" in str(e).lower():
             raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
+    except Exception as e:
+        _raise_if_s3_profile_error(e)
         raise
 
     out_files = []
@@ -994,6 +1046,14 @@ def localize_to_path(
 
     This mechanism is separate from copy_tree(); copy_tree streams directly and
     does not populate this cache.
+
+    Note:
+      * This helper intentionally remains generic for now and does not accept
+        an AWS profile_name override.
+      * Remote localization/caching currently uses the default fsspec/boto3
+        credential chain for the process.
+      * If a future workflow needs profile-specific localization, this helper
+        can be extended to pass profile_name through get_filesystem().
     """
     orig = url_or_path
     if not _is_remote(orig):
@@ -1004,6 +1064,10 @@ def localize_to_path(
     os.makedirs(CLOUD_CACHE_DIR, exist_ok=True)
     p = urlparse(orig)
     scheme = p.scheme.lower()
+
+    # Intentionally use the default filesystem resolution here.
+    # localize_to_path() remains generic for now and does not yet support
+    # per-call AWS profile overrides.
     fs = fsspec.filesystem(scheme)
 
     # Remote metadata to validate cache freshness
@@ -1139,7 +1203,7 @@ def check_aws_credentials(*, timeout_seconds: int = 3) -> None:
         raise S3CredentialsExpired(f"AWS credential check failed: {code}") from None
 
 
-def upload_file_to_s3(*, local_path: str, s3_uri: str) -> str:
+def upload_file_to_s3(*, local_path: str, s3_uri: str, profile_name: str | None = None) -> str:
     """
     Upload a local file to S3.
 
@@ -1150,22 +1214,25 @@ def upload_file_to_s3(*, local_path: str, s3_uri: str) -> str:
     This function performs a direct upload using boto3 and does not use
     fsspec or the caching layer.
 
-    Authentication is handled via standard AWS credential resolution
-    (environment variables, IAM role, shared credentials file, etc.).
+    Authentication is handled via standard AWS credential resolution.
+    If profile_name is provided, boto3 uses that named AWS profile instead
+    of the default credential chain.
 
     :param local_path: Path to the local file to upload.
     :param s3_uri: Destination S3 object URI (s3://bucket/key).
+    :param profile_name: Optional AWS profile name to use for this upload.
     :return: The destination S3 URI.
     :raises ValueError: If the S3 URI is invalid.
     :raises S3CredentialsExpired: If AWS credentials are missing, expired, or invalid.
     :raises botocore.exceptions.ClientError: For other AWS errors.
+    :raises S3ProfileError: If profile_name is provided but the AWS profile is missing or invalid.
     """
     if not local_path:
         raise ValueError("local_path is required")
 
     bucket, key = _parse_s3_uri(s3_uri)
 
-    s3 = boto3.client("s3")
+    s3 = get_s3_client(profile_name=profile_name)
     try:
         s3.upload_file(local_path, bucket, key)
     except botocore.exceptions.ClientError as e:
@@ -1186,7 +1253,7 @@ def upload_file_to_s3(*, local_path: str, s3_uri: str) -> str:
     return s3_uri
 
 
-def generate_presigned_download_url(*, s3_uri: str, expires_seconds: int) -> str:
+def generate_presigned_download_url(*, s3_uri: str, expires_seconds: int, profile_name: str | None = None) -> str:
     """
     Generate a presigned HTTP URL for downloading an S3 object.
 
@@ -1199,21 +1266,27 @@ def generate_presigned_download_url(*, s3_uri: str, expires_seconds: int) -> str
         • The client should download directly from S3
         • Authentication headers should not be required for the download
 
+    Authentication is handled via standard AWS credential resolution.
+    If profile_name is provided, boto3 uses that named AWS profile instead
+    of the default credential chain.
+
     The URL is generated using AWS Signature Version 4 via boto3.
 
     :param s3_uri: S3 object URI to download (s3://bucket/key).
     :param expires_seconds: Lifetime of the URL in seconds.
+    :param profile_name: Optional AWS profile name to use when generating the presigned URL.
     :return: A fully-qualified HTTPS presigned download URL.
     :raises ValueError: If the S3 URI is invalid or expiration is not positive.
     :raises S3CredentialsExpired: If AWS credentials are missing, expired, or invalid.
     :raises botocore.exceptions.ClientError: For other AWS errors.
+    :raises S3ProfileError: If profile_name is provided but the AWS profile is missing or invalid.
     """
     if expires_seconds <= 0:
         raise ValueError("expires_seconds must be > 0")
 
     bucket, key = _parse_s3_uri(s3_uri)
 
-    s3 = boto3.client("s3")
+    s3 = get_s3_client(profile_name=profile_name)
     try:
         return s3.generate_presigned_url(
             "get_object",
@@ -1227,7 +1300,7 @@ def generate_presigned_download_url(*, s3_uri: str, expires_seconds: int) -> str
         raise
 
 
-def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_seconds: float) -> int:
+def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_seconds: float, profile_name: str | None = None) -> int:
     """
     Delete S3 objects under a prefix that are older than a cutoff timestamp.
 
@@ -1242,10 +1315,12 @@ def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_secon
 
     :param s3_dir_uri: S3 directory URI (e.g., s3://bucket/prefix/).
     :param cutoff_unix_seconds: Delete objects with LastModified.timestamp() < cutoff_unix_seconds.
+    :param profile_name: Optional AWS profile name to use for S3 list/delete operations.
     :return: Number of objects successfully deleted.
     :raises ValueError: If s3_dir_uri is not a valid S3 URI.
     :raises S3CredentialsExpired: If AWS credentials are missing, expired, or invalid.
     :raises botocore.exceptions.ClientError: For other AWS errors.
+    :raises S3ProfileError: If profile_name is provided but the AWS profile is missing or invalid.
     """
     if cutoff_unix_seconds is None:
         raise ValueError("cutoff_unix_seconds is required")
@@ -1260,7 +1335,7 @@ def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_secon
     bucket = p.netloc
     prefix = (p.path or "").lstrip("/")
 
-    s3 = boto3.client("s3")
+    s3 = get_s3_client(profile_name=profile_name)
     attempted_keys: set[str] = set()
 
     deleted = 0
@@ -1364,3 +1439,56 @@ def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_secon
         continuation_token = resp.get("NextContinuationToken")
 
     return deleted
+
+
+def _get_boto3_session(*, profile_name: str | None = None) -> boto3.session.Session:
+    """
+    Return a boto3 session.
+
+    If profile_name is provided, the named AWS profile is used.
+    Otherwise the default boto3 credential/config resolution is used.
+
+    :raises S3ProfileError: If profile_name is provided but the AWS profile
+        is missing or invalid.
+    """
+    try:
+        if profile_name:
+            return boto3.Session(profile_name=profile_name)
+
+        return boto3.Session()
+    except ProfileNotFound as e:
+        raise S3ProfileError(str(e)) from e
+
+
+def get_s3_client(*, profile_name: str | None = None) -> botocore.client.BaseClient:
+    """
+    Return an S3 client.
+
+    If profile_name is provided, the client is created from a boto3 session
+    bound to that named AWS profile. Otherwise the default boto3 credential
+    chain is used.
+    """
+    session = _get_boto3_session(profile_name=profile_name)
+    return session.client("s3")
+
+
+def _raise_if_s3_profile_error(exc: Exception) -> None:
+    """
+    Raise S3ProfileError for common local AWS profile/config problems.
+
+    These failures happen before any request reaches AWS, so they should not be
+    reported as missing paths or expired credentials.
+    """
+    if isinstance(exc, ProfileNotFound):
+        raise S3ProfileError(str(exc)) from exc
+
+    msg = str(exc).lower()
+
+    # Be conservative here; only map clearly profile/config-related errors.
+    if "profile" in msg and (
+            "could not be found" in msg
+            or "not found" in msg
+            or "does not exist" in msg
+            or "invalid" in msg
+    ):
+        raise S3ProfileError(str(exc)) from exc

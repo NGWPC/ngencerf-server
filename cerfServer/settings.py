@@ -224,6 +224,9 @@ NGENCERF_ARCHIVE_S3_PATH = os.getenv('NGENCERF_ARCHIVE_S3_PATH')
 
 # Location of download zip files on S3
 NGENCERF_ZIPS_S3_PATH = os.getenv('NGENCERF_ZIPS_S3_PATH')
+# AWS Profile to use for r/w buckets (.e.g, for archives and zips)
+# Use None for AWS Dev (uses default profile)
+NGENCERF_RW_PROFILE = os.getenv('NGENCERF_RW_PROFILE') or None
 
 # Local temp directory for building ZIPs before upload (and for CLI zips)
 ZIP_TEMP_DIR = os.path.join('/tmp', 'ngencerf-zips')
