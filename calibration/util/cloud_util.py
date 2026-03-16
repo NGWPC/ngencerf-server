@@ -66,6 +66,7 @@ import botocore.exceptions
 import fsspec
 from botocore.config import Config
 from botocore.exceptions import ProfileNotFound
+from boto3.exceptions import S3UploadFailedError
 
 from calibration.views.called_from import called_from
 
@@ -830,6 +831,9 @@ def copy_tree(src_url: str,
 
 def path_exists(path: str, *, profile_name: str | None = None) -> bool:
     """
+    Note: Need to remove uses of this function on EFS.  Then we can get rid of this
+    Still needed for forcing data
+
     Cloud/local agnostic exists() check.
     Works for file://, s3://, gcs://, az://, etc.
     Raises S3CredentialsExpired if AWS credentials are expired.
@@ -920,6 +924,97 @@ def is_dir(path: str, *, profile_name: str | None = None) -> bool:
     except Exception as e:
         _raise_if_s3_profile_error(e, profile_name=profile_name)
         return False
+
+
+def s3_prefix_exists(s3_prefix_uri: str, *, profile_name: str | None = None) -> bool:
+    """
+    Determine whether an S3 prefix behaves like an existing "directory".
+
+    This function checks whether at least one object exists under the given
+    prefix by performing a `list_objects_v2` request with `MaxKeys=1`. If
+    any object is returned, the prefix is considered to exist.
+
+    Important notes about S3 behavior
+    ---------------------------------
+    Amazon S3 does not have real directories. A "directory" is simply a key
+    prefix. A prefix is considered to exist only if at least one object
+    currently exists whose key begins with that prefix.
+
+    This function therefore interprets "prefix exists" as:
+
+        "At least one object currently exists under this prefix."
+
+    `.keep` file convention
+    -----------------------
+    This application assumes that every managed prefix contains a small
+    placeholder file such as `.keep`.
+
+    The presence of this file ensures the prefix always appears to exist
+    when listed. Without such a file, an otherwise valid prefix may appear
+    to not exist because S3 will return no objects for that prefix.
+
+    For example:
+
+        s3://bucket/my-prefix/
+
+    If the bucket contains:
+
+        my-prefix/.keep
+        my-prefix/file1.zip
+
+    then the prefix will be detected as existing.
+
+    However, if no objects currently exist under the prefix, the S3 listing
+    will return empty and this function will return False, even though the
+    prefix could still be used to store objects.
+
+    When to use this function
+    -------------------------
+    Use this when you want to confirm that a configured prefix has already
+    been provisioned and contains at least one object (typically a `.keep`
+    file). This is useful for validating configuration paths such as
+    `NGENCERF_ZIPS_S3_PATH`.
+
+    Do NOT use this to test whether an S3 location is writable or whether
+    a new prefix could be created, since empty prefixes are invisible to S3.
+
+    :param s3_prefix_uri:
+        Fully-qualified S3 prefix URI (e.g. "s3://bucket/prefix/").
+
+    :param profile_name:
+        Optional AWS profile name used for authentication.
+
+    :return:
+        True if at least one object exists under the prefix, otherwise False.
+
+    :raises ValueError:
+        If the URI is not a valid S3 prefix.
+
+    :raises S3CredentialsExpired:
+        If AWS credentials are missing, expired, or invalid.
+
+    :raises S3ProfileError:
+        If the specified AWS profile does not exist or is invalid.
+    """
+    s3_prefix_uri = normalize_s3_prefix(s3_prefix_uri)
+    bucket, prefix = _parse_s3_uri(s3_prefix_uri)
+
+    s3 = get_s3_client(profile_name=profile_name)
+
+    try:
+        resp = s3.list_objects_v2(
+            Bucket=bucket,
+            Prefix=prefix,
+            MaxKeys=1,
+        )
+        return bool(resp.get("Contents"))
+    except botocore.exceptions.ClientError as e:
+        code = e.response.get("Error", {}).get("Code")
+        if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
+            raise S3CredentialsExpired(
+                _expired_credentials_message("s3_prefix_exists", s3_prefix_uri, profile_name)
+            ) from e
+        raise
 
 
 def list_files(path: str, pattern: str = "*.csv", *, profile_name: str | None = None) -> list[str]:
@@ -1283,6 +1378,22 @@ def _parse_s3_uri(s3_uri: str) -> tuple[str, str]:
     return p.netloc, key
 
 
+def normalize_s3_prefix(uri: str) -> str:
+    if not uri or not uri.startswith("s3://"):
+        raise ValueError("Must start with s3://")
+
+    rest = uri[5:]
+    bucket, sep, key = rest.partition("/")
+
+    if not bucket:
+        raise ValueError("Missing S3 bucket")
+
+    if not sep or not key:
+        raise ValueError("Must include an S3 prefix")
+
+    return uri if uri.endswith("/") else f"{uri}/"
+
+
 def upload_file_to_s3(*, local_path: str, s3_uri: str, profile_name: str | None = None) -> str:
     """
     Upload a local file to S3.
@@ -1307,6 +1418,11 @@ def upload_file_to_s3(*, local_path: str, s3_uri: str, profile_name: str | None 
     :raises botocore.exceptions.ClientError: For other AWS errors.
     :raises S3ProfileError: If profile_name is provided but the AWS profile is missing or invalid.
     """
+    logger.info(
+        f"Uploading file to S3{_format_profile_suffix(profile_name)}: "
+        f"{local_path} -> {s3_uri}"
+    )
+
     if not local_path:
         raise ValueError("local_path is required")
 
@@ -1315,6 +1431,14 @@ def upload_file_to_s3(*, local_path: str, s3_uri: str, profile_name: str | None 
     s3 = get_s3_client(profile_name=profile_name)
     try:
         s3.upload_file(local_path, bucket, key)
+
+    except S3UploadFailedError as e:
+
+        raise RuntimeError(
+            f"S3 upload failed{_format_profile_suffix(profile_name)} "
+            f"for {local_path} -> {s3_uri}: {e}"
+        ) from e
+
     except botocore.exceptions.ClientError as e:
         code = e.response.get("Error", {}).get("Code")
         if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
@@ -1322,6 +1446,7 @@ def upload_file_to_s3(*, local_path: str, s3_uri: str, profile_name: str | None 
                 _expired_credentials_message("upload_file_to_s3", s3_uri, profile_name)
             ) from e
         raise
+
     except PermissionError as e:
         if "expired" in str(e).lower():
             raise S3CredentialsExpired(
