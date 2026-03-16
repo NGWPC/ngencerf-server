@@ -24,8 +24,9 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
     ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
-    LockJobRequestSerializer, S3DirectoryValidator
-from calibration.util.cloud_util import join_url, copy_tree, get_filesystem, path_exists, S3ProfileError, S3CredentialsExpired
+    LockJobRequestSerializer
+from calibration.util.cloud_util import join_url, copy_tree, get_filesystem, S3ProfileError, S3CredentialsExpired, normalize_s3_prefix, \
+    s3_prefix_exists
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -677,13 +678,13 @@ def archive_jobs(request: Request) -> Response:
 
     # Make sure it's s3 and ends with a directory slash
     try:
-        S3DirectoryValidator(data={"uri": settings.NGENCERF_ARCHIVE_S3_PATH}).is_valid(raise_exception=True)
-    except Exception:
-        return ResponseError("NGENCERF_ARCHIVE_S3_PATH must be a valid S3 directory (e.g. s3://ngencerf_archive/<system_name>/)")
+        s3_prefix = normalize_s3_prefix(settings.NGENCERF_ARCHIVE_S3_PATH)
+    except ValueError as e:
+        return ResponseError(f"NGENCERF_ARCHIVE_S3_PATH is invalid: {e}")
 
     try:
-        exists = path_exists(
-            settings.NGENCERF_ZIPS_S3_PATH,
+        exists = s3_prefix_exists(
+            s3_prefix,
             profile_name=settings.NGENCERF_RW_PROFILE,
         )
     except S3CredentialsExpired as e:
@@ -695,7 +696,7 @@ def archive_jobs(request: Request) -> Response:
 
     if not exists:
         return ResponseError(
-            f"NGENCERF_ZIPS_S3_PATH does not exist on S3: {settings.NGENCERF_ZIPS_S3_PATH}"
+            f"NGENCERF_ARCHIVE_S3_PATH does not exist on S3: {s3_prefix}"
         )
 
     job_results = []
@@ -707,6 +708,7 @@ def archive_jobs(request: Request) -> Response:
         run_status=list(StatusEnum),
         include_archived=True,
     )
+
     # Process each calibration_run_id in the list
     for calibration_run_id in calibration_run_ids:
 
@@ -757,7 +759,7 @@ def archive_jobs(request: Request) -> Response:
 
                 src_path = run.job_data_dir  # e.g. /ngencerf/data/.../1_peter
                 dst_prefix = join_url(
-                    settings.NGENCERF_ARCHIVE_S3_PATH,
+                    s3_prefix,
                     os.path.basename(src_path),
                 )
 
@@ -765,7 +767,12 @@ def archive_jobs(request: Request) -> Response:
                 logger.info(f"Archiving Calibration Job {calibration_run_id}: copy {src_path} -> {dst_prefix}")
 
                 # ---- COPY LOCAL → CLOUD ----
-                copied = copy_tree(src_path, dst_prefix, verify=True)
+                copied = copy_tree(
+                    src_path,
+                    dst_prefix,
+                    verify=True,
+                    profile_name=settings.NGENCERF_RW_PROFILE,
+                )
 
                 elapsed = time.perf_counter() - start
                 logger.info(
@@ -787,7 +794,7 @@ def archive_jobs(request: Request) -> Response:
             # ===============================
             else:
                 src_cloud_prefix = join_url(
-                    settings.NGENCERF_ARCHIVE_S3_PATH,
+                    s3_prefix,
                     os.path.basename(run.job_data_dir)
                 )
 
@@ -805,7 +812,12 @@ def archive_jobs(request: Request) -> Response:
                 )
 
                 # ---- COPY CLOUD → LOCAL ----
-                copied = copy_tree(src_cloud_prefix, dest_dir, verify=True)
+                copied = copy_tree(
+                    src_cloud_prefix,
+                    dest_dir,
+                    verify=True,
+                    profile_name=settings.NGENCERF_RW_PROFILE,
+                )
 
                 elapsed = time.perf_counter() - start
                 logger.info(
@@ -815,7 +827,10 @@ def archive_jobs(request: Request) -> Response:
 
                 # ---- DELETE CLOUD DIRECTORY AFTER SUCCESS ----
                 try:
-                    cloud_fs, _ = get_filesystem(src_cloud_prefix)
+                    cloud_fs, _ = get_filesystem(
+                        src_cloud_prefix,
+                        profile_name=settings.NGENCERF_RW_PROFILE,
+                    )
                     cloud_fs.rm(src_cloud_prefix, recursive=True)
                     logger.info(f"Deleted cloud directory after unarchive: {src_cloud_prefix}")
                 except Exception as e:

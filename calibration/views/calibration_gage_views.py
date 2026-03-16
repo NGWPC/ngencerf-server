@@ -15,7 +15,6 @@ from calibration.models import Gage, CalibrationRun, CalibrationFormulation
 from calibration.util.caching import get_cached_gages, get_gage_by_id, update_and_get_cached_gage_status
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, SaveGageResponseSerializer, GageSerializer, \
     LoadGageResponseSerializer, ErrorResponseSerializer, UpdateGageStatusRequestSerializer, UpdateGageStatusResponseSerializer, EmptySerializer
-from calibration.util.cloud_util import path_exists
 from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_geopackage_file_path
 from calibration.views import ngen_cal_input
@@ -442,7 +441,7 @@ def get_geopackage_image_url(geopackage_path: str | None) -> str | None:
     :param geopackage_path: The file path of the GeoPackage.
     :return: A base64-encoded URL string of the PNG image if conversion is successful; otherwise, None.
     """
-    if geopackage_path and path_exists(geopackage_path):
+    if geopackage_path and os.path.exists(geopackage_path):
         try:
             # Attempt to convert the GeoPackage to PNG for selected layers
             geopackage_png = gpkg_to_png_selected_layers(geopackage_path)

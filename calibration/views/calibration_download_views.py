@@ -18,8 +18,9 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum
 from calibration.util import cloud_util
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericMessageWithIdResponseSerializer, ErrorResponseSerializer, \
-    GetZipStatusSerializer, GetZipDownloadUrlResponseSerializer, S3DirectoryValidator
-from calibration.util.cloud_util import path_exists, delete_expired_s3_objects_under_prefix, S3ProfileError, S3CredentialsExpired
+    GetZipStatusSerializer, GetZipDownloadUrlResponseSerializer
+from calibration.util.cloud_util import delete_expired_s3_objects_under_prefix, S3ProfileError, S3CredentialsExpired, \
+    normalize_s3_prefix, s3_prefix_exists, join_url
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, get_user_email, validate_request, get_calibration_run, validate_response, get_elapsed_str, \
     ResponseError
@@ -90,8 +91,6 @@ def start_zip_for_calibration_job(request: Request) -> Response:
     calibration_run_id = validator.get("calibration_run_id")
     cache_key = get_zip_cache_key(calibration_run_id)
 
-    cleanup_expired_zips()  # opportunistically delete old ZIPs (lazy TTL cleanup)
-
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=downloadable_statuses)
     if error_return:
         return error_return
@@ -99,15 +98,15 @@ def start_zip_for_calibration_job(request: Request) -> Response:
     if not settings.NGENCERF_ZIPS_S3_PATH:
         return ResponseError("NGENCERF_ZIPS_S3_PATH is undefined")
 
-    # Validate env var is a real S3 *directory* uri (must end with '/')
+    # Make sure it's S3 and normalize to a slash-terminated prefix
     try:
-        S3DirectoryValidator(data={"uri": settings.NGENCERF_ZIPS_S3_PATH}).is_valid(raise_exception=True)
-    except Exception:
-        return ResponseError("NGENCERF_ZIPS_S3_PATH must be a valid S3 directory (e.g. s3://bucket/prefix/)")
+        s3_prefix = normalize_s3_prefix(settings.NGENCERF_ZIPS_S3_PATH)
+    except ValueError as e:
+        return ResponseError(f"NGENCERF_ZIPS_S3_PATH is invalid: {e}")
 
     try:
-        exists = path_exists(
-            settings.NGENCERF_ZIPS_S3_PATH,
+        exists = s3_prefix_exists(
+            s3_prefix,
             profile_name=settings.NGENCERF_RW_PROFILE,
         )
     except S3CredentialsExpired as e:
@@ -116,11 +115,14 @@ def start_zip_for_calibration_job(request: Request) -> Response:
         return ResponseError(str(e))
     except PermissionError as e:
         return ResponseError(str(e))
-    
+
     if not exists:
         return ResponseError(
-            f"NGENCERF_ZIPS_S3_PATH does not exist on S3: {settings.NGENCERF_ZIPS_S3_PATH}"
+            f"NGENCERF_ZIPS_S3_PATH does not exist on S3: {s3_prefix}"
         )
+
+    cleanup_expired_zips()  # opportunistically delete old ZIPs (lazy TTL cleanup)
+
     zip_status = cache.get(cache_key)
     if zip_status and zip_status.get("status") == "pending":
         logger.info(f"Zip job already in progress for Calibration Job {calibration_run_id}")
@@ -194,8 +196,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
             # -------------------------
             # UPLOAD TO S3
             # -------------------------
-            # NGENCERF_ZIPS_S3_PATH is a directory and ends with "/"
-            s3_object = f"{settings.NGENCERF_ZIPS_S3_PATH}{zip_filename}"
+            s3_object = join_url(s3_prefix, zip_filename)
 
             cloud_util.upload_file_to_s3(
                 local_path=zip_path,
@@ -383,8 +384,16 @@ def cleanup_expired_zips() -> None:
 
     :return: None
     """
+    raw_s3_dir = getattr(settings, "NGENCERF_ZIPS_S3_PATH", None)
+    normalized_s3_dir = None
+    if raw_s3_dir:
+        try:
+            normalized_s3_dir = normalize_s3_prefix(raw_s3_dir)
+        except ValueError:
+            normalized_s3_dir = None
+
     logger.debug(
-        f"ZIP cleanup sweep: s3_dir={settings.NGENCERF_ZIPS_S3_PATH}, dir={settings.ZIP_TEMP_DIR}, "
+        f"ZIP cleanup sweep: s3_dir={normalized_s3_dir or raw_s3_dir}, dir={settings.ZIP_TEMP_DIR}, "
         f"url_ttl={settings.ZIP_DOWNLOAD_URL_TTL_SECONDS}s, retention={settings.ZIP_RETENTION_SECONDS}s"
     )
 
@@ -421,11 +430,15 @@ def cleanup_expired_zips() -> None:
         s3_dir = getattr(settings, "NGENCERF_ZIPS_S3_PATH", None)
         if s3_dir:
             try:
+                s3_dir = normalize_s3_prefix(s3_dir)
                 deleted_s3 = delete_expired_s3_objects_under_prefix(
                     s3_dir_uri=s3_dir,
                     cutoff_unix_seconds=cutoff_unix,
                     profile_name=settings.NGENCERF_RW_PROFILE
                 )
+            except ValueError as e:
+                logger.error(f"Invalid S3 ZIP prefix configured: {s3_dir}: {e}")
+                deleted_s3 = 0
             except Exception:
                 # Keep behavior minimal: log and skip S3 cleanup rather than failing endpoints.
                 logger.exception(f"Failed S3 ZIP cleanup under: {s3_dir}")
