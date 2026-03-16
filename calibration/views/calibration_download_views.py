@@ -19,7 +19,7 @@ from calibration.enums import StatusEnum
 from calibration.util import cloud_util
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericMessageWithIdResponseSerializer, ErrorResponseSerializer, \
     GetZipStatusSerializer, GetZipDownloadUrlResponseSerializer, S3DirectoryValidator
-from calibration.util.cloud_util import path_exists, delete_expired_s3_objects_under_prefix
+from calibration.util.cloud_util import path_exists, delete_expired_s3_objects_under_prefix, S3ProfileError, S3CredentialsExpired
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, get_user_email, validate_request, get_calibration_run, validate_response, get_elapsed_str, \
     ResponseError
@@ -105,12 +105,22 @@ def start_zip_for_calibration_job(request: Request) -> Response:
     except Exception:
         return ResponseError("NGENCERF_ZIPS_S3_PATH must be a valid S3 directory (e.g. s3://bucket/prefix/)")
 
-    # This check requires at least one object to actually exist
-    if not path_exists(settings.NGENCERF_ZIPS_S3_PATH, profile_name=settings.NGENCERF_RW_PROFILE):
+    try:
+        exists = path_exists(
+            settings.NGENCERF_ZIPS_S3_PATH,
+            profile_name=settings.NGENCERF_RW_PROFILE,
+        )
+    except S3CredentialsExpired as e:
+        return ResponseError(str(e))
+    except S3ProfileError as e:
+        return ResponseError(str(e))
+    except PermissionError as e:
+        return ResponseError(str(e))
+    
+    if not exists:
         return ResponseError(
             f"NGENCERF_ZIPS_S3_PATH does not exist on S3: {settings.NGENCERF_ZIPS_S3_PATH}"
         )
-
     zip_status = cache.get(cache_key)
     if zip_status and zip_status.get("status") == "pending":
         logger.info(f"Zip job already in progress for Calibration Job {calibration_run_id}")

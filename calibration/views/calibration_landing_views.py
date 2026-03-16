@@ -25,7 +25,7 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
     ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
     LockJobRequestSerializer, S3DirectoryValidator
-from calibration.util.cloud_util import join_url, copy_tree, get_filesystem, path_exists
+from calibration.util.cloud_util import join_url, copy_tree, get_filesystem, path_exists, S3ProfileError, S3CredentialsExpired
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -681,10 +681,21 @@ def archive_jobs(request: Request) -> Response:
     except Exception:
         return ResponseError("NGENCERF_ARCHIVE_S3_PATH must be a valid S3 directory (e.g. s3://ngencerf_archive/<system_name>/)")
 
-    # This check requires at least one object to actually exist
-    if not path_exists(settings.NGENCERF_ARCHIVE_S3_PATH):
+    try:
+        exists = path_exists(
+            settings.NGENCERF_ZIPS_S3_PATH,
+            profile_name=settings.NGENCERF_RW_PROFILE,
+        )
+    except S3CredentialsExpired as e:
+        return ResponseError(str(e))
+    except S3ProfileError as e:
+        return ResponseError(str(e))
+    except PermissionError as e:
+        return ResponseError(str(e))
+
+    if not exists:
         return ResponseError(
-            f"NGENCERF_ARCHIVE_S3_PATH does not exist on S3: {settings.NGENCERF_ARCHIVE_S3_PATH}"
+            f"NGENCERF_ZIPS_S3_PATH does not exist on S3: {settings.NGENCERF_ZIPS_S3_PATH}"
         )
 
     job_results = []
