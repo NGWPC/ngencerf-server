@@ -26,7 +26,7 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
     ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
     LockJobRequestSerializer
 from calibration.util.cloud_util import join_url, copy_tree, get_filesystem, S3ProfileError, S3CredentialsExpired, normalize_s3_prefix, \
-    s3_prefix_exists
+    s3_prefix_exists, delete_all_s3_objects_under_prefix
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -827,12 +827,13 @@ def archive_jobs(request: Request) -> Response:
 
                 # ---- DELETE CLOUD DIRECTORY AFTER SUCCESS ----
                 try:
-                    cloud_fs, _ = get_filesystem(
-                        src_cloud_prefix,
+                    deleted = delete_all_s3_objects_under_prefix(
+                        s3_dir_uri=src_cloud_prefix,
                         profile_name=settings.NGENCERF_RW_PROFILE,
                     )
-                    cloud_fs.rm(src_cloud_prefix, recursive=True)
-                    logger.info(f"Deleted cloud directory after unarchive: {src_cloud_prefix}")
+                    logger.info(
+                        f"Deleted {deleted} cloud object(s) after unarchive under: {src_cloud_prefix}"
+                    )
                 except Exception as e:
                     logger.error(f"Failed to delete cloud directory {src_cloud_prefix}: {e}")
                     raise
