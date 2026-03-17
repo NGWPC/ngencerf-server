@@ -64,9 +64,9 @@ import boto3
 import botocore.client
 import botocore.exceptions
 import fsspec
+from boto3.exceptions import S3UploadFailedError
 from botocore.config import Config
 from botocore.exceptions import ProfileNotFound
-from boto3.exceptions import S3UploadFailedError
 
 from calibration.views.called_from import called_from
 
@@ -978,42 +978,41 @@ def s3_prefix_exists(s3_prefix_uri: str, *, profile_name: str | None = None) -> 
     Do NOT use this to test whether an S3 location is writable or whether
     a new prefix could be created, since empty prefixes are invisible to S3.
 
-    :param s3_prefix_uri:
-        Fully-qualified S3 prefix URI (e.g. "s3://bucket/prefix/").
-
-    :param profile_name:
-        Optional AWS profile name used for authentication.
-
-    :return:
-        True if at least one object exists under the prefix, otherwise False.
-
-    :raises ValueError:
-        If the URI is not a valid S3 prefix.
-
-    :raises S3CredentialsExpired:
-        If AWS credentials are missing, expired, or invalid.
-
-    :raises S3ProfileError:
-        If the specified AWS profile does not exist or is invalid.
+    :param s3_prefix_uri: Fully-qualified S3 prefix URI (e.g. "s3://bucket/prefix/").
+    :param profile_name: Optional AWS profile name used for authentication.
+    :return: True if at least one object exists under the prefix, otherwise False.
+    :raises ValueError: If the URI is not a valid S3 prefix.
+    :raises S3CredentialsExpired: If AWS credentials are missing, expired, or invalid.
+    :raises S3ProfileError: If the specified AWS profile does not exist or is invalid.
     """
     s3_prefix_uri = normalize_s3_prefix(s3_prefix_uri)
     bucket, prefix = _parse_s3_uri(s3_prefix_uri)
 
-    s3 = get_s3_client(profile_name=profile_name)
-
     try:
+        s3 = get_s3_client(profile_name=profile_name)
         resp = s3.list_objects_v2(
             Bucket=bucket,
             Prefix=prefix,
             MaxKeys=1,
         )
         return bool(resp.get("Contents"))
+    except S3ProfileError:
+        raise
     except botocore.exceptions.ClientError as e:
         code = e.response.get("Error", {}).get("Code")
         if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
             raise S3CredentialsExpired(
                 _expired_credentials_message("s3_prefix_exists", s3_prefix_uri, profile_name)
             ) from e
+        raise
+    except PermissionError as e:
+        if "expired" in str(e).lower():
+            raise S3CredentialsExpired(
+                _expired_credentials_message("s3_prefix_exists", s3_prefix_uri, profile_name)
+            ) from e
+        raise PermissionError(f"{e}{_format_profile_suffix(profile_name)}") from e
+    except Exception as e:
+        _raise_if_s3_profile_error(e, profile_name=profile_name)
         raise
 
 
@@ -1353,6 +1352,86 @@ def _parse_s3_uri(s3_uri: str) -> tuple[str, str]:
     return p.netloc, key
 
 
+def _delete_s3_keys(
+        *,
+        bucket: str,
+        keys: list[str],
+        profile_name: str | None = None,
+        context_path: str,
+) -> int:
+    """
+    Delete specific S3 keys from a bucket.
+
+    This is the shared low-level delete primitive used by higher-level helpers
+    such as:
+      * delete_all_s3_objects_under_prefix()
+      * delete_expired_s3_objects_under_prefix()
+
+    :param bucket: S3 bucket name.
+    :param keys: Exact object keys to delete.
+    :param profile_name: Optional AWS profile name.
+    :param context_path: User-facing path/URI for error messages.
+    :return: Number of objects successfully deleted.
+    :raises S3CredentialsExpired: If AWS credentials are missing, expired, or invalid.
+    :raises botocore.exceptions.ClientError: For other AWS errors.
+    :raises S3ProfileError: If profile_name is provided but invalid.
+    """
+    if not bucket:
+        raise ValueError("bucket is required")
+
+    if not keys:
+        return 0
+
+    s3 = get_s3_client(profile_name=profile_name)
+    deleted = 0
+
+    for i in range(0, len(keys), 1000):
+        batch = keys[i:i + 1000]
+        delete_objects = [{"Key": key} for key in batch]
+
+        try:
+            resp = s3.delete_objects(
+                Bucket=bucket,
+                Delete={"Objects": delete_objects, "Quiet": False},
+            )
+        except botocore.exceptions.ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
+                raise S3CredentialsExpired(
+                    _expired_credentials_message("_delete_s3_keys", context_path, profile_name)
+                ) from e
+            raise
+        except PermissionError as e:
+            if "expired" in str(e).lower():
+                raise S3CredentialsExpired(
+                    _expired_credentials_message("_delete_s3_keys", context_path, profile_name)
+                ) from e
+            raise PermissionError(f"{e}{_format_profile_suffix(profile_name)}") from e
+
+        for d in resp.get("Deleted") or []:
+            k = d.get("Key")
+            if k:
+                logger.info(f"S3 deleted: s3://{bucket}/{k}{_format_profile_suffix(profile_name)}")
+                deleted += 1
+
+        errors = resp.get("Errors") or []
+        for err in errors:
+            k = err.get("Key")
+            logger.error(
+                f"S3 delete failed: s3://{bucket}/{k} "
+                f"code={err.get('Code')} message={err.get('Message')}"
+                f"{_format_profile_suffix(profile_name)}"
+            )
+
+        if errors:
+            raise RuntimeError(
+                f"S3 delete failed for {len(errors)} object(s) under {context_path}"
+                f"{_format_profile_suffix(profile_name)}"
+            )
+
+    return deleted
+
+
 def normalize_s3_prefix(uri: str) -> str:
     """
     Validate and normalize an S3 directory prefix.
@@ -1381,19 +1460,19 @@ def normalize_s3_prefix(uri: str) -> str:
     :return: Normalized S3 prefix guaranteed to end with '/'.
     :raises ValueError: If the URI is not a valid S3 prefix.
     """
-    if not uri or not uri.startswith("s3://"):
-        raise ValueError("Must start with s3://")
+    if not uri or not isinstance(uri, str):
+        raise ValueError("uri must be a non-empty string")
 
-    rest = uri[5:]
-    bucket, sep, key = rest.partition("/")
+    p = urlparse(uri)
+    if p.scheme != "s3" or not p.netloc:
+        raise ValueError(f"Invalid S3 prefix URI: {uri}")
 
-    if not bucket:
-        raise ValueError("Missing S3 bucket")
+    prefix = (p.path or "").lstrip("/")
+    if not prefix:
+        raise ValueError(f"S3 prefix URI must include a prefix: {uri}")
 
-    if not sep or not key:
-        raise ValueError("Must include an S3 prefix")
-
-    return uri if uri.endswith("/") else f"{uri}/"
+    normalized = f"s3://{p.netloc}/{prefix}"
+    return normalized if normalized.endswith("/") else f"{normalized}/"
 
 
 def upload_file_to_s3(*, local_path: str, s3_uri: str, profile_name: str | None = None) -> str:
@@ -1431,10 +1510,24 @@ def upload_file_to_s3(*, local_path: str, s3_uri: str, profile_name: str | None 
     bucket, key = _parse_s3_uri(s3_uri)
 
     s3 = get_s3_client(profile_name=profile_name)
+
     try:
         s3.upload_file(local_path, bucket, key)
 
     except S3UploadFailedError as e:
+        underlying = e.__cause__ or e.__context__
+
+        if isinstance(underlying, botocore.exceptions.ClientError):
+            code = underlying.response.get("Error", {}).get("Code")
+            if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
+                raise S3CredentialsExpired(
+                    _expired_credentials_message("upload_file_to_s3", s3_uri, profile_name)
+                ) from e
+
+        if "expired" in str(e).lower():
+            raise S3CredentialsExpired(
+                _expired_credentials_message("upload_file_to_s3", s3_uri, profile_name)
+            ) from e
 
         raise RuntimeError(
             f"S3 upload failed{_format_profile_suffix(profile_name)} "
@@ -1528,7 +1621,97 @@ def generate_presigned_download_url(*, s3_uri: str, expires_seconds: int, profil
         raise PermissionError(f"{e}{_format_profile_suffix(profile_name)}") from e
 
 
-def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_seconds: float, profile_name: str | None = None) -> int:
+def delete_all_s3_objects_under_prefix(
+        *,
+        s3_dir_uri: str,
+        profile_name: str | None = None,
+) -> int:
+    """
+    Delete all S3 objects under a prefix.
+
+    This is intended for deleting a logical "directory" in S3 after a successful
+    restore/unarchive. Since S3 has no true directories, this lists all objects
+    under the prefix and deletes them.
+
+    :param s3_dir_uri: S3 directory URI (e.g. s3://bucket/prefix/).
+    :param profile_name: Optional AWS profile name to use for S3 list/delete operations.
+    :return: Number of objects successfully deleted.
+    :raises ValueError: If s3_dir_uri is not a valid S3 URI.
+    :raises S3CredentialsExpired: If AWS credentials are missing, expired, or invalid.
+    :raises botocore.exceptions.ClientError: For other AWS errors.
+    :raises S3ProfileError: If profile_name is provided but the AWS profile is missing or invalid.
+    """
+    s3_dir_uri = normalize_s3_prefix(s3_dir_uri)
+    p = urlparse(s3_dir_uri)
+
+    bucket = p.netloc
+    prefix = (p.path or "").lstrip("/")
+    continuation_token = None
+    keys_to_delete: list[str] = []
+
+    s3 = get_s3_client(profile_name=profile_name)
+
+    while True:
+        kwargs: dict[str, Any] = {"Bucket": bucket, "Prefix": prefix}
+        if continuation_token:
+            kwargs["ContinuationToken"] = continuation_token
+
+        try:
+            resp = s3.list_objects_v2(**kwargs)
+        except botocore.exceptions.ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
+                raise S3CredentialsExpired(
+                    _expired_credentials_message(
+                        "delete_all_s3_objects_under_prefix",
+                        s3_dir_uri,
+                        profile_name,
+                    )
+                ) from e
+            raise
+        except PermissionError as e:
+            if "expired" in str(e).lower():
+                raise S3CredentialsExpired(
+                    _expired_credentials_message(
+                        "delete_all_s3_objects_under_prefix",
+                        s3_dir_uri,
+                        profile_name,
+                    )
+                ) from e
+            raise PermissionError(f"{e}{_format_profile_suffix(profile_name)}") from e
+
+        for obj in resp.get("Contents") or []:
+            key = obj.get("Key")
+            if not key:
+                continue
+            keys_to_delete.append(key)
+
+        if not resp.get("IsTruncated"):
+            break
+
+        continuation_token = resp.get("NextContinuationToken")
+
+    deleted = _delete_s3_keys(
+        bucket=bucket,
+        keys=keys_to_delete,
+        profile_name=profile_name,
+        context_path=s3_dir_uri,
+    )
+
+    logger.info(
+        f"Deleted {deleted} object(s) under S3 prefix {s3_dir_uri}"
+        f"{_format_profile_suffix(profile_name)}"
+    )
+
+    return deleted
+
+
+def delete_expired_s3_objects_under_prefix(
+        *,
+        s3_dir_uri: str,
+        cutoff_unix_seconds: float,
+        profile_name: str | None = None,
+) -> int:
     """
     Delete S3 objects under a prefix that are older than a cutoff timestamp.
 
@@ -1538,7 +1721,7 @@ def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_secon
 
     Notes:
     - S3 has no real directories; this lists objects by Prefix and deletes matching keys.
-    - This function does not validate that s3_dir_uri ends with "/"; callers may enforce that separately.
+    - The prefix URI is validated and normalized to end with "/".
     - If listing or deletion fails due to expired/invalid AWS credentials, raises S3CredentialsExpired.
 
     :param s3_dir_uri: S3 directory URI (e.g., s3://bucket/prefix/).
@@ -1553,23 +1736,17 @@ def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_secon
     if cutoff_unix_seconds is None:
         raise ValueError("cutoff_unix_seconds is required")
 
-    if not s3_dir_uri or not isinstance(s3_dir_uri, str):
-        raise ValueError("s3_dir_uri must be a non-empty string")
-
+    s3_dir_uri = normalize_s3_prefix(s3_dir_uri)
     p = urlparse(s3_dir_uri)
-    if p.scheme != "s3" or not p.netloc:
-        raise ValueError(f"Invalid S3 directory URI: {s3_dir_uri}")
 
     bucket = p.netloc
     prefix = (p.path or "").lstrip("/")
-
-    s3 = get_s3_client(profile_name=profile_name)
-    attempted_keys: set[str] = set()
-
-    deleted = 0
     continuation_token = None
+    attempted_keys: set[str] = set()
+    keys_to_delete: list[str] = []
 
     cutoff_dt = datetime.fromtimestamp(float(cutoff_unix_seconds), timezone.utc)
+    s3 = get_s3_client(profile_name=profile_name)
 
     while True:
         kwargs = {"Bucket": bucket, "Prefix": prefix}
@@ -1592,12 +1769,9 @@ def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_secon
                 ) from e
             raise PermissionError(f"{e}{_format_profile_suffix(profile_name)}") from e
 
-        # Collect delete candidates for this page (batch delete max 1000)
-        delete_candidates: list[dict[str, str]] = []
-
         for obj in resp.get("Contents") or []:
             key = obj.get("Key")
-            lm = obj.get("LastModified")  # datetime
+            lm = obj.get("LastModified")
             size = obj.get("Size")
 
             if not key or lm is None:
@@ -1626,46 +1800,11 @@ def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_secon
                     f"{_format_profile_suffix(profile_name)}"
                 )
                 attempted_keys.add(key)
-                delete_candidates.append({"Key": key})
+                keys_to_delete.append(key)
             else:
                 logger.debug(
                     f"S3 cleanup keeping: s3://{bucket}/{key} "
                     f"(last_modified={lm_dt.isoformat()} >= cutoff={cutoff_dt.isoformat()})"
-                    f"{_format_profile_suffix(profile_name)}"
-                )
-
-        if delete_candidates:
-            # delete_objects supports up to 1000 keys per call; list_objects_v2 returns up to 1000.
-            try:
-                del_resp = s3.delete_objects(
-                    Bucket=bucket,
-                    Delete={"Objects": delete_candidates, "Quiet": False},
-                )
-            except botocore.exceptions.ClientError as e:
-                code = e.response.get("Error", {}).get("Code")
-                if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
-                    raise S3CredentialsExpired(
-                        _expired_credentials_message("delete_expired_s3_objects_under_prefix", s3_dir_uri, profile_name)
-                    ) from e
-                raise
-            except PermissionError as e:
-                if "expired" in str(e).lower():
-                    raise S3CredentialsExpired(
-                        _expired_credentials_message("delete_expired_s3_objects_under_prefix", s3_dir_uri, profile_name)
-                    ) from e
-                raise PermissionError(f"{e}{_format_profile_suffix(profile_name)}") from e
-
-            for d in del_resp.get("Deleted") or []:
-                k = d.get("Key")
-                if k:
-                    logger.info(f"S3 cleanup deleted: s3://{bucket}/{k}{_format_profile_suffix(profile_name)}")
-                    deleted += 1
-
-            for err in del_resp.get("Errors") or []:
-                k = err.get("Key")
-                logger.error(
-                    f"S3 cleanup failed deleting: s3://{bucket}/{k} "
-                    f"code={err.get('Code')} message={err.get('Message')}"
                     f"{_format_profile_suffix(profile_name)}"
                 )
 
@@ -1674,7 +1813,12 @@ def delete_expired_s3_objects_under_prefix(*, s3_dir_uri: str, cutoff_unix_secon
 
         continuation_token = resp.get("NextContinuationToken")
 
-    return deleted
+    return _delete_s3_keys(
+        bucket=bucket,
+        keys=keys_to_delete,
+        profile_name=profile_name,
+        context_path=s3_dir_uri,
+    )
 
 
 # ----------------------------------------------------------------------
