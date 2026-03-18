@@ -114,6 +114,7 @@ ARG EWTS_ORG=NGWPC
 ARG EWTS_REF=development
 ENV EWTS_PREFIX=/opt/ewts
 
+ENV CPLUS_INCLUDE_PATH=/opt/boost/include
 # MPI binaries live in /usr/lib64/openmpi/bin/ on Rocky 8
 ENV PATH="${PATH}:/usr/lib64/openmpi/bin/"
 
@@ -128,8 +129,7 @@ RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-ewts \
       -DCMAKE_BUILD_TYPE=Release \
       -DEWTS_WITH_NGEN=ON \
       -DEWTS_BUILD_SHARED=ON \
-      -DBOOST_ROOT=/opt/boost \
-      -DCMAKE_CXX_FLAGS="-I/opt/boost" && \
+      -DBOOST_ROOT=/opt/boost && \
     cmake --build cmake_build -j "$(nproc)" && \
     cmake --install cmake_build --prefix ${EWTS_PREFIX} && \
     rm -rf /tmp/nwm-ewts
