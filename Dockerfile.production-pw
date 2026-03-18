@@ -80,9 +80,13 @@ ARG BOOST_VERSION=1.86.0
 RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-boost \
     set -eux && \
     curl --location --output boost.tar.gz "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION//./_}.tar.gz" && \
-    mkdir -p /opt/boost && \
-    tar --extract --directory /opt/boost --strip-components=1 --file boost.tar.gz && \
-    rm boost.tar.gz
+    mkdir -p /tmp/boost-src && \
+    tar --extract --directory /tmp/boost-src --strip-components=1 --file boost.tar.gz && \
+    rm boost.tar.gz && \
+    cd /tmp/boost-src && \
+    ./bootstrap.sh --prefix=/opt/boost --with-libraries=system,filesystem && \
+    ./b2 install -j$(nproc) && \
+    cd / && rm -rf /tmp/boost-src
 
 # Install Python virtual environment
 ENV VIRTUAL_ENV=/ngencerf/ngencerf-python
