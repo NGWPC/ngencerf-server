@@ -123,7 +123,8 @@ RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-ewts \
     cmake -S . -B cmake_build \
       -DCMAKE_BUILD_TYPE=Release \
       -DEWTS_WITH_NGEN=ON \
-      -DEWTS_BUILD_SHARED=ON && \
+      -DEWTS_BUILD_SHARED=ON \
+      -DBOOST_ROOT=/opt/boost && \
     cmake --build cmake_build -j "$(nproc)" && \
     cmake --install cmake_build --prefix ${EWTS_PREFIX} && \
     rm -rf /tmp/nwm-ewts
