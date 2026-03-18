@@ -55,8 +55,10 @@ RUN set -eux && \
         # partitionGenerator requirements
         cmake \
         gcc-c++ \
+        gcc-gfortran \
         sqlite-devel \
         udunits2 udunits2-devel \
+        openmpi openmpi-devel \
         dnf-plugins-core && \
     dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo && \
     dnf install -y docker-ce-cli && \
@@ -103,6 +105,29 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     pip3 install gunicorn uvicorn && \
     rm -f requirements.txt
 
+# Build and install EWTS (required by ngen's CMakeLists.txt: find_package(ewts CONFIG REQUIRED))
+ARG EWTS_ORG=NGWPC
+ARG EWTS_REF=development
+ENV EWTS_PREFIX=/opt/ewts
+
+# MPI binaries live in /usr/lib64/openmpi/bin/ on Rocky 8
+ENV PATH="${PATH}:/usr/lib64/openmpi/bin/"
+
+RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-ewts \
+    set -eux && \
+    (git clone --depth 1 -b "${EWTS_REF}" \
+        "https://github.com/${EWTS_ORG}/nwm-ewts.git" /tmp/nwm-ewts \
+     || (git clone "https://github.com/${EWTS_ORG}/nwm-ewts.git" /tmp/nwm-ewts && \
+         cd /tmp/nwm-ewts && git checkout "${EWTS_REF}")) && \
+    cd /tmp/nwm-ewts && \
+    cmake -S . -B cmake_build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DEWTS_WITH_NGEN=ON \
+      -DEWTS_BUILD_SHARED=ON && \
+    cmake --build cmake_build -j "$(nproc)" && \
+    cmake --install cmake_build --prefix ${EWTS_PREFIX} && \
+    rm -rf /tmp/nwm-ewts
+
 # Build partitionGenerator
 ARG NGEN_ORG=NGWPC
 ARG NGEN_REF=development
@@ -127,6 +152,7 @@ RUN --mount=type=cache,target=/ngencerf/partitionGenerator_build,id=partition-ge
     # Configure CMake
     cmake -S /ngencerf/ngen-sparse -B /ngencerf/partitionGenerator_build \
           -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_PREFIX_PATH=${EWTS_PREFIX} \
           -DNGEN_WITH_MPI=OFF \
           -DNGEN_WITH_NETCDF=OFF \
           -DNGEN_WITH_SQLITE=ON \
