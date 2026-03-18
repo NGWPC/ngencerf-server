@@ -24,9 +24,8 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
     ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
-    LockJobRequestSerializer
-from calibration.util.cloud_util import join_url, copy_tree, S3ProfileError, S3CredentialsExpired, normalize_s3_prefix, \
-    s3_prefix_exists, delete_all_s3_objects_under_prefix
+    LockJobRequestSerializer, S3DirectoryValidator, CreateHindcastRequestSerializer, CreateAndRunHindcastResponseSerializer
+from calibration.util.cloud_util import join_url, copy_tree, get_filesystem, path_exists
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -286,6 +285,137 @@ def create_and_run_forecast(request: Request) -> Response:
 
     if forecast_errors:
         return ResponseError("Error submitting forecast", errors=forecast_errors)
+
+    cold_start_run = create_cold_start_run_internal(
+        calibration_run,
+        configuration,
+        cold_start_date=cold_start_date,
+        cycle_date=cycle_date
+    ) if cold_start_date else None
+
+    forecast_run = create_forecast_run_internal(
+        calibration_run,
+        cold_start_run,
+        configuration,
+        cycle_date
+    )
+
+    if run_cold_start:
+        # Forecast Job will run automatically after the cold start
+        submit_job(cold_start_run, logging_config=logging_config)
+    else:
+        submit_job(forecast_run, logging_config=logging_config)
+
+    msg = get_job_description(cold_start_run if run_cold_start else forecast_run) + ' created and submitted'
+    if run_cold_start:
+        msg += f', followed by Forecast Job {forecast_run.id}'
+    response = {
+        'message': msg,
+        'calibration_run_id': calibration_run.id,
+        'forecast_run_id': forecast_run.id,
+        'cold_start_run_id': cold_start_run.id if run_cold_start else None,
+        'submit_date': cold_start_run.submit_date if run_cold_start else forecast_run.submit_date
+    }
+
+    response_validator, error_response = validate_response(CreateAndRunForecastResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    return Response(response_validator.data, status=status.HTTP_201_CREATED)
+
+
+
+
+@extend_schema(
+    request=CreateHindcastRequestSerializer,
+    responses={
+        201: CreateAndRunHindcastResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Create and run a new hindcast with optional cold start"
+)
+@api_view(['POST'])
+@handle_exceptions
+def create_and_run_hindcast(request: Request) -> Response:
+    """
+    Creates and runs a new hindcast run with an optional cold start for a specified calibration run and cycle_name name.
+
+    :param request: The HTTP request object containing calibration and iteration details.
+    :return: JSON response with validation run details or error information.
+    """
+    data = request.data
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} ')
+
+    validator, error_return = validate_request(CreateHindcastRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+    configuration_name = validator.get('configuration_name')
+    cycle_date = validator.get('cycle_date')
+    interval_cycle = validator.get('interval_cycle')
+    num_iterations = validator.get('num_iterations')
+    cold_start_date = validator.get('cold_start_date')
+    logging_config = validator.get('logging_config')
+
+    run_cold_start = cold_start_date is not None
+
+    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
+    if error_return:
+        return error_return
+
+    hindcast_errors = []
+
+    configuration = ForecastConfigEnum.get_instance(configuration_name)
+    if configuration.domain != calibration_run.gage.domain:
+        hindcast_errors.append(f"{configuration_name} is not a valid configuration for domain {calibration_run.gage.domain.name}")
+
+    # TODO Make sure that it a configuration that's valie for hindcast
+
+    # Define allowed cycle date range
+    min_cycle_date = datetime(2022, 1, 1, tzinfo=timezone.utc)
+    max_cycle_date = datetime.now(tz=timezone.utc)
+
+    # Reject cycles earlier than the minimum allowed date
+    if cycle_date < min_cycle_date:
+        hindcast_errors.append(f"Cycle cannot start before {format_datetime(min_cycle_date)}")
+
+    # Adjust the maximum allowed cycle date based on forecast availability lag
+    future_forecast_availability = configuration.availability_lag or 0
+
+    # Subtract lag hours from max_cycle_date to account for delayed availability
+    max_cycle_date = max_cycle_date - timedelta(hours=future_forecast_availability)
+
+    # Warn if cycle date is later than adjusted maximum availability
+    if cycle_date > max_cycle_date:
+        # TODO Check what to do with this.  Is it a fatal error or just a warning?
+        hindcast_errors.append(f"Forecast availability is not guaranteed less than {future_forecast_availability} hours ahead of time.")
+
+    if (cycle_date.hour - configuration.cycle_start) % configuration.cycle_freq != 0:
+        # Hour offset from cycle start must align with evenly by cycle frequency
+        hindcast_errors.append(
+            f"Cycle hour {cycle_date.hour}:00 is not available. Forecasts are available every {configuration.cycle_freq} hours from {configuration.cycle_start}:00 to {configuration.cycle_end}:00.")
+
+    # TODO Validate the interval_cycle and num_iterations
+
+    # If a cold start date is provided, validate its position relative to cycle date
+    if run_cold_start:
+        if cold_start_date >= cycle_date:
+            hindcast_errors.append("Cold start date must be earlier than cycle date")
+        if cold_start_date < min_cycle_date:
+            hindcast_errors.append(f"Cold start cannot be before {format_datetime(min_cycle_date)}")
+
+    if hindcast_errors:
+        return ResponseError("Error submitting hindcast", errors=hindcast_errors)
 
     cold_start_run = create_cold_start_run_internal(
         calibration_run,

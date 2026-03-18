@@ -10,6 +10,7 @@ class ScriptEnum(StrEnum):
     VALIDATION_ITERATION = "validation_iteration"
     COLD_START = "cold_start"
     FORECAST = "forecast"
+    HINDCAST = "hindcast"
     VERIFICATION = "verification"
 
 
@@ -24,6 +25,7 @@ class JobType(StrEnum):
     VALIDATION = 'validation'
     COLD_START = 'cold_start'
     FORECAST = 'forecast'
+    HINDCAST = 'hindcast'
     VERIFICATION = 'verification'
     COMPARISON = 'comparison'
 

@@ -14,8 +14,9 @@ urlpatterns = [
     # Landing page
     ##################################
     path('calibration/create_calibration_run/', calibration_landing_views.create_calibration_run, name="createCalibrationRun"),
-    path('calibration/create_and_run_validation/', calibration_landing_views.create_and_run_validation, name="createValidationRun"),
-    path('calibration/create_and_run_forecast/', calibration_landing_views.create_and_run_forecast, name="createForecastRun"),
+    path('calibration/create_and_run_validation/', calibration_landing_views.create_and_run_validation, name="createAndRunValidation"),
+    path('calibration/create_and_run_forecast/', calibration_landing_views.create_and_run_forecast, name="createAndRunForecast"),
+    path('calibration/create_and_run_hindcast/', calibration_landing_views.create_and_run_hindcast, name="createAndRunHndcast"),
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
     path('calibration/get_git_info/', calibration_landing_views.get_git_info, name="getGitInfo"),
     path('calibration/load_calibration_run/', calibration.views.calibration_import_export_views.load_calibration_run, name="loadCalibrationRun"),

@@ -20,6 +20,7 @@ from calibration.enums import StatusEnum, ValidationType, SlurmCallbackStatusEnu
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
+from calibration.models.hindcast_run import HindcastRun
 from calibration.util.git_util import get_git_info_internal
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
@@ -27,12 +28,12 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_calibration_git_info_file, get_forecast_git_info_file, get_forcing_dir_for_job, get_verification_yaml_config_file, \
     get_verification_git_info_file, get_verification_stdout_file, get_forecast_realization_file, get_cold_start_realization_file, \
     get_cold_start_stdout_file, get_cold_start_dir, \
-    get_cold_start_git_info_file
+    get_cold_start_git_info_file, get_hindcast_stdout_file, get_hindcast_git_info_file, get_hindcast_dir, get_cold_start_state
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, write_ngen_logging_file
 from calibration.views.data_services import should_use_bmi_forcing
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output, \
-    read_cold_start_output, read_verification_output
+    read_cold_start_output, read_verification_output, read_hindcast_output
 from calibration.views.forecast_input import create_forecast_input
 from calibration.views.ngen_cal_input import ready_to_run
 from cerfServer.settings import NgenEnvironmentEnum
@@ -72,7 +73,7 @@ def set_job_status(run: BaseRun, status: StatusEnum | None, failure_messages: di
       - In PW environment: keep the real Slurm job ID.
       - If `failure_messages` are provided, store them as JSON.
 
-    :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
+    :param run: The CalibrationRun, ValidationRun, ForecastRun or HindcastRun object.
     :param status: The new status to set. If None, status is left unchanged.
     :param failure_messages: Optional failure details to record.
     """
@@ -109,10 +110,10 @@ def get_run_owner(run: BaseRun):
     """
     if hasattr(run, 'owner'):  # CalibrationRun case
         return run.owner
-    elif hasattr(run, 'calibration_run'):  # ValidationRun, ForecastRun
+    elif hasattr(run, 'calibration_run'):
         return run.calibration_run.owner
-    elif hasattr(run, 'forecast_run') and hasattr(run.forecast_run, 'calibration_run'):
-        return run.forecast_run.calibration_run.owner
+    # elif hasattr(run, 'forecast_run') and hasattr(run.forecast_run, 'calibration_run'):
+    #     return run.forecast_run.calibration_run.owner
     raise AttributeError(f"Cannot determine owner for run of type {type(run).__name__}")
 
 
@@ -242,7 +243,10 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
 
     execute_job(
         calibration_run,
-        {'input_file': input_file},
+        {
+            'input_file': input_file,
+            'nprocs': str(calibration_run.mpi_nprocs)
+        },
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.CALIBRATION, False)
     )
@@ -345,6 +349,38 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     )
 
 
+def run_hindcast_job(hindcast_run: HindcastRun) -> None:
+    """
+    Start a hindcast job by determining input and output file paths.
+
+    This function is intended to be passed as an argument to `submit_job`
+    and not called directly.
+
+    :param hindcast_run: The HindcastRun object representing the job.
+    """
+    validation_yaml = get_validation_best_input_file(hindcast_run.calibration_run)
+    if not os.path.exists(validation_yaml):
+        raise CerfException(
+            f"Input file '{validation_yaml}' does not exist for {get_job_description(hindcast_run)}"
+        )
+
+    stdout_file = get_hindcast_stdout_file(hindcast_run)
+
+    execute_job(
+        hindcast_run,
+        {
+            'validation_yaml': validation_yaml,
+            'config_file': create_forecast_input(hindcast_run),
+            'run_name': os.path.basename(get_hindcast_dir(hindcast_run)),
+            'interval_cycle': str(hindcast_run.interval_cycle),
+            'num_iterations': str(hindcast_run.num_iterations),
+            'use_state': get_cold_start_state(hindcast_run.cold_start_run)
+        },
+        stdout_file,
+        simulate=settings.SIMULATE_FLAGS.get(JobType.HINDCAST, False)
+    )
+
+
 def run_verification_job(verification_run: VerificationRun) -> None:
     """
     Start a verification job by determining input and output file paths.
@@ -432,6 +468,10 @@ def submit_job(run: BaseRun, logging_config=None) -> Response | None:
             create_git_info(get_forecast_git_info_file(run))
 
             run_forecast_job(run)
+        elif isinstance(run, HindcastRun):
+            create_git_info(get_hindcast_git_info_file(run))
+
+            run_hindcast_job(run)
         elif isinstance(run, VerificationRun):
             create_git_info(get_verification_git_info_file(run))
 
@@ -510,9 +550,9 @@ def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Resp
     return False, None
 
 
-def prepare_fcst_or_cold_start_job(run: ColdStartRun | ForecastRun) -> tuple[bool, Response | None]:
+def prepare_fcst_or_cold_start_job(run: ColdStartRun | ForecastRun | HindcastRun) -> tuple[bool, Response | None]:
     """
-    Prepare a ColdStartRun or ForecastRun job by generating configuration files.
+    Prepare a ColdStartRun, ForecastRun or Hindcast job by generating configuration files.
 
     This function:
     - Calls create_forecast_input(run) to generate the config
@@ -526,20 +566,24 @@ def prepare_fcst_or_cold_start_job(run: ColdStartRun | ForecastRun) -> tuple[boo
     job_description = get_job_description(run)
 
     try:
-        error, config_file = create_forecast_input(run)
+        config_file = create_forecast_input(run)
         valid_best = get_validation_best_input_file(run.calibration_run)
 
         if isinstance(run, ColdStartRun):
             run_name = os.path.basename(get_cold_start_dir(run))
             use_cold_start = True
+            save_state = True
+            saved_state = None
         else:  # ForecastRun
             run_name = os.path.basename(get_forecast_dir(run))
             use_cold_start = False
+            save_state = False
+            saved_state = get_cold_start_state(run.cold_start_run)
 
         logger.info(f'Running build_fcst for {job_description} '
-                    f'with config: {config_file}, valid_best: {valid_best}, run_name: {run_name}')
+                    f'with config: {config_file}, valid_best: {valid_best}, run_name: {run_name}, save_state: {save_state}, load_state_from: {saved_state}')
 
-        build_fcst(config_file, valid_best, run_name, use_cold_start=use_cold_start)
+        build_fcst(config_file, valid_best, run_name, use_cold_start=use_cold_start, save_state=save_state, load_state_from=saved_state)
     except Exception as e:
         # Mark the run as failed
         run.__class__.objects.filter(id=run.id).update(status=StatusEnum.FAILED.db_instance)
@@ -742,14 +786,22 @@ def finalize_cold_start_after_callback(run: ColdStartRun, failed_so_far: bool) -
     read_cold_start_output(run, failed_so_far)
     if failed_so_far:
         return
+
     set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
 
-    # Is there an associated forecast run?
-    # For now, we assume that there is at most *one* ForecastRun that points to a specific ColdStartRun
+    # A new cold start may have at most one dependent run associated with it:
+    # either one ForecastRun, one HindcastRun, or neither.
     forecast_run = ForecastRun.objects.filter(cold_start_run=run).first()
+    hindcast_run = HindcastRun.objects.filter(cold_start_run=run).first()
 
-    if forecast_run:
-        submit_job(forecast_run)
+    if forecast_run and hindcast_run:
+        raise ValueError(
+            f"ColdStartRun {run.pk} has both a ForecastRun and HindcastRun dependent on it."
+        )
+
+    dependent_run = forecast_run or hindcast_run
+    if dependent_run:
+        submit_job(dependent_run)
 
 
 def finalize_forecast_after_callback(run: ForecastRun, failed_so_far: bool) -> None:
@@ -764,6 +816,23 @@ def finalize_forecast_after_callback(run: ForecastRun, failed_so_far: bool) -> N
     - False if the job has completed successfully so far.
     """
     read_forecast_output(run, failed_so_far)
+    if failed_so_far:
+        return
+    set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
+
+
+def finalize_hindcast_after_callback(run: HindcastRun, failed_so_far: bool) -> None:
+    """
+    Finalizes a hindcast job after it has completed.
+
+    :param run: The HindcastRun object representing the hindcast job.
+    - Processes the output of the hindcast job.
+    - Marks the hindcast job as DONE in the database, indicating successful completion.
+    :param failed_so_far: Indicates whether the job has failed up to this point.
+    - True if the job encountered a failure.
+    - False if the job has completed successfully so far.
+    """
+    read_hindcast_output(run, failed_so_far)
     if failed_so_far:
         return
     set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.

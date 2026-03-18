@@ -30,13 +30,14 @@ from calibration.models import CalibrationRun, ValidationRun, ForecastConfigurat
     CalibrationFormulation, VerificationRun
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
+from calibration.models.hindcast_run import HindcastRun
 from calibration.util.caching import get_cached_modules_by_id, generate_forecast_config_yaml
 from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
 from calibration.util.cloud_util import path_exists
 from calibration.util.ngen_locations import get_forecast_dir, get_output_calibration_run_dir, \
     get_output_validation_run_dir, get_cold_start_dir, get_ngen_logging_file, \
     get_ngen_logging_basename, get_forecast_output_file, get_verification_run_dir, \
-    get_verification_yaml_config_file, VERF_CROSSWALK_NGEN_FILE
+    get_verification_yaml_config_file, VERF_CROSSWALK_NGEN_FILE, get_hindcast_dir
 from calibration.views.called_from import called_from
 
 logger = logging.getLogger(__name__)
@@ -359,6 +360,40 @@ def get_forecast_run(
     )
 
 
+def get_hindcast_run(
+        hindcast_run_id: int,
+        user: User | None,
+        run_status: list[StatusEnum] | None = None
+) -> tuple[HindcastRun | None, Response | None]:
+    """
+    Retrieve a HindcastRun by ID, optionally filtering by owner and status.
+
+    :param hindcast_run_id: The ID of the HindcastRun.
+    :param user: User requesting the HindcastRun; if None, no owner filtering.
+    :param run_status: Allowed statuses for the HindcastRun.
+    :return: Tuple of HindcastRun or None, and Response if error or None.
+    """
+    return get_run_instance(
+        HindcastRun,
+        hindcast_run_id,
+        user,
+        run_status,
+        owner_field='calibration_run__owner',
+        is_archived_field='calibration_run__is_archived',
+        select_related_fields=(
+            'status',
+            'performance_metrics',
+            'calibration_run',
+            'calibration_run__owner',
+            'configuration',
+            'cold_start_run',
+            'cold_start_run__status',
+            'cold_start_run__performance_metrics',
+        ),
+    )
+
+
+
 def get_verification_run(
         verification_run_id: int,
         user: User | None,
@@ -534,9 +569,9 @@ def create_cold_start_run_internal(
     """
     Create a new ColdStartRun object for the given CalibrationRun.
 
-    :param calibration_run: The calibration run that this forecast run is associated with.
-    :param configuration: The configuration for this forecast
-    :param cold_start_date: An optional date to cold start the forecast before the cycle date
+    :param calibration_run: The calibration run that this cold start run is associated with.
+    :param configuration: The configuration for this cold start
+    :param cold_start_date: An optional date to cold start the cold start before the cycle date
     :param cycle_date: The date to start the cycle
     :return: The newly created ColdStartRun instance.
     """
@@ -581,6 +616,35 @@ def create_forecast_run_internal(
     logger.info(f"Creating {get_job_description(forecast_run)}")
 
     return forecast_run
+
+
+def create_hindcast_run_internal(
+        calibration_run: CalibrationRun,
+        cold_start_run: ColdStartRun,
+        configuration: ForecastConfiguration,
+        cycle_date: datetime
+) -> HindcastRun:
+    """
+    Create a new HindcastRun object for the given CalibrationRun.
+
+    :param calibration_run: The calibration run that this hindcast run is associated with.
+    :param cold_start_run: (optional) The cold start run that this hindcast run is associated with.
+    :param configuration: The configuration for this hindcast
+    :param cycle_date: The date to start the cycle
+    :return: The newly created HindcastRun instance.
+    """
+
+    hindcast_run = HindcastRun.objects.create(
+        status=StatusEnum.SAVED.db_instance,
+        calibration_run_id=calibration_run.id,
+        cold_start_run=cold_start_run,
+        configuration_id=configuration.id,
+        cycle_date=cycle_date
+    )
+    os.makedirs(get_hindcast_dir(hindcast_run))
+    logger.info(f"Creating {get_job_description(hindcast_run)}")
+
+    return hindcast_run
 
 
 def create_verification_run_internal(forecast_run: ForecastRun) -> VerificationRun | Response:
@@ -905,6 +969,9 @@ def get_job_description(run: BaseRun) -> str:
     elif isinstance(run, ForecastRun):
         cold_start_data = f' using Cold Start Job {run.cold_start_run.id}' if run.cold_start_run else ''
         return f"Forecast Job {run.id} for Calibration Job {run.calibration_run.id}{cold_start_data}, user: {run.calibration_run.owner.username}"
+    elif isinstance(run, HindcastRun):
+        cold_start_data = f' using Cold Start Job {run.cold_start_run.id}' if run.cold_start_run else ''
+        return f"Hindcast Job {run.id} for Calibration Job {run.calibration_run.id}{cold_start_data}, user: {run.calibration_run.owner.username}"
     elif isinstance(run, ColdStartRun):
         return f"Cold Start Job {run.id} for Calibration Job {run.calibration_run.id}, user: {run.calibration_run.owner.username}"
     elif isinstance(run, VerificationRun):
@@ -1048,7 +1115,7 @@ def get_user_email(request: Request) -> str:
     return "Anonymous"
 
 
-def generate_ngen_logging_config(run: CalibrationRun | ValidationRun | ForecastRun, logging_config_param: dict | None = None) -> dict:
+def generate_ngen_logging_config(run: CalibrationRun | ValidationRun | ForecastRun | HindcastRun, logging_config_param: dict = None) -> dict:
     """
     Generate the JSON logging configuration for a calibration, validation, or forecast run.
 
@@ -1128,10 +1195,7 @@ def generate_ngen_logging_config(run: CalibrationRun | ValidationRun | ForecastR
     }
 
 
-def write_ngen_logging_file(
-        run: CalibrationRun | ValidationRun | ForecastRun | ColdStartRun,
-        logging_config_param: dict
-) -> None:
+def write_ngen_logging_file(run: CalibrationRun | ValidationRun | ForecastRun | HindcastRun | ColdStartRun, logging_config_param: dict) -> None:
     """
     Generate and write the logging config to a JSON file on disk, and create a symbolic link pointing
     to it using a consistent base name.

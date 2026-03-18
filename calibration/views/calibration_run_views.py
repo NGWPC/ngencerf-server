@@ -18,24 +18,26 @@ from calibration.enums import StatusEnum, ValidationType
 from calibration.enums_vanilla import JobType, SecondaryDataEnum
 from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
+from calibration.models.hindcast_run import HindcastRun
 from calibration.run_util.run_common import cancel_job_common, submit_job
 from calibration.run_util.run_ngen_cal_pw import SlurmCallbackStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
-    run_forecast_job_callback_pw, run_cold_start_job_callback_pw, run_verification_job_callback_pw
+    run_forecast_job_callback_pw, run_cold_start_job_callback_pw, run_verification_job_callback_pw, run_hindcast_job_callback_pw
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
     GetStatusForCalibrationResponseSerializer, GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
-    CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, ForecastJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer, \
+    CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer, ForecastJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer, \
     ValidationRunSerializer, GenericResponseSerializerWithValidator, RunCalibrationJob, ColdStartJobSlurmCallbackRequestSerializer, \
     VerificationJobSlurmCallbackRequestSerializer, GetStatusForValidationResponseSerializer, \
-    GetStatusForForecastResponseSerializer, GetStatusForVerificationResponseSerializer, GetStatusRequestSerializer
+    GetStatusForForecastResponseSerializer, GetStatusForVerificationResponseSerializer, GetStatusRequestSerializer, \
+    HindcastJobSlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_secondary_data_views import generate_secondary_ts_data
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, TOKEN_SLURM_SCOPE, get_validation_run, get_forecast_run, get_user_email, \
     get_job_description, get_elapsed_str, readonly_transaction, auth_scope_required, get_cold_start_run, get_verification_run, \
-    join_with_or, get_calibration_runs_bulk
+    join_with_or, get_calibration_runs_bulk, get_hindcast_run
 from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -118,6 +120,7 @@ def get_status(request: Request) -> Response:
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
     forecast_run_id = validator.get('forecast_run_id')
+    hindcast_run_id = validator.get('hindcast_run_id')
     verification_run_id = validator.get('verification_run_id')
 
     include_performance_metrics = validator.get('include_performance_metrics')
@@ -127,6 +130,8 @@ def get_status(request: Request) -> Response:
     elif validation_run_id:
         serializer_class = GetStatusForValidationResponseSerializer
     elif forecast_run_id:
+        serializer_class = GetStatusForForecastResponseSerializer
+    elif hindcast_run_id:
         serializer_class = GetStatusForForecastResponseSerializer
     else:
         serializer_class = GetStatusForVerificationResponseSerializer
@@ -173,6 +178,17 @@ def get_status(request: Request) -> Response:
 
             needs_reconcile, sacct_status = check_slurm_reconciliation(run)
             response = get_status_for_forecast(run, include_performance_metrics)
+
+        elif hindcast_run_id:
+            # Handle cold start
+            run, error_return = get_hindcast_run(
+                hindcast_run_id, request.user, run_status=list(StatusEnum)
+            )
+            if error_return:
+                return error_return
+
+            needs_reconcile, sacct_status = check_slurm_reconciliation(run)
+            response = get_status_for_hindcast(run, include_performance_metrics)
 
         else:
             run, error_return = get_verification_run(
@@ -448,6 +464,85 @@ def get_status_for_forecast(forecast_run: ForecastRun, include_performance_metri
         forecast_data['cold_start_run'] = cold_start_data
 
     return forecast_data
+
+
+def get_status_for_hindcast(hindcast_run: HindcastRun, include_performance_metrics: bool) -> dict:
+    """
+    Return the current status of a single HindcastRun.
+
+    This includes:
+    - Hindcast timing, configuration, and status fields
+    - Failure messages (if any)
+    - Performance metrics (only if requested and job is DONE or FAILED)
+    - Cold start run status and metrics, if a cold start exists
+
+    All database access is read-only and executed inside a readonly transaction.
+
+    :param hindcast_run: The HindcastRun instance to inspect.
+    :param include_performance_metrics: Whether to include performance metrics
+        when the run status allows it.
+    :return: A dict suitable for GetStatusForHindcastResponseSerializer.
+    """
+
+    hindcast_data = {
+        'message': f'{get_job_description(hindcast_run)}, status is {hindcast_run.status.name}',
+        'hindcast_run_id': hindcast_run.id,
+        'calibration_run_id': hindcast_run.calibration_run_id,
+        'status': hindcast_run.status.name,
+        'configuration': hindcast_run.configuration.name,
+        'cycle_date': hindcast_run.cycle_date,
+        'submit_date': hindcast_run.submit_date,
+        'sent_date': hindcast_run.sent_date,
+        'run_start': hindcast_run.run_start,
+        'run_end': hindcast_run.run_end
+    }
+
+    hindcast_failure_message = normalize_failure_messages(hindcast_run.failure_messages)
+    if hindcast_failure_message:
+        hindcast_data['failure_messages'] = hindcast_failure_message
+
+    if hindcast_run.run_end and hindcast_run.submit_date:
+        hindcast_data['elapsed_time'] = hindcast_run.run_end - hindcast_run.submit_date
+
+    hindcast_metrics = (
+        get_performance_metrics(hindcast_run.performance_metrics)
+        if should_include_metrics(hindcast_run.status, include_performance_metrics)
+        else None
+    )
+    if hindcast_metrics:
+        hindcast_data['performance_metrics'] = hindcast_metrics
+
+    # Get the cold start run, if it's there
+    cold_start_run = hindcast_run.cold_start_run
+    if cold_start_run:
+        cold_start_data = {
+            'cold_start_run_id': cold_start_run.id,
+            'cold_start_date': cold_start_run.cold_start_date,
+            'status': cold_start_run.status.name,
+            'submit_date': cold_start_run.submit_date,
+            'sent_date': cold_start_run.sent_date,
+            'run_start': cold_start_run.run_start,
+            'run_end': cold_start_run.run_end,
+        }
+
+        cold_start_failure_message = normalize_failure_messages(cold_start_run.failure_messages)
+        if cold_start_failure_message:
+            cold_start_data['failure_messages'] = cold_start_failure_message
+
+        if cold_start_run.run_end and cold_start_run.submit_date:
+            cold_start_data['elapsed_time'] = cold_start_run.run_end - cold_start_run.submit_date
+
+        cold_start_metrics = (
+            get_performance_metrics(cold_start_run.performance_metrics)
+            if should_include_metrics(cold_start_run.status, include_performance_metrics)
+            else None
+        )
+        if cold_start_metrics:
+            cold_start_data['performance_metrics'] = cold_start_metrics
+
+        hindcast_data['cold_start_run'] = cold_start_data
+
+    return hindcast_data
 
 
 def get_status_for_verification(verification_run: VerificationRun, include_performance_metrics: bool) -> dict:
@@ -990,7 +1085,7 @@ def get_iteration(request: Request) -> Response:
 
 
 @extend_schema(
-    request=CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer,
+    request=CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer,
     responses={
         200: GenericResponseSerializer,
         400: OpenApiResponse(
@@ -1016,13 +1111,14 @@ def cancel_job(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
     forecast_run_id = validator.get('forecast_run_id')
+    hindcast_run_id = validator.get('hindcast_run_id')
     verification_run_id = validator.get('verification_run_id')
 
     # Determine job type and retrieve the appropriate run instance
@@ -1054,6 +1150,7 @@ def cancel_job(request: Request) -> Response:
         # --------------------
         # FORECAST LOGIC ONLY
         # --------------------
+        # TODO Need to add for Hindcast
         forecast_run, error_return = get_forecast_run(
             forecast_run_id, request.user, run_status=list(StatusEnum)
         )
@@ -1289,6 +1386,39 @@ def forecast_job_slurm_callback(request: Request) -> Response:
         ForecastJobSlurmCallbackRequestSerializer,
         get_forecast_run,
         run_forecast_job_callback_pw
+    )
+
+
+@extend_schema(
+    request=HindcastJobSlurmCallbackRequestSerializer,
+    responses={
+        202: None,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Callback for Slurm to call when a hindcast job ends"
+)
+@api_view(['POST'])
+@handle_exceptions
+@auth_scope_required(TOKEN_SLURM_SCOPE)
+def hindcast_job_slurm_callback(request: Request) -> Response:
+    """
+    Handles a callback from Slurm to update the status of a hindcast job.
+
+    :param request: HTTP request containing Slurm job details and status.
+    :return: HTTP 202 response indicating the callback was processed.
+    """
+    return handle_slurm_callback(
+        request,
+        HindcastJobSlurmCallbackRequestSerializer,
+        get_forecast_run,
+        run_hindcast_job_callback_pw
     )
 
 

@@ -17,7 +17,7 @@ from calibration.enums import OptimizationEnum, ValidationMetricPeriod, Validati
 from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, ValidationRun, \
     PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ColdStartRun, ForecastRun, \
-    VerificationRun, CalibrationFormulation
+    VerificationRun, CalibrationFormulation, HindcastRun
 from calibration.models.base_run import BaseRun
 from calibration.util.caching import have_LSTM, get_cached_modules_by_id
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
@@ -168,6 +168,25 @@ def read_forecast_output(run: ForecastRun, _failed_so_far: bool) -> None:
     logger.info(f"Processing output for {job_description}, status={run.status}")
     with transaction.atomic():
         create_performance_metrics(run, get_forecast_performance_file(run))
+
+    # No other processing needed
+
+    logger.info(f"End of processing output for {job_description}")
+
+
+def read_hindcast_output(run: HindcastRun, _failed_so_far: bool) -> None:
+    """
+    Processes the output of a hindcast run by parsing performance metrics.
+
+    :param run: The HindcastRun instance.
+    :param _failed_so_far: Indicates whether the job has failed up to this point.
+    """
+
+    job_description = get_job_description(run)
+
+    logger.info(f"Processing output for {job_description}, status={run.status}")
+    with transaction.atomic():
+        create_performance_metrics(run, get_hindcast_performance_file(run))
 
     # No other processing needed
 
