@@ -84,7 +84,7 @@ RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-boost \
     tar --extract --directory /tmp/boost-src --strip-components=1 --file boost.tar.gz && \
     rm boost.tar.gz && \
     cd /tmp/boost-src && \
-    ./bootstrap.sh --prefix=/opt/boost --with-libraries=system,filesystem && \
+    ./bootstrap.sh --prefix=/opt/boost --with-libraries=system,filesystem,serialization && \
     ./b2 install -j$(nproc) && \
     cd / && rm -rf /tmp/boost-src
 
