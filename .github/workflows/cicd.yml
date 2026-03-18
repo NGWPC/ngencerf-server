@@ -51,6 +51,14 @@ on:
         description: 'NGEN_FORCING_REF'
         required: false
         type: string
+      EWTS_ORG:
+        description: 'EWTS_ORG'
+        required: false
+        type: string
+      EWTS_REF:
+        description: 'EWTS_REF'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -209,6 +217,8 @@ jobs:
             DATA_ASSIMILATION_REF=${{ inputs.DATA_ASSIMILATION_REF || 'development' }}
             NGEN_FORCING_ORG=${{ inputs.NGEN_FORCING_ORG || 'NGWPC' }}
             NGEN_FORCING_REF=${{ inputs.NGEN_FORCING_REF || 'development' }}
+            EWTS_ORG=${{ inputs.EWTS_ORG || 'NGWPC' }}
+            EWTS_REF=${{ inputs.EWTS_REF || 'development' }}
             IMAGE_SOURCE=https://github.com/${{ github.repository }}
             IMAGE_VENDOR=${{ github.repository_owner }}
             IMAGE_VERSION=${{ needs.setup.outputs.clean_ref }}
