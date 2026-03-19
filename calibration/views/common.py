@@ -622,7 +622,9 @@ def create_hindcast_run_internal(
         calibration_run: CalibrationRun,
         cold_start_run: ColdStartRun,
         configuration: ForecastConfiguration,
-        cycle_date: datetime
+        cycle_date: datetime,
+        interval_cycle: int,
+        num_iterations: int
 ) -> HindcastRun:
     """
     Create a new HindcastRun object for the given CalibrationRun.
@@ -631,6 +633,8 @@ def create_hindcast_run_internal(
     :param cold_start_run: (optional) The cold start run that this hindcast run is associated with.
     :param configuration: The configuration for this hindcast
     :param cycle_date: The date to start the cycle
+    :param interval_cycle: The interval to start each forecast cycle
+    :param num_iterations: The number of iterations to run
     :return: The newly created HindcastRun instance.
     """
 
@@ -639,7 +643,9 @@ def create_hindcast_run_internal(
         calibration_run_id=calibration_run.id,
         cold_start_run=cold_start_run,
         configuration_id=configuration.id,
-        cycle_date=cycle_date
+        cycle_date=cycle_date,
+        interval_cycle=interval_cycle,
+        num_iterations=num_iterations
     )
     os.makedirs(get_hindcast_dir(hindcast_run))
     logger.info(f"Creating {get_job_description(hindcast_run)}")

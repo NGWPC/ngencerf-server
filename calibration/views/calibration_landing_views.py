@@ -33,7 +33,7 @@ from calibration.views.calibration_run_views import map_path_to_host
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
     validate_request, create_validation_run_internal, create_forecast_run_internal, get_user_email, get_elapsed_str, readonly_transaction, \
-    format_datetime, create_cold_start_run_internal, get_job_description, get_calibration_runs_bulk
+    format_datetime, create_cold_start_run_internal, get_job_description, get_calibration_runs_bulk, create_hindcast_run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -250,33 +250,29 @@ def create_and_run_forecast(request: Request) -> Response:
 
     configuration = ForecastConfigEnum.get_instance(configuration_name)
     if configuration.domain != calibration_run.gage.domain:
-        forecast_errors.append(f"{configuration_name} is not a valid configuration for domain {calibration_run.gage.domain.name}")
-
-    # Define allowed cycle date range
-    min_cycle_date = datetime(2022, 1, 1, tzinfo=timezone.utc)
-    max_cycle_date = datetime.now(tz=timezone.utc)
-
-    # Reject cycles earlier than the minimum allowed date
-    if cycle_date < min_cycle_date:
-        forecast_errors.append(f"Cycle cannot start before {format_datetime(min_cycle_date)}")
-
-    # Adjust the maximum allowed cycle date based on forecast availability lag
-    future_forecast_availability = configuration.availability_lag or 0
-
-    # Subtract lag hours from max_cycle_date to account for delayed availability
-    max_cycle_date = max_cycle_date - timedelta(hours=future_forecast_availability)
-
-    # Warn if cycle date is later than adjusted maximum availability
-    if cycle_date > max_cycle_date:
-        # TODO Check what to do with this.  Is it a fatal error or just a warning?
-        forecast_errors.append(f"Forecast availability is not guaranteed less than {future_forecast_availability} hours ahead of time.")
-
-    if (cycle_date.hour - configuration.cycle_start) % configuration.cycle_freq != 0:
-        # Hour offset from cycle start must align with evenly by cycle frequency
         forecast_errors.append(
-            f"Cycle hour {cycle_date.hour}:00 is not available. Forecasts are available every {configuration.cycle_freq} hours from {configuration.cycle_start}:00 to {configuration.cycle_end}:00.")
+            f"{configuration_name} is not a valid configuration for domain "
+            f"{calibration_run.gage.domain.name}"
+        )
 
-    # If a cold start date is provided, validate its position relative to cycle date
+    # Define the supported forecast window. Forecast cycles before min_cycle_date
+    # are invalid, and cycles after max_cycle_date may not yet be available.
+    min_cycle_date = datetime(2022, 1, 1, tzinfo=timezone.utc)
+    future_forecast_availability = configuration.availability_lag or 0
+    max_cycle_date = datetime.now(tz=timezone.utc) - timedelta(hours=future_forecast_availability)
+
+    # Validate the requested forecast cycle date against the configured schedule.
+    validate_forecast_cycle_date(
+        check_date=cycle_date,
+        configuration=configuration,
+        min_cycle_date=min_cycle_date,
+        max_cycle_date=max_cycle_date,
+        errors=forecast_errors,
+        label="Cycle",
+    )
+
+    # If a cold start date is provided, it must be earlier than the requested
+    # forecast cycle date and still within the supported forecast window.
     if run_cold_start:
         if cold_start_date >= cycle_date:
             forecast_errors.append("Cold start date must be earlier than cycle date")
@@ -301,7 +297,7 @@ def create_and_run_forecast(request: Request) -> Response:
     )
 
     if run_cold_start:
-        # Forecast Job will run automatically after the cold start
+        # The Forecast Job will be submitted automatically after the Cold Start Job finishes.
         submit_job(cold_start_run, logging_config=logging_config)
     else:
         submit_job(forecast_run, logging_config=logging_config)
@@ -323,9 +319,8 @@ def create_and_run_forecast(request: Request) -> Response:
 
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
-
-
 
 
 @extend_schema(
@@ -362,7 +357,9 @@ def create_and_run_hindcast(request: Request) -> Response:
     calibration_run_id = validator.get('calibration_run_id')
     configuration_name = validator.get('configuration_name')
     cycle_date = validator.get('cycle_date')
+    # Valid values are 1, 3, 6, 12, 18, 24
     interval_cycle = validator.get('interval_cycle')
+    # Any postive integer
     num_iterations = validator.get('num_iterations')
     cold_start_date = validator.get('cold_start_date')
     logging_config = validator.get('logging_config')
@@ -377,37 +374,51 @@ def create_and_run_hindcast(request: Request) -> Response:
 
     configuration = ForecastConfigEnum.get_instance(configuration_name)
     if configuration.domain != calibration_run.gage.domain:
-        hindcast_errors.append(f"{configuration_name} is not a valid configuration for domain {calibration_run.gage.domain.name}")
-
-    # TODO Make sure that it a configuration that's valie for hindcast
-
-    # Define allowed cycle date range
-    min_cycle_date = datetime(2022, 1, 1, tzinfo=timezone.utc)
-    max_cycle_date = datetime.now(tz=timezone.utc)
-
-    # Reject cycles earlier than the minimum allowed date
-    if cycle_date < min_cycle_date:
-        hindcast_errors.append(f"Cycle cannot start before {format_datetime(min_cycle_date)}")
-
-    # Adjust the maximum allowed cycle date based on forecast availability lag
-    future_forecast_availability = configuration.availability_lag or 0
-
-    # Subtract lag hours from max_cycle_date to account for delayed availability
-    max_cycle_date = max_cycle_date - timedelta(hours=future_forecast_availability)
-
-    # Warn if cycle date is later than adjusted maximum availability
-    if cycle_date > max_cycle_date:
-        # TODO Check what to do with this.  Is it a fatal error or just a warning?
-        hindcast_errors.append(f"Forecast availability is not guaranteed less than {future_forecast_availability} hours ahead of time.")
-
-    if (cycle_date.hour - configuration.cycle_start) % configuration.cycle_freq != 0:
-        # Hour offset from cycle start must align with evenly by cycle frequency
         hindcast_errors.append(
-            f"Cycle hour {cycle_date.hour}:00 is not available. Forecasts are available every {configuration.cycle_freq} hours from {configuration.cycle_start}:00 to {configuration.cycle_end}:00.")
+            f"{configuration_name} is not a valid configuration for domain "
+            f"{calibration_run.gage.domain.name}"
+        )
 
-    # TODO Validate the interval_cycle and num_iterations
+    # TODO Make sure that it a configuration that's valid for hindcast
 
-    # If a cold start date is provided, validate its position relative to cycle date
+    # Define the supported forecast window used to validate both the requested
+    # hindcast cycle date and the furthest projected cycle date.
+    min_cycle_date = datetime(2022, 1, 1, tzinfo=timezone.utc)
+
+    # Forecast data may not be available immediately. Shift the latest allowed
+    # cycle date backward by the configuration's availability lag.
+    future_forecast_availability = configuration.availability_lag or 0
+    max_cycle_date = datetime.now(tz=timezone.utc) - timedelta(hours=future_forecast_availability)
+
+    # Validate the requested hindcast starting cycle date using the same
+    # schedule rules as forecast.
+    validate_forecast_cycle_date(
+        check_date=cycle_date,
+        configuration=configuration,
+        min_cycle_date=min_cycle_date,
+        max_cycle_date=max_cycle_date,
+        errors=hindcast_errors,
+        label="Cycle",
+    )
+
+    # TODO Validate interval_cycle and num_iterations themselves.
+    # Hindcast must also validate the furthest cycle date that could be reached
+    # after advancing by interval_cycle hours for num_iterations steps.
+    max_projected_cycle_date = cycle_date + timedelta(hours=interval_cycle * num_iterations)
+
+    # Validate the furthest projected cycle date against the same schedule rules
+    # as the starting cycle date.
+    validate_forecast_cycle_date(
+        check_date=max_projected_cycle_date,
+        configuration=configuration,
+        min_cycle_date=min_cycle_date,
+        max_cycle_date=max_cycle_date,
+        errors=hindcast_errors,
+        label="Maximum projected cycle",
+    )
+
+    # If a cold start date is provided, it must be earlier than the requested
+    # hindcast cycle date and still within the supported forecast window.
     if run_cold_start:
         if cold_start_date >= cycle_date:
             hindcast_errors.append("Cold start date must be earlier than cycle date")
@@ -424,37 +435,92 @@ def create_and_run_hindcast(request: Request) -> Response:
         cycle_date=cycle_date
     ) if cold_start_date else None
 
-    forecast_run = create_forecast_run_internal(
+    hindcast_run = create_hindcast_run_internal(
         calibration_run,
         cold_start_run,
         configuration,
-        cycle_date
+        cycle_date,
+        interval_cycle,
+        num_iterations
     )
 
     if run_cold_start:
-        # Forecast Job will run automatically after the cold start
+        # The Hindcast Job will be submitted automatically after the Cold Start Job finishes.
         submit_job(cold_start_run, logging_config=logging_config)
     else:
-        submit_job(forecast_run, logging_config=logging_config)
+        submit_job(hindcast_run, logging_config=logging_config)
 
-    msg = get_job_description(cold_start_run if run_cold_start else forecast_run) + ' created and submitted'
+    msg = get_job_description(cold_start_run if run_cold_start else hindcast_run) + ' created and submitted'
     if run_cold_start:
-        msg += f', followed by Forecast Job {forecast_run.id}'
+        msg += f', followed by Hindcast Job {hindcast_run.id}'
     response = {
         'message': msg,
         'calibration_run_id': calibration_run.id,
-        'forecast_run_id': forecast_run.id,
+        'hindcast_run_id': hindcast_run.id,
         'cold_start_run_id': cold_start_run.id if run_cold_start else None,
-        'submit_date': cold_start_run.submit_date if run_cold_start else forecast_run.submit_date
+        'submit_date': cold_start_run.submit_date if run_cold_start else hindcast_run.submit_date
     }
 
-    response_validator, error_response = validate_response(CreateAndRunForecastResponseSerializer, response)
+    response_validator, error_response = validate_response(CreateAndRunHindcastResponseSerializer, response)
     if error_response:
         return error_response
 
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
+
+
+def validate_forecast_cycle_date(
+        check_date: datetime,
+        configuration,
+        min_cycle_date: datetime,
+        max_cycle_date: datetime,
+        errors: list[str],
+        label: str = "Cycle",
+) -> None:
+    """
+    Validate a forecast-style cycle datetime against the configured forecast schedule.
+
+    This helper validates:
+    1. The datetime is not earlier than the minimum supported forecast date.
+    2. The datetime is not later than the latest date that should be available,
+       after accounting for the configuration's availability lag.
+    3. The hour aligns with the configured cycle frequency relative to cycle_start.
+
+    :param check_date: The datetime being validated.
+    :param configuration: Forecast configuration enum instance.
+    :param min_cycle_date: Earliest allowed forecast datetime.
+    :param max_cycle_date: Latest allowed forecast datetime after applying availability lag.
+    :param errors: List to append validation error messages to.
+    :param label: Human-readable label for the datetime being validated
+        (for example "Cycle" or "Maximum projected cycle").
+    """
+    # Reject dates earlier than the earliest supported forecast cycle date.
+    if check_date < min_cycle_date:
+        errors.append(
+            f"{label} cannot start before {format_datetime(min_cycle_date)} "
+            f"(received {format_datetime(check_date)})."
+        )
+
+    # Reject dates that are too recent to guarantee forecast availability.
+    # max_cycle_date is computed by the caller as:
+    #     now - configuration.availability_lag
+    if check_date > max_cycle_date:
+        future_forecast_availability = configuration.availability_lag or 0
+        errors.append(
+            f"{label} {format_datetime(check_date)} is not guaranteed to be available "
+            f"because forecast availability may lag by up to "
+            f"{future_forecast_availability} hours."
+        )
+
+    # Validate that the hour aligns with the configured cycle frequency.
+    # Hour offset from cycle_start must divide evenly by cycle_freq.
+    if (check_date.hour - configuration.cycle_start) % configuration.cycle_freq != 0:
+        errors.append(
+            f"{label} {format_datetime(check_date)} is not available. "
+            f"Forecasts are available every {configuration.cycle_freq} hours "
+            f"from {configuration.cycle_start}:00 to {configuration.cycle_end}:00."
+        )
 
 
 @extend_schema(

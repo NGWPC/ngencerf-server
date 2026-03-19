@@ -167,8 +167,13 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            ModuleGroup.objects.update_or_create(name=v['name'], defaults={"order": v['order'], "is_active": v.get('is_active', True),
-                                                                           "created_by": self.user})
+            ModuleGroup.objects.update_or_create(
+                name=v['name'],
+                defaults={
+                    "order": v['order'], "is_active": v.get('is_active', True),
+                    "created_by": self.user
+                }
+            )
 
     def define_output_variables(self):
         if self.DELETE_FLAG:
@@ -205,7 +210,12 @@ class Command(BaseCommand):
         values = [{"name": name, "order": order + 1} for order, name in enumerate(output_variable_names)]
 
         for v in values:
-            OutputVariable.objects.update_or_create(name=v['name'], defaults={"order": v['order'], "created_by": self.user})
+            OutputVariable.objects.update_or_create(
+                name=v['name'],
+                defaults={
+                    "order": v['order'], "created_by": self.user
+                }
+            )
 
     def define_modules(self):
         if self.DELETE_FLAG:
@@ -313,7 +323,8 @@ class Command(BaseCommand):
 
         for v in values:
             module_instance, _ = Module.objects.update_or_create(
-                name=v['name'], defaults={
+                name=v['name'],
+                defaults={
                     "display_name": v.get('display_name', v['name']),
                     "is_active": v.get('is_active', True),
                     "description": v['description'],
@@ -450,25 +461,38 @@ class Command(BaseCommand):
             Domain.objects.all().delete()
 
         values = [
-            {"name": "Alaska",
-             "display_name": "Alaska",
-             "description": "Alaska"},
-            {"name": "Hawaii",
-             "display_name": "Hawaii",
-             "description": "Hawaii"},
-            {"name": "CONUS",
-             "display_name": "CONUS",
-             "description": "Continental United Status"},
-            {"name": "Puerto_Rico",
-             "display_name": "Puerto Rico",
-             "description": "Puerto Rico, including US Virgin Islands"}
+            {
+                "name": "Alaska",
+                "display_name": "Alaska",
+                "description": "Alaska"
+            },
+            {
+                "name": "Hawaii",
+                "display_name": "Hawaii",
+                "description": "Hawaii"
+            },
+            {
+                "name": "CONUS",
+                "display_name": "CONUS",
+                "description": "Continental United Status"
+            },
+            {
+                "name": "Puerto_Rico",
+                "display_name": "Puerto Rico",
+                "description": "Puerto Rico, including US Virgin Islands"
+            }
         ]
 
         for v in values:
-            Domain.objects.update_or_create(name=v['name'], defaults={"display_name": v['display_name'],
-                                                                      "is_active": v.get('is_active', True),
-                                                                      "description": v['description'],
-                                                                      "created_by": self.user})
+            Domain.objects.update_or_create(
+                name=v['name'],
+                defaults={
+                    "display_name": v['display_name'],
+                    "is_active": v.get('is_active', True),
+                    "description": v['description'],
+                    "created_by": self.user
+                }
+            )
 
     def define_rfc(self):
         if self.DELETE_FLAG:
@@ -493,9 +517,14 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            Rfc.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                   "description": v['description'],
-                                                                   "created_by": self.user})
+            Rfc.objects.update_or_create(
+                name=v['name'],
+                defaults={
+                    "is_active": v.get('is_active', True),
+                    "description": v['description'],
+                    "created_by": self.user
+                }
+            )
 
     def define_forcing_source(self):
         if self.DELETE_FLAG:
@@ -507,9 +536,14 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            ForcingSource.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                             "description": v['description'],
-                                                                             "created_by": self.user})
+            ForcingSource.objects.update_or_create(
+                name=v['name'],
+                defaults={
+                    "is_active": v.get('is_active', True),
+                    "description": v['description'],
+                    "created_by": self.user
+                }
+            )
 
     def define_observational_source(self):
         if self.DELETE_FLAG:
@@ -528,10 +562,14 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            ObservationalSource.objects.update_or_create(name=v['name'],
-                                                         defaults={"is_active": v.get('is_active', True),
-                                                                   "description": v['description'],
-                                                                   "created_by": self.user})
+            ObservationalSource.objects.update_or_create(
+                name=v['name'],
+                defaults={
+                    "is_active": v.get('is_active', True),
+                    "description": v['description'],
+                    "created_by": self.user
+                }
+            )
 
     def define_geopackage_source(self):
         if self.DELETE_FLAG:
@@ -542,10 +580,14 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            GeopackageSource.objects.update_or_create(name=v['name'],
-                                                      defaults={"is_active": v.get('is_active', True),
-                                                                "description": v['description'],
-                                                                "created_by": self.user})
+            GeopackageSource.objects.update_or_create(
+                name=v['name'],
+                defaults={
+                    "is_active": v.get('is_active', True),
+                    "description": v['description'],
+                    "created_by": self.user
+                }
+            )
 
     def define_forecast_configuration(self):
         if self.DELETE_FLAG:
@@ -565,6 +607,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": -3, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": False,
                 "is_active": True
             },
             {
@@ -573,6 +616,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": -28, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": False,
                 "is_active": True
             },
             {
@@ -581,6 +625,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 18, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": True
             },
             {
@@ -589,6 +634,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": True
             },
             {
@@ -597,6 +643,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
                 "availability_lag": 12,
+                "supports_hindcast": True,
                 "is_active": True
             },
             {
@@ -605,6 +652,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
                 "availability_lag": 12,
+                "supports_hindcast": True,
                 "is_active": True
             },
             {
@@ -613,6 +661,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
                 "availability_lag": 12,
+                "supports_hindcast": True,
                 "is_active": True
             },
             {
@@ -621,6 +670,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
                 "availability_lag": 12,
+                "supports_hindcast": True,
                 "is_active": True
             },
             {
@@ -629,6 +679,7 @@ class Command(BaseCommand):
                 "domain": alaska_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 15, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": True
             },
             {
@@ -637,6 +688,7 @@ class Command(BaseCommand):
                 "domain": alaska_domain,
                 "cycle_start": 3, "cycle_end": 21, "cycle_freq": 6, "fcst_win": 45, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": True
             },
             {
@@ -645,6 +697,7 @@ class Command(BaseCommand):
                 "domain": hawaii_domain,
                 "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48, "fcst_timestep": 0.25,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -653,6 +706,7 @@ class Command(BaseCommand):
                 "domain": puerto_rico_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": -3, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": False,
                 "is_active": True
             },
             {
@@ -661,6 +715,7 @@ class Command(BaseCommand):
                 "domain": puerto_rico_domain,
                 "cycle_start": 6, "cycle_end": 18, "cycle_freq": 12, "fcst_win": 48, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": True
             },
             {
@@ -669,6 +724,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -677,6 +733,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -685,6 +742,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -693,6 +751,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -701,6 +760,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -709,6 +769,7 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -717,6 +778,7 @@ class Command(BaseCommand):
                 "domain": alaska_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": True
             },
             {
@@ -725,6 +787,7 @@ class Command(BaseCommand):
                 "domain": alaska_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -733,6 +796,7 @@ class Command(BaseCommand):
                 "domain": alaska_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -741,6 +805,7 @@ class Command(BaseCommand):
                 "domain": alaska_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -749,6 +814,7 @@ class Command(BaseCommand):
                 "domain": alaska_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -757,6 +823,7 @@ class Command(BaseCommand):
                 "domain": alaska_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -765,6 +832,7 @@ class Command(BaseCommand):
                 "domain": alaska_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
             {
@@ -773,24 +841,30 @@ class Command(BaseCommand):
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "supports_hindcast": True,
                 "is_active": False
             },
         ]
 
         for v in values:
-            ForecastConfiguration.objects.update_or_create(name=v['name'],
-                                                           defaults={"is_active": v.get('is_active', True),
-                                                                     "internal_name": v['internal_name'],
-                                                                     "order": v.get('order', None),
-                                                                     "data_sources": v['data_sources'],
-                                                                     "domain": v['domain'],
-                                                                     "availability_lag": v['availability_lag'],
-                                                                     "cycle_start": v['cycle_start'],
-                                                                     "cycle_end": v['cycle_end'],
-                                                                     "cycle_freq": v['cycle_freq'],
-                                                                     "fcst_win": v['fcst_win'],
-                                                                     "fcst_timestep": v['fcst_timestep'],
-                                                                     "created_by": self.user})
+            ForecastConfiguration.objects.update_or_create(
+                name=v['name'],
+                defaults={
+                    "is_active": v.get('is_active', True),
+                    "supports_hindcast": v['supports_hindcast'],
+                    "internal_name": v['internal_name'],
+                    "order": v.get('order', None),
+                    "data_sources": v['data_sources'],
+                    "domain": v['domain'],
+                    "availability_lag": v['availability_lag'],
+                    "cycle_start": v['cycle_start'],
+                    "cycle_end": v['cycle_end'],
+                    "cycle_freq": v['cycle_freq'],
+                    "fcst_win": v['fcst_win'],
+                    "fcst_timestep": v['fcst_timestep'],
+                    "created_by": self.user
+                }
+            )
 
     def define_optimization(self):
         if self.DELETE_FLAG:
@@ -798,103 +872,179 @@ class Command(BaseCommand):
             OptimizationInput.objects.all().delete()
 
         values = [
-            {"name": "DDS", "description": "Dynamically Dimensioned Search",
-             "inputs": [{"name": "r", "description": "Sample region size", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.2, "min": 0.2,
-                         "max": 0.2}]},
-            {"name": "PSO", "description": "Particle Swarm Optimization",
-             "inputs": [{"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 2, "min": 2},
-                        {"name": "c1", "description": "Acceleration coefficient c1", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
-                         "min": 1.0, "max": 3.0},
-                        {"name": "c2", "description": "Acceleration coefficient c2 ", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
-                         "min": 1.0, "max": 3.0},
-                        {"name": "w", "description": "Inertia weight", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.7, "min": 0.0,
-                         "max": 1.0}]},
-            {"name": "GWO", "description": "Grey Wolf Optimization",
-             "inputs": [{"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 4, "min": 4}]},
+            {
+                "name": "DDS", "description": "Dynamically Dimensioned Search",
+                "inputs": [
+                    {
+                        "name": "r", "description": "Sample region size", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.2,
+                        "min": 0.2, "max": 0.2
+                    }
+                ]
+            },
+            {
+                "name": "PSO", "description": "Particle Swarm Optimization",
+                "inputs": [
+                    {
+                        "name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 2,
+                        "min": 2},
+                    {
+                        "name": "c1", "description": "Acceleration coefficient c1", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
+                        "min": 1.0, "max": 3.0
+                    },
+                    {
+                        "name": "c2", "description": "Acceleration coefficient c2 ", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
+                        "min": 1.0, "max": 3.0
+                    },
+                    {
+                        "name": "w", "description": "Inertia weight", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.7,
+                        "min": 0.0, "max": 1.0
+                    }
+                ]
+            },
+            {
+                "name": "GWO", "description": "Grey Wolf Optimization",
+                "inputs": [
+                    {"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 4,
+                     "min": 4}
+                ]
+            },
         ]
 
         # stop_criteria_name and stop_criteria_data_type are not used at this time.  Setting to these values for now, but we never look at it
         for v in values:
-            optimization, created = Optimization.objects.update_or_create(name=v['name'],
-                                                                          defaults={"is_active": v.get('is_active', True),
-                                                                                    "description": v['description'],
-                                                                                    "stop_criteria_name": "iterations",
-                                                                                    "stop_criteria_data_type": DataTypeEnum.INTEGER.value,
-                                                                                    "created_by": self.user})
+            optimization, created = Optimization.objects.update_or_create(
+                name=v['name'],
+                defaults={
+                    "is_active": v.get('is_active', True),
+                    "description": v['description'],
+                    "stop_criteria_name": "iterations",
+                    "stop_criteria_data_type": DataTypeEnum.INTEGER.value,
+                    "created_by": self.user
+                }
+            )
 
             for i in v['inputs']:
-                OptimizationInput.objects.update_or_create(name=i['name'], optimization=optimization,
-                                                           defaults={"is_active": i.get('is_active', True),
-                                                                     "description": i['description'],
-                                                                     "data_type": i['data_type'].value,
-                                                                     "default_value": i['default_value'],
-                                                                     "min": i.get('min', None),
-                                                                     "max": i.get('max', None),
-                                                                     "created_by": self.user})
+                OptimizationInput.objects.update_or_create(
+                    name=i['name'], optimization=optimization,
+                    defaults={
+                        "is_active": i.get('is_active', True),
+                        "description": i['description'],
+                        "data_type": i['data_type'].value,
+                        "default_value": i['default_value'],
+                        "min": i.get('min', None),
+                        "max": i.get('max', None),
+                        "created_by": self.user
+                    }
+                )
 
     def define_metric(self):
         if self.DELETE_FLAG:
             Metric.objects.all().delete()
 
         values = [
-            {"name": "Corr",
-             "display_name": "Pearson Correlation (Corr)"},
-            {"name": "MAE",
-             "display_name": "Mean Absolute Error (MAE)"},
-            {"name": "RMSE",
-             "display_name": "Root Mean Square Error (RMSE)"},
-            {"name": "RSR",
-             "display_name": "Ratio of RMSE to standard deviation of observation (RSR)"},
-            {"name": "PBIAS",
-             "display_name": "Percent Bias (PBIAS)"},
-            {"name": "KGE",
-             "display_name": "Kling-Gupta Efficiency (KGE)"},
-            {"name": "NSE",
-             "display_name": "Nash-Sutcliffe-Efficiency (NSE)"},
-            {"name": "NSELog",
-             "display_name": "Logarithmic of NSE (NSELog)"},
-            {"name": "NNSE",
-             "display_name": "Normalized NSE (NNSE)"},
-            {"name": "POD",
-             "display_name": "Probability of Detection (POD)",
-             "categorical": True},
-            {"name": "CSI",
-             "display_name": "Critical Success Index (CSI)",
-             "categorical": True},
-            {"name": "FAR",
-             "display_name": "False Alarm Ratio (FAR)",
-             "categorical": True},
-            {"name": "HSEG_FDC",
-             "display_name": "Percent bias of high flow segment of flow duration curve (HSEG_FDC)"},
-            {"name": "LSEG_FDC",
-             "display_name": "Percent bias of low flow segment of flow duration curve (LSEG_FDC)"},
-            {"name": "PKBIAS",
-             "display_name": "Event Absolute Peak Flow Bias (PKBIAS)",
-             "event_based": True},
-            {"name": "PKTE",
-             "display_name": "Event Peak Flow Timing Error (PKTE)",
-             "event_based": True},
-            {"name": "EVBIAS",
-             "display_name": "Event Volume Bias (EVBIAS)",
-             "event_based": True},
-            {"name": "FBIAS",
-             "display_name": "Frequency Bias (FBIAS)",
-             "categorical": True, "objective_function": False},
-            {"name": "MSEG_FDC",
-             "display_name": "Percent bias of middle flow segment of flow duration curve (MSEG_FDC)",
-             "objective_function": False},
-            {"name": "NSEWt",
-             "display_name": "Weighted NSE and NSELog (NSEWt)",
-             "objective_function": False},
+            {
+                "name": "Corr",
+                "display_name": "Pearson Correlation (Corr)"
+            },
+            {
+                "name": "MAE",
+                "display_name": "Mean Absolute Error (MAE)"
+            },
+            {
+                "name": "RMSE",
+                "display_name": "Root Mean Square Error (RMSE)"
+            },
+            {
+                "name": "RSR",
+                "display_name": "Ratio of RMSE to standard deviation of observation (RSR)"
+            },
+            {
+                "name": "PBIAS",
+                "display_name": "Percent Bias (PBIAS)"
+            },
+            {
+                "name": "KGE",
+                "display_name": "Kling-Gupta Efficiency (KGE)"
+            },
+            {
+                "name": "NSE",
+                "display_name": "Nash-Sutcliffe-Efficiency (NSE)"
+            },
+            {
+                "name": "NSELog",
+                "display_name": "Logarithmic of NSE (NSELog)"
+            },
+            {
+                "name": "NNSE",
+                "display_name": "Normalized NSE (NNSE)"
+            },
+            {
+                "name": "POD",
+                "display_name": "Probability of Detection (POD)",
+                "categorical": True
+            },
+            {
+                "name": "CSI",
+                "display_name": "Critical Success Index (CSI)",
+                "categorical": True
+            },
+            {
+                "name": "FAR",
+                "display_name": "False Alarm Ratio (FAR)",
+                "categorical": True
+            },
+            {
+                "name": "HSEG_FDC",
+                "display_name": "Percent bias of high flow segment of flow duration curve (HSEG_FDC)"
+            },
+            {
+                "name": "LSEG_FDC",
+                "display_name": "Percent bias of low flow segment of flow duration curve (LSEG_FDC)"
+            },
+            {
+                "name": "PKBIAS",
+                "display_name": "Event Absolute Peak Flow Bias (PKBIAS)",
+                "event_based": True
+            },
+            {
+                "name": "PKTE",
+                "display_name": "Event Peak Flow Timing Error (PKTE)",
+                "event_based": True
+            },
+            {
+                "name": "EVBIAS",
+                "display_name": "Event Volume Bias (EVBIAS)",
+                "event_based": True
+            },
+            {
+                "name": "FBIAS",
+                "display_name": "Frequency Bias (FBIAS)",
+                "categorical": True, "objective_function": False
+            },
+            {
+                "name": "MSEG_FDC",
+                "display_name": "Percent bias of middle flow segment of flow duration curve (MSEG_FDC)",
+                "objective_function": False
+            },
+            {
+                "name": "NSEWt",
+                "display_name": "Weighted NSE and NSELog (NSEWt)",
+                "objective_function": False
+            },
         ]
 
         for v in values:
-            Metric.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                      "display_name": v['display_name'],
-                                                                      "categorical": v.get('categorical', False),
-                                                                      "event_based": v.get('event_based', False),
-                                                                      "objective_function": v.get('objective_function', True),
-                                                                      "created_by": self.user})
+            Metric.objects.update_or_create(
+                name=v['name'],
+                defaults={
+                    "is_active": v.get('is_active', True),
+                    "display_name": v['display_name'],
+                    "categorical": v.get('categorical', False),
+                    "event_based": v.get('event_based', False),
+                    "objective_function": v.get('objective_function', True),
+                    "created_by": self.user
+                }
+            )
 
     def define_status(self):
         if self.DELETE_FLAG:
@@ -913,7 +1063,10 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            Status.objects.update_or_create(name=v['name'], defaults={"created_by": self.user})
+            Status.objects.update_or_create(
+                name=v['name'],
+                defaults={"created_by": self.user}
+            )
 
     def define_plot_definitions(self):
 
@@ -1072,13 +1225,18 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            PlotDefinition.objects.update_or_create(name=v['name'], defaults={"display_name": v['display_name'],
-                                                                              "is_active": v.get('is_active', True),
-                                                                              "description": v['description'],
-                                                                              "location": v['location'],
-                                                                              "valid_optimizations": v.get('valid_optimizations'),
-                                                                              "job_type": v['job_type'],
-                                                                              "filename_mask": v['filename_mask'],
-                                                                              "timeseries_available": v.get('timeseries_available', False),
-                                                                              "lstm_flag": v.get('lstm_flag', False),
-                                                                              "created_by": self.user})
+            PlotDefinition.objects.update_or_create(
+                name=v['name'],
+                defaults={
+                    "display_name": v['display_name'],
+                    "is_active": v.get('is_active', True),
+                    "description": v['description'],
+                    "location": v['location'],
+                    "valid_optimizations": v.get('valid_optimizations'),
+                    "job_type": v['job_type'],
+                    "filename_mask": v['filename_mask'],
+                    "timeseries_available": v.get('timeseries_available', False),
+                    "lstm_flag": v.get('lstm_flag', False),
+                    "created_by": self.user
+                }
+            )

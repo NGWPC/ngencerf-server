@@ -25,7 +25,7 @@ from calibration.util.ngen_locations import get_realization_file_path, get_metri
     get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
     get_validation_special_performance_file, get_forecast_performance_file, get_verification_performance_file, \
-    get_params_iteration_file, get_cold_start_performance_file
+    get_params_iteration_file, get_cold_start_performance_file, get_hindcast_performance_file
 from calibration.views.calibration_secondary_data_views import generate_secondary_ts_data, should_generate_swe, should_generate_soil_moisture
 from calibration.views.common import CerfException, get_job_description, find_validation_worker_with_matching_id
 

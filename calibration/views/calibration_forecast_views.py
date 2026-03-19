@@ -13,8 +13,10 @@ from calibration.enums import ForecastConfigEnum, StatusEnum
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, LoadForecastTabResponseSerializer, \
     ForecastRunSerializer, CreateAndRunForecastResponseSerializer, DeleteForecastRunResponseSerializer, CalibrationRunSerializer, \
-    ForecastRunDataResponseSerializer
-from calibration.util.ngen_locations import get_forecast_dir, get_forecast_output_file, get_cold_start_output_file
+    ForecastRunDataResponseSerializer, LoadForecastTabRequestSerializer
+from calibration.util.ngen_locations import get_forecast_dir, get_forecast_output_file, get_cold_start_output_file, \
+    get_cold_start_stdout_file, get_forecast_stdout_file, get_cold_start_ngen_stdout_file, get_forecast_ngen_stdout_file, \
+    get_cold_start_mswm_log_file, get_forecast_mswm_log_file, get_cold_start_ngen_log_file, get_forecast_ngen_log_file
 from calibration.views.calibration_secondary_data_views import read_csv_as_json
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=LoadForecastTabRequestSerializer,
     responses={
         200: LoadForecastTabResponseSerializer,
         400: OpenApiResponse(
@@ -45,7 +47,11 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 def load_forecast_tab(request: Request) -> Response:
     """
-    Load data for the forecast tab, including forecast cycles with associated data sources and time ranges.
+    Load data for the forecast tab, including forecast cycles with associated
+    data sources and time ranges.
+
+    If hindcast_only is True, only return configurations that are valid
+    for hindcast. Otherwise, return all forecast configurations for the domain.
 
     Runs inside a read-only transaction since no writes are performed.
 
@@ -55,24 +61,41 @@ def load_forecast_tab(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(LoadForecastTabRequestSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    hindcast_only = validator.get('hindcast_only', False)
 
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
 
+    extra_filter = {
+        'domain': calibration_run.gage.domain,
+    }
+
+    # Hindcast can only use configurations explicitly marked as supported.
+    # Forecast can use all active configurations for the domain.
+    if hindcast_only:
+        extra_filter['supports_hindcast'] = True
+
     with readonly_transaction():
         configuration_values = ForecastConfigEnum.get_choices_with_fields(
-            fields=['name', 'data_sources',
-                    'cycle_start', 'cycle_end', 'cycle_freq', 'fcst_win', 'availability_lag',
-                    'order'  # included ONLY so we can sort
-                    ],
-            extra_filter={'domain': calibration_run.gage.domain}
+            fields=[
+                'name',
+                'data_sources',
+                'cycle_start',
+                'cycle_end',
+                'cycle_freq',
+                'fcst_win',
+                'availability_lag',
+                'order'  # included ONLY so we can sort
+            ],
+            extra_filter=extra_filter,
         )
+
     # Sort with NULLs at bottom
     configuration_values.sort(
         key=lambda x: (x['order'] is None, x['order'])
@@ -84,16 +107,19 @@ def load_forecast_tab(request: Request) -> Response:
 
     response = {'forecast_configuration_values': configuration_values}
 
-    response_validator, error_response = validate_response(LoadForecastTabResponseSerializer,
-                                                           response,
-                                                           fields_to_truncate=['forecast_configuration_values'],
-                                                           max_length=5
-                                                           )
+    response_validator, error_response = validate_response(
+        LoadForecastTabResponseSerializer,
+        response,
+        fields_to_truncate=['forecast_configuration_values'],
+        max_length=5
+    )
     if error_response:
         return error_response
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - '
-                 f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_configuration_values"], max_length=5))}'
-                 )
+
+    logger.debug(
+        f'{get_caller_name()}() request from {get_user_email(request)} - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_configuration_values"], max_length=5))}'
+    )
 
     return Response(response_validator.data)
 

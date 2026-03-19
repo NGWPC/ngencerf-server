@@ -145,7 +145,7 @@ def get_output_validation_iteration_plot_dir(run: CalibrationRun, iteration_num:
 
 
 def get_output_cold_start_run_dir(run: CalibrationRun) -> str:
-    return os.path.join(get_output_dir(run), 'Cold_Start_Run')
+    return os.path.join(get_output_dir(run), 'Model_State_Run', 'Cold_Start_Run')
 
 
 def get_output_forecast_run_dir(run: CalibrationRun) -> str:
@@ -342,7 +342,7 @@ def get_forecast_performance_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), 'forecast_performance.log')
 
 
-def get_hindccast_performance_file(hindcast_run: HindcastRun) -> str:
+def get_hindcast_performance_file(hindcast_run: HindcastRun) -> str:
     return os.path.join(get_hindcast_dir(hindcast_run), 'forecast_performance.log')
 
 

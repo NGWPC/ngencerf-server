@@ -1447,6 +1447,10 @@ class ForecastConfigSerializer(BaseSerializer):
     fcst_win = serializers.IntegerField(required=True)
 
 
+class LoadForecastTabRequestSerializer(CalibrationRunSerializer):
+    hindcast_only = serializers.BooleanField(allow_null=False, required=True)
+
+
 class LoadForecastTabResponseSerializer(BaseSerializer):
     forecast_configuration_values = ForecastConfigSerializer(many=True)
 
