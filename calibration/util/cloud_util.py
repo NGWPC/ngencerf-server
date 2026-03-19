@@ -1135,31 +1135,6 @@ def _is_remote(url_or_path: str) -> bool:
     return bool(p.scheme) and p.scheme.lower() in _REMOTE_SCHEMES
 
 
-def _cache_key(url: str) -> str:
-    """
-    Generate a stable SHA256 hash for a URL.
-
-    Used as the basename for cached files and metadata sidecars.
-    """
-    return hashlib.sha256(url.encode("utf-8")).hexdigest()
-
-
-def _meta_path(cache_dir: str, key: str) -> str:
-    """
-    Construct the path to the JSON metadata file in the cache directory.
-    Metadata is stored alongside cached files to record etag/size/mtime.
-    """
-    return os.path.join(cache_dir, f"{key}.meta.json")
-
-
-def _data_path(cache_dir: str, key: str, suffix=".gpkg") -> str:
-    """
-    Construct the path to the cached file contents in the cache directory.
-    The suffix is typically the file type (.gpkg, .csv, etc.).
-    """
-    return os.path.join(cache_dir, f"{key}{suffix}")
-
-
 def _read_meta(path: str) -> dict:
     """
     Read a JSON metadata file, returning {} if unreadable or missing.
@@ -1379,6 +1354,33 @@ def _parse_s3_uri(s3_uri: str) -> tuple[str, str]:
 
 
 def normalize_s3_prefix(uri: str) -> str:
+    """
+    Validate and normalize an S3 directory prefix.
+
+    This function ensures that the provided URI represents a valid S3 prefix
+    (i.e., a bucket plus a key prefix) and returns a normalized form that
+    always ends with a trailing slash. The normalized form allows safe use
+    with helpers such as join_url() when constructing object keys.
+
+    Validation rules:
+    - URI must start with "s3://".
+    - A bucket name must be present.
+    - A key prefix must be present (i.e., "s3://bucket/prefix").
+    - The returned value always ends with "/".
+
+    Examples:
+        s3://bucket/prefix      -> s3://bucket/prefix/
+        s3://bucket/prefix/     -> s3://bucket/prefix/
+
+    Invalid examples:
+        s3://bucket
+        s3://
+        bucket/prefix
+
+    :param uri: S3 URI expected to represent a bucket prefix.
+    :return: Normalized S3 prefix guaranteed to end with '/'.
+    :raises ValueError: If the URI is not a valid S3 prefix.
+    """
     if not uri or not uri.startswith("s3://"):
         raise ValueError("Must start with s3://")
 
