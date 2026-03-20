@@ -25,7 +25,7 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
     ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
     LockJobRequestSerializer
-from calibration.util.cloud_util import join_url, copy_tree, get_filesystem, S3ProfileError, S3CredentialsExpired, normalize_s3_prefix, \
+from calibration.util.cloud_util import join_url, copy_tree, S3ProfileError, S3CredentialsExpired, normalize_s3_prefix, \
     s3_prefix_exists, delete_all_s3_objects_under_prefix
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
