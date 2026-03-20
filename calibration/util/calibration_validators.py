@@ -1616,7 +1616,7 @@ class ErrorResponseSerializer(BaseSerializer):
 class GetZipStatusSerializer(CalibrationRunSerializer):
     zip_status = serializers.ChoiceField(choices=['pending', 'done', 'error'], required=True, allow_null=False)
     started_at = serializers.DateTimeField(required=True, allow_null=False)
-    path = serializers.CharField(required=True, allow_null=True, allow_blank=False)
+    s3_object = serializers.CharField(required=True, allow_null=True, allow_blank=False)
 
 
 class GetZipDownloadUrlResponseSerializer(CalibrationRunSerializer):
