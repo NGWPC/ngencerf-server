@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from pyogrio.errors import DataLayerError
@@ -11,10 +12,8 @@ from rest_framework.response import Response
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum
 from calibration.models import Gage, CalibrationRun, CalibrationFormulation
 from calibration.util.caching import get_cached_gages, get_gage_by_id, update_and_get_cached_gage_status
-from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, SaveGageResponseSerializer, \
-    LoadGageResponseSerializer, GageSerializer, ErrorResponseSerializer, UpdateGageStatusRequestSerializer, UpdateGageStatusResponseSerializer, \
-    EmptySerializer
-from calibration.util.cloud_util import path_exists
+from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, SaveGageResponseSerializer, GageSerializer, \
+    LoadGageResponseSerializer, ErrorResponseSerializer, UpdateGageStatusRequestSerializer, UpdateGageStatusResponseSerializer, EmptySerializer
 from calibration.util.file_util import get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
@@ -442,7 +441,7 @@ def get_geopackage_image_url(geopackage_path: str | None) -> str | None:
     :param geopackage_path: The file path of the GeoPackage.
     :return: A base64-encoded URL string of the PNG image if conversion is successful; otherwise, None.
     """
-    if geopackage_path and path_exists(geopackage_path):
+    if geopackage_path and os.path.exists(geopackage_path):
         try:
             # Attempt to convert the GeoPackage to PNG for selected layers
             geopackage_png = gpkg_to_png_selected_layers(geopackage_path)

@@ -17,7 +17,6 @@ from calibration.models import CalibrationFormulation, CalibrationStopCriteria, 
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_by_id, get_gage_by_id
 from calibration.util.calibration_validators import CalibrationRunSerializer, ExportResponseSerializer, ErrorResponseSerializer, \
     LoadCalibrationJobSerializer, LoadCalibrationRunResponseSerializer
-from calibration.util.cloud_util import path_exists
 from calibration.util.file_util import get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
 from calibration.util.ngen_locations import get_geopackage_dir_for_job, \
@@ -548,8 +547,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         # Generate Geopackage map if requested
         if include_gpkg_map:
             gpkg_map_start = time.perf_counter()
-            geopackage_path = run.geopackage_eds_file_path
-            if geopackage_path and path_exists(geopackage_path):
+            geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
+            if geopackage_path and os.path.exists(geopackage_path):
                 geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
                 base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
                 calibration_run_data['geopackage_image_url'] = f'data:image/png;base64,{base64_str}'

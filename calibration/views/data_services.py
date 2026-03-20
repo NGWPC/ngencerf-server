@@ -4,7 +4,6 @@ from urllib.parse import urljoin
 
 import requests
 from django.conf import settings
-from django.db import transaction
 from django.db.models import QuerySet
 
 from calibration.enums import ForcingSourceEnum, DomainEnum
