@@ -12,21 +12,18 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, LogName
+from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import VerificationRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, VerificationJobSerializer, \
     CreateAndRunVerificationRequestSerializer, CreateAndRunVerificationResponseSerializer, \
     GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, \
     GetVerificationPlotResponseSerializer, DeleteVerificationJobResponseSerializer
-from calibration.util.ngen_locations import get_verification_run_dir, get_verification_yaml_config_file, \
-    get_verification_log_file, get_verification_stdout_file
+from calibration.util.ngen_locations import get_verification_run_dir, get_verification_yaml_config_file
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, \
     get_forecast_run, get_verification_run, ResponseError, get_user_email, get_elapsed_str, \
-    create_verification_run_internal, png_to_base64_url, truncate_large_fields, get_job_description, \
-    CerfException
+    create_verification_run_internal, png_to_base64_url, truncate_large_fields, get_job_description
 
 logger = logging.getLogger(__name__)
 
@@ -323,21 +320,3 @@ def delete_verification_job(request: Request) -> Response:
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
-
-
-def get_verification_log(verification_run: VerificationRun, log_name: LogName) -> str:
-    """
-    Fetches the appropriate log file for a specific verification run.
-
-    - Supports logs like `verification` and `verification.stdout`.
-
-    :param verification_run: The VerificationRun object for which the log is retrieved.
-    :param log_name: The LogName enum specifying the log type.
-    :return: The path to the log file.
-    """
-    if log_name == LogName.VERIFICATION:
-        return get_verification_log_file(verification_run)
-    elif log_name == LogName.VERIFICATION_STDOUT:
-        return get_verification_stdout_file(verification_run)
-
-    raise CerfException(f'Invalid log_name: {log_name}')

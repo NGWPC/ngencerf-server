@@ -223,18 +223,6 @@ class LogCategory(AbstractEnum):
     FORECAST = 'forecast'
     COLD_START = 'cold start'
     VERIFICATION = 'verification'
-    GLOBAL = 'global'
-
-
-class LogName(AbstractEnum):
-    NGEN_STDOUT = 'ngen stdout'
-    NGEN_CAL_STDOUT = 'ngen-cal stdout'
-    FORECAST_STDOUT = 'forecast stdout'
-    COLD_START_STDOUT = 'cold start stdout'
-    VERIFICATION = 'verification'
-    VERIFICATION_STDOUT = 'verification stdout'
-    NGEN = 'ngen'
-    MSWM = 'mswm'
 
 
 # Used for both ValidationMetrics and NWMRetrospectiveMetrics

@@ -115,8 +115,8 @@ def get_ngen_stdout_log_filename() -> str:
     return 'ngen_stdout_stderr.log'
 
 
-def get_ngen_log_path(run: CalibrationRun) -> str:
-    return os.path.join(get_gage_dir(run), 'logs', 'ngen.log')
+def get_ngen_log_dir(run: CalibrationRun) -> str:
+    return os.path.join(get_gage_dir(run), 'logs')
 
 
 def get_input_dir(run: CalibrationRun) -> str:
@@ -309,20 +309,12 @@ def get_forecast_ngen_stdout_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), 'ngen_stdout_stderr.log')
 
 
-def get_cold_start_mswm_log_file(cold_start_run: ColdStartRun) -> str:
-    return os.path.join(get_cold_start_dir(cold_start_run), 'logs', 'mswm.log')
+def get_cold_start_ngen_log_dir(cold_start_run: ColdStartRun) -> str:
+    return os.path.join(get_cold_start_dir(cold_start_run), 'logs')
 
 
-def get_forecast_mswm_log_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_dir(forecast_run), 'logs', 'mswm.log')
-
-
-def get_cold_start_ngen_log_file(cold_start_run: ColdStartRun) -> str:
-    return os.path.join(get_cold_start_dir(cold_start_run), 'logs', 'ngen.log')
-
-
-def get_forecast_ngen_log_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_dir(forecast_run), 'logs', 'ngen.log')
+def get_forecast_ngen_log_dir(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), 'logs')
 
 
 def get_cold_start_performance_file(cold_start_run: ColdStartRun) -> str:
@@ -349,8 +341,8 @@ def get_verification_yaml_config_file(run: VerificationRun) -> str:
     return os.path.join(get_verification_run_dir(run), f'verification_{run.id}_config.yaml')
 
 
-def get_verification_log_file(run: VerificationRun) -> str:
-    return os.path.join(get_verification_run_dir(run), 'verification.log')
+# def get_verification_log_file(run: VerificationRun) -> str:
+#     return os.path.join(get_verification_run_dir(run), 'verification.log')
 
 
 def get_verification_stdout_file(run: VerificationRun) -> str:

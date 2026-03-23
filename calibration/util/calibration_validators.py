@@ -5,7 +5,7 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum, GeopackageSourceEnum, SlurmCallbackStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastConfigEnum, LogCategory, LogName, \
+    OptimizationEnum, GeopackageSourceEnum, SlurmCallbackStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastConfigEnum, LogCategory, \
     NgenLogging
 from calibration.enums_vanilla import CalibrationSortField, VerificationSortField, ForecastSortField
 from calibration.util.caching import get_cached_modules_with_groups
@@ -168,7 +168,7 @@ class DeleteForecastRunResponseSerializer(GenericMessageResponseSerializer):
 
 
 class CalibrationRunIdList(BaseSerializer):
-    calibration_run_ids = serializers.ListSerializer(child=serializers.IntegerField(), required=True)
+    calibration_run_ids = serializers.ListField(child=serializers.IntegerField(), required=True)
 
 
 class GetStatusForComparisonRequestSerializer(CalibrationRunIdList):
@@ -480,7 +480,7 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_algorithm = serializers.CharField(required=False, allow_null=True)
-    validations = serializers.ListSerializer(child=ValidationStatusSerializer(), required=False, allow_empty=True)
+    validations = ValidationStatusSerializer(many=True, required=False)
     is_archived = serializers.BooleanField(required=True, allow_null=True)
     is_locked = serializers.BooleanField(required=True, allow_null=True)
     is_downloadable = serializers.BooleanField(required=True, allow_null=False)
@@ -490,19 +490,18 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
 
 
 class GetCalibrationJobsResponseSerializer(BaseSerializer):
-    jobs = serializers.ListSerializer(child=CalibrationJobsResponseSerializer(), required=True, allow_empty=True)
+    jobs = CalibrationJobsResponseSerializer(many=True, required=True)
     total_count = serializers.IntegerField(required=True)
-    date_range = serializers.ListSerializer(child=serializers.DateTimeField(required=True, allow_null=False), min_length=2, max_length=2,
-                                            required=False)
-    id_range = serializers.ListSerializer(child=serializers.IntegerField(required=True, allow_null=False), min_length=2, max_length=2, required=False)
+    date_range = serializers.ListField(child=serializers.DateTimeField(required=True, allow_null=False), min_length=2, max_length=2, required=False)
+    id_range = serializers.ListField(child=serializers.IntegerField(required=True, allow_null=False), min_length=2, max_length=2, required=False)
 
 
 class GetCalibrationJobIDsResponseSerializer(BaseSerializer):
     jobs = serializers.ListField(child=serializers.IntegerField(), required=True, allow_empty=True)
     total_count = serializers.IntegerField(required=True)
-    date_range = serializers.ListSerializer(child=serializers.DateTimeField(required=True, allow_null=False), min_length=2, max_length=2,
-                                            required=False)
-    id_range = serializers.ListSerializer(child=serializers.IntegerField(required=True, allow_null=False), min_length=2, max_length=2, required=False)
+    date_range = serializers.ListField(child=serializers.DateTimeField(required=True, allow_null=False), min_length=2, max_length=2, required=False, )
+    id_range = serializers.ListField(child=serializers.IntegerField(required=True, allow_null=False), min_length=2, max_length=2, required=False)
+
     gages = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
 
 
@@ -943,7 +942,7 @@ class GetPlotForComparisonResponseSerializer(GetPlotResponseSerializer):
 
 class GetPlotsForComparisonResponseSerializer(CalibrationRunIdList):
     plots = GetPlotForComparisonResponseSerializer(many=True, required=False)
-    errors = serializers.ListField(required=False, child=GetPlotErrorResponseSerializer(required=True))
+    errors = GetPlotErrorResponseSerializer(many=True, required=False)
 
 
 ##################################
@@ -1085,7 +1084,7 @@ class ModuleStaticSerializer(BaseSerializer):
 
 class GetModulesResponseSerializer(BaseSerializer):
     modules = ModuleStaticSerializer(many=True)
-    module_groups = serializers.ListSerializer(child=serializers.CharField(required=True), required=True, allow_null=False, allow_empty=False)
+    module_groups = serializers.ListField(child=serializers.CharField(required=True), required=True, allow_empty=False)
 
 
 ##################################
@@ -1119,7 +1118,7 @@ class ParameterFileSerializer(BaseSerializer):
 class UserParameterFileUploadResponse(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
-    user_parameter_file = serializers.ListField(child=ParameterFileSerializer(), required=True)
+    user_parameter_file = ParameterFileSerializer(many=True, required=True)
 
 
 # Module object from Data Services containing module parameters and output variables
@@ -1148,7 +1147,12 @@ class ModuleMetadataSerializer(BaseSerializer):
 
 # List of module objects from Data Services containing module parameters and output variables
 class ModuleDataListSerializer(BaseSerializer):
-    modules = serializers.ListSerializer(child=ModuleMetadataSerializer(), min_length=1, required=True)
+    modules = ModuleMetadataSerializer(many=True, required=True)
+
+    def validate_modules(self, value):
+        if len(value) < 1:
+            raise serializers.ValidationError("This list may not be empty.")
+        return value
 
 
 class SaveTuningRequestSerializer(BaseSerializer):
@@ -1301,18 +1305,19 @@ class GetVerificationJobResponseSerializer(CommonStatusFieldsMixin):
 
 
 class GetVerificationJobsResponseSerializer(BaseSerializer):
-    verification_jobs = serializers.ListSerializer(child=GetVerificationJobResponseSerializer(), required=True, allow_empty=True)
+    verification_jobs = GetVerificationJobResponseSerializer(many=True, required=True)
+
     total_count = serializers.IntegerField(required=True)
-    date_range = serializers.ListSerializer(child=serializers.DateTimeField(required=True, allow_null=False),
-                                            min_length=2, max_length=2, required=False)
-    id_range = serializers.ListSerializer(child=serializers.IntegerField(required=True, allow_null=False),
-                                          min_length=2, max_length=2, required=False)
+    date_range = serializers.ListField(child=serializers.DateTimeField(required=True, allow_null=False),
+                                       min_length=2, max_length=2, required=False)
+    id_range = serializers.ListField(child=serializers.IntegerField(required=True, allow_null=False),
+                                     min_length=2, max_length=2, required=False)
     gages = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
 
 
 class GetStatusForComparisonResponseSerializer(CalibrationRunIdList):
     statuses = CommonStatusFieldsMixin(many=True, required=False)
-    errors = serializers.ListField(required=False, child=GetPlotErrorResponseSerializer(required=True))
+    errors = GetPlotErrorResponseSerializer(many=True, required=False)
 
 
 class ImportResponseSerializer(GenericResponseSerializer):
@@ -1438,12 +1443,12 @@ class ForecastJobsResponseSerializer(BaseSerializer):
 
 
 class GetForecastJobsResponseSerializer(BaseSerializer):
-    forecast_jobs = serializers.ListSerializer(child=ForecastJobsResponseSerializer(), required=True, allow_empty=True)
+    forecast_jobs = ForecastJobsResponseSerializer(many=True, required=True)
     total_count = serializers.IntegerField(required=True)
-    date_range = serializers.ListSerializer(child=serializers.DateTimeField(required=True, allow_null=False),
-                                            min_length=2, max_length=2, required=False)
-    id_range = serializers.ListSerializer(child=serializers.IntegerField(required=True, allow_null=False),
-                                          min_length=2, max_length=2, required=False)
+    date_range = serializers.ListField(child=serializers.DateTimeField(required=True, allow_null=False),
+                                       min_length=2, max_length=2, required=False)
+    id_range = serializers.ListField(child=serializers.IntegerField(required=True, allow_null=False),
+                                     min_length=2, max_length=2, required=False)
     gages = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
 
 
@@ -1554,7 +1559,7 @@ class ImportDataSerializer(BaseSerializer):
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
-    parameters = serializers.ListSerializer(child=SaveTuningParametersSerializer(allow_missing_bounds=True), required=False)
+    parameters = SaveTuningParametersSerializer(many=True, required=False, allow_missing_bounds=True)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False, allow_null=True, validators=[enum_validator(OptimizationEnum)])
@@ -1666,61 +1671,72 @@ class ValidationJobsResponseSerializer(BaseSerializer):
     iteration_num = serializers.IntegerField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
     # Can be empty for LSTM
-    parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=True)
+    parameters = ValidationJobsParameter(many=True, required=True)
     best = serializers.BooleanField(required=True)
 
 
 class GetValidationJobsResponseSerializer(BaseSerializer):
-    validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
+    validation_jobs = ValidationJobsResponseSerializer(many=True, required=True)
 
 
 class GetLogRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
-    log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory, allow_blank=False)])
-    log_name = serializers.CharField(required=True, validators=[enum_validator(LogName, allow_blank=False)])
+    # log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory, allow_blank=False)])
+    log_name = serializers.CharField(required=True, allow_blank=False)
     start = serializers.IntegerField(required=False, default=0, min_value=-1)
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
 
 class GetLogStatusRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
-    log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory)])
-    log_name = serializers.CharField(required=True, validators=[enum_validator(LogName)])
+    # log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory)])
+    log_name = serializers.CharField(required=True)
     byte_offset = serializers.IntegerField(required=True, min_value=0)
 
 
 class LogCategoryDictField(serializers.DictField):
     def __init__(self, **kwargs):
-        # Define the child as a ListField for log names
-        super().__init__(**kwargs)
-        self.child = serializers.ListField(
-            child=serializers.CharField(), required=False
+        super().__init__(
+            child=serializers.ListField(
+                child=serializers.CharField(),
+                allow_empty=True,
+            ),
+            **kwargs,
         )
-        # Attach the enum validator for dictionary keys
         self.key_validator = enum_validator(LogCategory, allow_blank=False)
 
     def to_internal_value(self, data):
-        # Validate all keys using the enum_validator
-        for key in data.keys():
+        if not isinstance(data, dict):
+            raise serializers.ValidationError("Expected a dictionary.")
+
+        if len(data) != 1:
+            raise serializers.ValidationError(
+                "Each log_names entry must contain exactly one log category."
+            )
+
+        for key in data:
             if not isinstance(key, str):
-                raise serializers.ValidationError(f"Invalid key type: {type(key)}. Expected string.")
-            self.key_validator(key)  # Validate the key as a string
+                raise serializers.ValidationError(
+                    f"Invalid key type: {type(key)}. Expected string."
+                )
+            self.key_validator(key)
+
         return super().to_internal_value(data)
 
 
 class GetLogNamesResponseSerializer(BaseSerializer):
-    log_names = serializers.ListSerializer(child=LogCategoryDictField(), required=True)
+    log_names = serializers.ListField(child=LogCategoryDictField(), required=True, allow_empty=True)
 
 
 class GetLogsResponseSerializer(GenericMessageResponseSerializer):
-    log_data = serializers.ListSerializer(child=serializers.CharField(allow_blank=True), required=True, allow_null=False)
+    log_data = serializers.ListField(child=serializers.CharField(allow_blank=True), required=True)
     pagination_metadata = PaginationMetadataSerializer(required=False)
-    log_path = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    log_name = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     byte_offset = serializers.IntegerField(required=False)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=False)
+    # status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=False)
 
 
 class GetLogStatusResponseSerializer(GenericMessageResponseSerializer):
     file_updated = serializers.BooleanField(required=True)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    # status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
 ##################################
