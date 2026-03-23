@@ -232,11 +232,11 @@ def get_objective_log_best_file(run: CalibrationRun, short_worker_name: str) -> 
 
 
 def get_calibration_stdout_file(run: CalibrationRun) -> str:
-    return os.path.join(get_output_calibration_run_dir(run), 'ngen-cal_calibration_stdout.log')
+    return os.path.join(get_output_calibration_run_dir(run), 'cal-mgr_calibration_stdout.log')
 
 
 def get_calibration_performance_file(run: CalibrationRun) -> str:
-    return os.path.join(get_output_calibration_run_dir(run), 'ngen-cal_calibration_performance.log')
+    return os.path.join(get_output_calibration_run_dir(run), 'cal-mgr_calibration_performance.log')
 
 
 def get_global_best_params_file(run: CalibrationRun) -> str:
@@ -252,15 +252,15 @@ def get_validation_best_input_file(run: CalibrationRun) -> str:
 
 
 def get_validation_best_stdout_file(run: CalibrationRun) -> str:
-    return os.path.join(get_output_validation_run_dir(run), 'ngen-cal_validation_best_stdout.log')
+    return os.path.join(get_output_validation_run_dir(run), 'cal-mgr_validation_best_stdout.log')
 
 
 def get_validation_control_stdout_file(run: CalibrationRun) -> str:
-    return os.path.join(get_output_validation_run_dir(run), 'ngen-cal_validation_control_stdout.log')
+    return os.path.join(get_output_validation_run_dir(run), 'cal-mgr_validation_control_stdout.log')
 
 
 def get_validation_iteration_stdout_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
-    return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{worker_name}_iter{iteration_num}_stdout.log")
+    return os.path.join(get_output_validation_run_dir(run), f"cal-mgr_validation_{worker_name}_iter{iteration_num}_stdout.log")
 
 
 def get_cold_start_dir(cold_start_run: ColdStartRun) -> str:
@@ -354,7 +354,7 @@ def get_verification_performance_file(run: VerificationRun) -> str:
 
 
 def get_validation_performance_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
-    return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{worker_name}_iter{iteration_num}_performance.log")
+    return os.path.join(get_output_validation_run_dir(run), f"cal-mgr_validation_{worker_name}_iter{iteration_num}_performance.log")
 
 
 def get_swe_netcdf_file(run: CalibrationRun) -> str:
@@ -368,7 +368,7 @@ def get_soil_moisture_netcdf_file(run: CalibrationRun) -> str:
 def get_validation_special_performance_file(run: CalibrationRun,
                                             validation_type: Literal[ValidationType.VALID_BEST, ValidationType.VALID_CONTROL]) -> str:
     validation_type_str = validation_type.value.split('_')[1].lower()
-    return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{validation_type_str}_performance.log")
+    return os.path.join(get_output_validation_run_dir(run), f"cal-mgr_validation_{validation_type_str}_performance.log")
 
 
 def get_calibration_git_info_file(run: CalibrationRun) -> str:
