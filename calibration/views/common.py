@@ -1048,14 +1048,15 @@ def get_user_email(request: Request) -> str:
     return "Anonymous"
 
 
-def generate_ngen_logging_config(run: CalibrationRun | ValidationRun | ForecastRun, logging_config_param: dict = None) -> dict:
+def generate_ngen_logging_config(run: CalibrationRun | ValidationRun | ForecastRun, logging_config_param: dict | None = None) -> dict:
     """
-    Generate the JSON logging configuration for a calibration or validation run.
+    Generate the JSON logging configuration for a calibration, validation, or forecast run.
 
     The generated config includes:
     - All valid modules (based on cached definitions)
     - Special cases of 'ngen' and 'forcing'
     - Default log levels set to INFO, unless overridden
+    - Top-level flags for logging_enabled and split_logs_by_module
 
     Overrides are applied in this order:
     1. A previously imported logging config file, if it exists
@@ -1064,13 +1065,13 @@ def generate_ngen_logging_config(run: CalibrationRun | ValidationRun | ForecastR
 
     All module names are treated case-insensitively and stored in lowercase in the output.
 
-    :param run: A CalibrationRun or ValidationRun instance for which to generate the logging config.
+    :param run: A CalibrationRun, ValidationRun, or ForecastRun instance for which to generate the logging config.
     :param logging_config_param: A dictionary with optional overrides, e.g.:
         {
             "logging_enabled": False,
+            "split_logs_by_module": True,
             "modules": {"cfe-s": "DEBUG"}
         }
-        This is currently only provided by the UI when calling run_calibration_job.
     :return: A dictionary representing the final logging config.
     """
     if not logging_config_param:
@@ -1082,24 +1083,30 @@ def generate_ngen_logging_config(run: CalibrationRun | ValidationRun | ForecastR
     modules_by_id = get_cached_modules_by_id()
     module_names = {modules_by_id[f.module_id].name for f in formulations}
 
-    # Get our  module names in lowercase, plus special-case 'ngen' and 'forcing'
+    # Get our module names in lowercase, plus special-case 'ngen' and 'forcing'
     valid_modules = {m.lower() for m in module_names}
     valid_modules.add('ngen')
     valid_modules.add('forcing')
 
     # Default all modules to INFO lvl
     module_levels = {name: NgenLogging.INFO.value for name in valid_modules}
-    logging_enabled = True  # default
+    logging_enabled = True
+    split_logs_by_module = False
 
     # Helper to apply overrides from a config file if it exists
     def apply_config_file(path: str) -> None:
-        nonlocal logging_enabled, module_levels
-        if os.path.exists(path):
-            with open(path, "r") as f:
-                config = json.load(f)
-                logging_enabled = config.get("logging_enabled", logging_enabled)
-                for name, lvl in config.get("modules", {}).items():
-                    module_levels[name.lower()] = lvl
+        nonlocal logging_enabled, split_logs_by_module, module_levels
+        if not os.path.exists(path):
+            return
+
+        with open(path, "r") as f:
+            config = json.load(f)
+
+        logging_enabled = config.get("logging_enabled", logging_enabled)
+        split_logs_by_module = config.get("split_logs_by_module", split_logs_by_module)
+
+        for name, lvl in config.get("modules", {}).items():
+            module_levels[name.lower()] = lvl
 
     # Apply from imported config (used during import/update)
     apply_config_file(get_ngen_logging_file(run, import_flag=True))
@@ -1109,26 +1116,33 @@ def generate_ngen_logging_config(run: CalibrationRun | ValidationRun | ForecastR
 
     # Apply overrides from the provided logging_config_param (used by UI during run_calibration_job)
     logging_enabled = logging_config_param.get("logging_enabled", logging_enabled)
+    split_logs_by_module = logging_config_param.get("split_logs_by_module", split_logs_by_module)
+
     for name, level in logging_config_param.get("modules", {}).items():
         module_levels[name.lower()] = level
 
     return {
         "logging_enabled": logging_enabled,
+        "split_logs_by_module": split_logs_by_module,
         "modules": module_levels
     }
 
 
-def write_ngen_logging_file(run: CalibrationRun | ValidationRun | ForecastRun | ColdStartRun, logging_config_param: dict) -> None:
+def write_ngen_logging_file(
+        run: CalibrationRun | ValidationRun | ForecastRun | ColdStartRun,
+        logging_config_param: dict
+) -> None:
     """
     Generate and write the logging config to a JSON file on disk, and create a symbolic link pointing
     to it using a consistent base name.
 
     This wraps the logic of generating the config and writing it to disk.
 
-    :param run: A CalibrationRun or ValidationRun instance.
+    :param run: A CalibrationRun, ValidationRun, ForecastRun, or ColdStartRun instance.
     :param logging_config_param: A dictionary with optional overrides, e.g.:
         {
             "logging_enabled": False,
+            "split_logs_by_module": True,
             "modules": {"cfe-s": "DEBUG"}
         }
         This is currently only provided by the UI when calling run_calibration_job.
