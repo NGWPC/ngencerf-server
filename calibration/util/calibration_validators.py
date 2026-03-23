@@ -246,6 +246,7 @@ class CreateValidationRequestSerializer(CalibrationRunSerializer):
 
 class LoggingConfigSerializer(BaseSerializer):
     logging_enabled = serializers.BooleanField(required=False, default=True)
+    split_logs_by_module = serializers.BooleanField(required=False, default=False)
     modules = serializers.DictField(child=serializers.CharField(), default=dict)
 
     def validate_modules(self, value: dict) -> dict:
