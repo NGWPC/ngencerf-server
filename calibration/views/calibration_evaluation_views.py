@@ -433,6 +433,7 @@ def get_log_names(request: Request) -> Response:
     - Handles request validation and user permissions.
     - Returns log files as a list where each entry is a single-key object
       mapping one log category to its list of log files.
+    - Within each category, files are sorted by filename only, not full path.
 
     :param request: The HTTP request object containing one run ID.
     :return: JSON response with log names or error details.
@@ -464,7 +465,9 @@ def get_log_names(request: Request) -> Response:
 
     response = {
         'log_names': [
-            {log_category: log_paths}
+            {
+                log_category: sorted(log_paths, key=lambda path: os.path.basename(path).lower())
+            }
             for log_category, log_paths in logs_by_category.items()
         ]
     }
