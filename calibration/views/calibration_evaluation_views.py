@@ -463,12 +463,28 @@ def get_log_names(request: Request) -> Response:
     if error_return:
         return error_return
 
+    category_order = {
+        'Calibration': 0,
+        'Validation': 1,
+        'Cold Start': 2,
+        'Forecast': 3,
+    }
+
+    sorted_categories = sorted(
+        logs_by_category.items(),
+        key=lambda item: (category_order.get(item[0], 999), item[0].lower())
+    )
+
     response = {
         'log_names': [
             {
-                log_category: sorted(log_paths, key=lambda path: os.path.basename(path).lower())
+                log_category: sorted(
+                    log_paths,
+                    key=lambda path: os.path.basename(path).lower()
+                )
             }
-            for log_category, log_paths in logs_by_category.items()
+            for log_category, log_paths in sorted_categories
+            if log_paths
         ]
     }
 
