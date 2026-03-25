@@ -7,7 +7,7 @@ import calibration.views.get_jobs_views
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
     calibration_evaluation_views, calibration_forecast_views, calibration_regionalization_views, \
-    calibration_verification_views, calibration_secondary_data_views, calibration_download_views
+    calibration_verification_views, calibration_secondary_data_views, calibration_download_views, calibration_log_files_views
 
 urlpatterns = [
     ##################################
@@ -107,9 +107,9 @@ urlpatterns = [
     ##################################
     path('calibration/get_calibration_data_by_iteration/', calibration_evaluation_views.get_calibration_data_by_iteration,
          name="getCalibrationDataByIteration"),
-    path('calibration/get_log_names/', calibration_evaluation_views.get_log_names, name="getLogNames"),
-    path('calibration/get_log/', calibration_evaluation_views.get_log, name="getLog"),
-    path('calibration/get_log_status/', calibration_evaluation_views.get_log_status, name="getLogStatus"),
+    path('calibration/get_log_names/', calibration_log_files_views.get_log_names, name="getLogNames"),
+    path('calibration/get_log/', calibration_log_files_views.get_log, name="getLog"),
+    path('calibration/get_log_status/', calibration_log_files_views.get_log_status, name="getLogStatus"),
 
     ##################################
     # Download
