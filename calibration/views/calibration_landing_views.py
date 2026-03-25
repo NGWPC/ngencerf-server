@@ -24,8 +24,9 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
     ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
-    LockJobRequestSerializer, S3DirectoryValidator, CreateHindcastRequestSerializer, CreateAndRunHindcastResponseSerializer
-from calibration.util.cloud_util import join_url, copy_tree, get_filesystem, path_exists
+    LockJobRequestSerializer, CreateHindcastRequestSerializer, CreateAndRunHindcastResponseSerializer
+from calibration.util.cloud_util import join_url, copy_tree, s3_prefix_exists, S3CredentialsExpired, normalize_s3_prefix, S3ProfileError, \
+    delete_all_s3_objects_under_prefix
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -33,7 +34,7 @@ from calibration.views.calibration_run_views import map_path_to_host
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
     validate_request, create_validation_run_internal, create_forecast_run_internal, get_user_email, get_elapsed_str, readonly_transaction, \
-    format_datetime, create_cold_start_run_internal, get_job_description, get_calibration_runs_bulk, create_hindcast_run_internal
+    format_datetime, create_cold_start_run_internal, get_job_description, get_calibration_runs_bulk, create_hindcast_run_internal, get_cold_start_run
 
 logger = logging.getLogger(__name__)
 
@@ -302,15 +303,22 @@ def create_and_run_forecast(request: Request) -> Response:
     else:
         submit_job(forecast_run, logging_config=logging_config)
 
-    msg = get_job_description(cold_start_run if run_cold_start else forecast_run) + ' created and submitted'
     if run_cold_start:
-        msg += f', followed by Forecast Job {forecast_run.id}'
+        msg = (
+            f'{get_job_description(cold_start_run)} created and submitted, '
+            f'followed by {get_job_description(forecast_run)}'
+        )
+        submit_date = cold_start_run.submit_date
+    else:
+        msg = f'{get_job_description(forecast_run)} created and submitted'
+        submit_date = forecast_run.submit_date
+
     response = {
         'message': msg,
         'calibration_run_id': calibration_run.id,
         'forecast_run_id': forecast_run.id,
         'cold_start_run_id': cold_start_run.id if run_cold_start else None,
-        'submit_date': cold_start_run.submit_date if run_cold_start else forecast_run.submit_date
+        'submit_date': submit_date
     }
 
     response_validator, error_response = validate_response(CreateAndRunForecastResponseSerializer, response)
@@ -357,14 +365,16 @@ def create_and_run_hindcast(request: Request) -> Response:
     calibration_run_id = validator.get('calibration_run_id')
     configuration_name = validator.get('configuration_name')
     cycle_date = validator.get('cycle_date')
-    # Valid values are 1, 3, 6, 12, 18, 24
     interval_cycle = validator.get('interval_cycle')
-    # Any postive integer
     num_iterations = validator.get('num_iterations')
     cold_start_date = validator.get('cold_start_date')
+    cold_start_run_id = validator.get('cold_start_run_id')
     logging_config = validator.get('logging_config')
 
-    run_cold_start = cold_start_date is not None
+    if not cold_start_run_id and not cold_start_date:
+        return ResponseError("You must specify either a cold start date or an existing cold start id")
+    if cold_start_run_id and cold_start_date:
+        return ResponseError("You must specify either a cold start date or an existing cold start id but not both")
 
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
@@ -373,13 +383,23 @@ def create_and_run_hindcast(request: Request) -> Response:
     hindcast_errors = []
 
     configuration = ForecastConfigEnum.get_instance(configuration_name)
+
+    if not configuration.supports_hindcast:
+        hindcast_errors.append(f"Configuration '{configuration_name}' does not support hindcast")
+
     if configuration.domain != calibration_run.gage.domain:
         hindcast_errors.append(
-            f"{configuration_name} is not a valid configuration for domain "
+            f"'{configuration_name}' is not a valid configuration for domain "
             f"{calibration_run.gage.domain.name}"
         )
 
-    # TODO Make sure that it a configuration that's valid for hindcast
+    cold_start_run = None
+    if cold_start_run_id:
+        cold_start_run, error_return = get_cold_start_run(cold_start_run_id, request.user, run_status=[StatusEnum.DONE])
+        if error_return:
+            return error_return
+
+        cold_start_date = cold_start_run.cold_start_date
 
     # Define the supported forecast window used to validate both the requested
     # hindcast cycle date and the furthest projected cycle date.
@@ -401,7 +421,6 @@ def create_and_run_hindcast(request: Request) -> Response:
         label="Cycle",
     )
 
-    # TODO Validate interval_cycle and num_iterations themselves.
     # Hindcast must also validate the furthest cycle date that could be reached
     # after advancing by interval_cycle hours for num_iterations steps.
     max_projected_cycle_date = cycle_date + timedelta(hours=interval_cycle * num_iterations)
@@ -417,23 +436,27 @@ def create_and_run_hindcast(request: Request) -> Response:
         label="Maximum projected cycle",
     )
 
-    # If a cold start date is provided, it must be earlier than the requested
+    # Cold start date must be earlier than the requested
     # hindcast cycle date and still within the supported forecast window.
-    if run_cold_start:
-        if cold_start_date >= cycle_date:
-            hindcast_errors.append("Cold start date must be earlier than cycle date")
-        if cold_start_date < min_cycle_date:
-            hindcast_errors.append(f"Cold start cannot be before {format_datetime(min_cycle_date)}")
+    if cold_start_date >= cycle_date:
+        hindcast_errors.append("Cold start date must be earlier than cycle date")
+    if cold_start_date < min_cycle_date:
+        hindcast_errors.append(f"Cold start cannot be before {format_datetime(min_cycle_date)}")
 
     if hindcast_errors:
         return ResponseError("Error submitting hindcast", errors=hindcast_errors)
 
-    cold_start_run = create_cold_start_run_internal(
-        calibration_run,
-        configuration,
-        cold_start_date=cold_start_date,
-        cycle_date=cycle_date
-    ) if cold_start_date else None
+    run_cold_start = False
+
+    # Need to create a new cold start if we don't already have one
+    if not cold_start_run:
+        cold_start_run = create_cold_start_run_internal(
+            calibration_run,
+            configuration,
+            cold_start_date=cold_start_date,
+            cycle_date=cycle_date
+        )
+        run_cold_start = True
 
     hindcast_run = create_hindcast_run_internal(
         calibration_run,
@@ -450,15 +473,22 @@ def create_and_run_hindcast(request: Request) -> Response:
     else:
         submit_job(hindcast_run, logging_config=logging_config)
 
-    msg = get_job_description(cold_start_run if run_cold_start else hindcast_run) + ' created and submitted'
     if run_cold_start:
-        msg += f', followed by Hindcast Job {hindcast_run.id}'
+        msg = (
+            f'{get_job_description(cold_start_run)} created and submitted, '
+            f'followed by {get_job_description(hindcast_run)}'
+        )
+        submit_date = cold_start_run.submit_date
+    else:
+        msg = f'{get_job_description(hindcast_run)} created and submitted'
+        submit_date = hindcast_run.submit_date
+
     response = {
         'message': msg,
         'calibration_run_id': calibration_run.id,
         'hindcast_run_id': hindcast_run.id,
-        'cold_start_run_id': cold_start_run.id if run_cold_start else None,
-        'submit_date': cold_start_run.submit_date if run_cold_start else hindcast_run.submit_date
+        'cold_start_run_id': cold_start_run.id,
+        'submit_date': submit_date
     }
 
     response_validator, error_response = validate_response(CreateAndRunHindcastResponseSerializer, response)

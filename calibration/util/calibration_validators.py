@@ -1,4 +1,4 @@
-from django.core.validators import RegexValidator
+from django.core.validators import RegexValidator, MinValueValidator
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
 from rest_framework.fields import empty
@@ -171,6 +171,10 @@ class DeleteForecastRunResponseSerializer(GenericMessageResponseSerializer):
     forecast_run_id = serializers.IntegerField(required=True)
 
 
+class DeleteHindcastRunResponseSerializer(GenericMessageResponseSerializer):
+    hindcast_run_id = serializers.IntegerField(required=True)
+
+
 class CalibrationRunIdList(BaseSerializer):
     calibration_run_ids = serializers.ListField(child=serializers.IntegerField(), required=True)
 
@@ -293,6 +297,9 @@ class LoggingConfigSerializer(BaseSerializer):
 
         return normalized
 
+class ForecastConfigurationSerializer(BaseSerializer):
+    configuration_name = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
+
 
 class CreateColdStartRequestSerializer(CalibrationRunSerializer):
     configuration_name = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
@@ -310,10 +317,10 @@ class CreateForecastRequestSerializer(CalibrationRunSerializer):
 class CreateHindcastRequestSerializer(CalibrationRunSerializer):
     configuration_name = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=True, allow_null=False)
-    # Do we need additional validations for interval_cycle and num_iterations
-    interval_cycle = serializers.IntegerField(required=True, allow_null=False)
-    num_iterations = serializers.IntegerField(required=True, allow_null=False)
+    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24], required=True)
+    num_iterations = serializers.IntegerField(required=True, allow_null=False, validators=[MinValueValidator(1)])
     cold_start_date = serializers.DateTimeField(required=False, allow_null=True)
+    cold_start_run_id = serializers.IntegerField(required=False, allow_null=True)
     logging_config = LoggingConfigSerializer(required=False)
 
 
@@ -1483,6 +1490,10 @@ class GetForecastJobsResponseSerializer(BaseSerializer):
     gages = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
 
 
+class GetColdStartJobsForConfigurationResponseSerializer(BaseSerializer):
+    cold_start_jobs = serializers.ListSerializer(child=ColdStartJobsResponseSerializer(), required=True, allow_empty=True)
+
+
 ##################################
 # Verification Tab
 ##################################
@@ -1710,14 +1721,14 @@ class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = ValidationJobsResponseSerializer(many=True, required=True)
 
 
-class GetLogRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
+class GetLogRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer):
     # log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory, allow_blank=False)])
     log_name = serializers.CharField(required=True, allow_blank=False)
     start = serializers.IntegerField(required=False, default=0, min_value=-1)
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
 
-class GetLogStatusRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
+class GetLogStatusRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer):
     # log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory)])
     log_name = serializers.CharField(required=True)
     byte_offset = serializers.IntegerField(required=True, min_value=0)

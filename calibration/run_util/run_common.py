@@ -366,6 +366,11 @@ def run_hindcast_job(hindcast_run: HindcastRun) -> None:
 
     stdout_file = get_hindcast_stdout_file(hindcast_run)
 
+    cold_start_state = get_cold_start_state(hindcast_run.cold_start_run)
+    if not os.path.exists(cold_start_state):
+        # Issue an explicit error for legacy Cold Start runs that might not have a saved state
+        raise RuntimeError(f'Saved state not found for cold start run {get_job_description(hindcast_run)}')
+
     execute_job(
         hindcast_run,
         {
@@ -374,7 +379,7 @@ def run_hindcast_job(hindcast_run: HindcastRun) -> None:
             'run_name': os.path.basename(get_hindcast_dir(hindcast_run)),
             'interval_cycle': str(hindcast_run.interval_cycle),
             'num_iterations': str(hindcast_run.num_iterations),
-            'use_state': get_cold_start_state(hindcast_run.cold_start_run)
+            'use_state': cold_start_state
         },
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.HINDCAST, False)
@@ -578,7 +583,7 @@ def prepare_fcst_or_cold_start_job(run: ColdStartRun | ForecastRun | HindcastRun
             run_name = os.path.basename(get_forecast_dir(run))
             use_cold_start = False
             save_state = False
-            saved_state = get_cold_start_state(run.cold_start_run)
+            saved_state = get_cold_start_state(run.cold_start_run) if run.cold_start_run else None
 
         logger.info(f'Running build_fcst for {job_description} '
                     f'with config: {config_file}, valid_best: {valid_best}, run_name: {run_name}, save_state: {save_state}, load_state_from: {saved_state}')

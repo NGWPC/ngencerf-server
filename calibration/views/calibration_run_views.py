@@ -26,7 +26,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
     GetStatusForCalibrationResponseSerializer, GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
-    CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer, ForecastJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer, \
+    CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer, ForecastJobSlurmCallbackRequestSerializer, \
+    CancelJobResponseSerializer, \
     ValidationRunSerializer, GenericResponseSerializerWithValidator, RunCalibrationJob, ColdStartJobSlurmCallbackRequestSerializer, \
     VerificationJobSlurmCallbackRequestSerializer, GetStatusForValidationResponseSerializer, \
     GetStatusForForecastResponseSerializer, GetStatusForVerificationResponseSerializer, GetStatusRequestSerializer, \
@@ -1103,7 +1104,11 @@ def get_iteration(request: Request) -> Response:
 @handle_exceptions
 def cancel_job(request: Request) -> Response:
     """
-    Cancel a running job for CalibrationRun, ValidationRun, or ForecastRun.
+    Cancel a running job for CalibrationRun, ValidationRun, ForecastRun, HindcastRun, or VerificationRun.
+
+    For forecast and hindcast runs with an associated cold start:
+    - cancel the cold start first while it is RUNNING or SUBMITTED
+    - once the cold start is DONE, cancel the forecast/hindcast job itself
 
     :param request: The HTTP request containing the run ID to cancel.
     :return: A Response indicating the cancellation result.
@@ -1111,7 +1116,10 @@ def cancel_job(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer, data)
+    validator, error_return = validate_request(
+        CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer,
+        data
+    )
     if error_return:
         return error_return
 
@@ -1146,62 +1154,35 @@ def cancel_job(request: Request) -> Response:
         if error_return:
             return error_return
 
-    else:
-        # --------------------
-        # FORECAST LOGIC ONLY
-        # --------------------
-        # TODO Need to add for Hindcast
+    elif forecast_run_id:
         forecast_run, error_return = get_forecast_run(
             forecast_run_id, request.user, run_status=list(StatusEnum)
         )
         if error_return:
             return error_return
 
-        cold_start_run = forecast_run.cold_start_run
+        run_type, run, error_response = _get_cancellable_forecast_or_hindcast(
+            main_run=forecast_run,
+            main_run_type=JobType.FORECAST.value,
+        )
+        if error_response:
+            return error_response
 
-        # --- CASE 1: No cold start at all → cancel forecast directly ---
-        if cold_start_run is None:
-            if forecast_run.status in [StatusEnum.RUNNING.db_instance,
-                                       StatusEnum.SUBMITTED.db_instance]:
-                run_type = JobType.FORECAST.value
-                run = forecast_run
-            else:
-                error = (
-                    f'{ForecastRun.__name__} {forecast_run.id} is not in an allowed status: '
-                    f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
-                    f'Current status: {forecast_run.status.name}'
-                )
-                return ResponseError(error)
+    else:
+        hindcast_run, error_return = get_hindcast_run(
+            hindcast_run_id,
+            request.user,
+            run_status=list(StatusEnum)
+        )
+        if error_return:
+            return error_return
 
-        else:
-            # --- CASE 2: Cold start is running/submitted → cancel cold start ---
-            if cold_start_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
-                # Cold start job is running, so cancel it
-                run_type = JobType.COLD_START.value
-                run = cold_start_run
-
-            # --- CASE 3: Cold start DONE → cancel forecast (if running/submitted) ---
-            elif cold_start_run.status == StatusEnum.DONE.db_instance:
-                # Cold start is done, check the status of the forecast job
-                if forecast_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
-                    run_type = JobType.FORECAST.value
-                    run = forecast_run
-                else:
-                    error = (
-                        f'{ForecastRun.__name__} {forecast_run.id} is not in an allowed status: '
-                        f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
-                        f'Current status: {forecast_run.status.name}'
-                    )
-                    return ResponseError(error)
-
-            # --- CASE 4: Cold start exists but in an invalid state ---
-            else:
-                error = (
-                    f'{ColdStartRun.__name__} {cold_start_run.id} is not in an allowed status: '
-                    f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
-                    f'Current status: {cold_start_run.status.name}'
-                )
-                return ResponseError(error)
+        run_type, run, error_response = _get_cancellable_forecast_or_hindcast(
+            main_run=hindcast_run,
+            main_run_type=JobType.HINDCAST.value,
+        )
+        if error_response:
+            return error_response
 
     # --------------------
     # COMMON CANCEL LOGIC
@@ -1220,10 +1201,69 @@ def cancel_job(request: Request) -> Response:
     response_validator, error_response = validate_response(CancelJobResponseSerializer, response)
     if error_response:
         return error_response
+
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
+        f'{json.dumps(response_validator.data)}'
+    )
 
     return Response(response_validator.data)
+
+
+def _get_cancellable_forecast_or_hindcast(
+        main_run: ForecastRun | HindcastRun,
+        main_run_type: str,
+) -> tuple[str | None, BaseRun | None, Response | None]:
+    """
+    Resolve which run should actually be cancelled for a forecast or hindcast job.
+
+    If there is no cold start, cancel the main run directly if it is RUNNING or SUBMITTED.
+
+    If there is a cold start:
+    - cancel the cold start while it is RUNNING or SUBMITTED
+    - once the cold start is DONE, cancel the main run if it is RUNNING or SUBMITTED
+
+    :param main_run: ForecastRun or HindcastRun.
+    :param main_run_type: JobType.FORECAST.value or JobType.HINDCAST.value.
+    :return: tuple of (run_type, run, error_response)
+    """
+    cold_start_run = main_run.cold_start_run
+
+    # No cold start at all -> cancel the main run directly.
+    if cold_start_run is None:
+        if main_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
+            return main_run_type, main_run, None
+
+        error = (
+            f'{type(main_run).__name__} {main_run.id} is not in an allowed status: '
+            f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
+            f'Current status: {main_run.status.name}'
+        )
+        return None, None, ResponseError(error)
+
+    # Cold start is still active -> cancel the cold start first.
+    if cold_start_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
+        return JobType.COLD_START.value, cold_start_run, None
+
+    # Cold start finished -> now the main run may be cancelled.
+    if cold_start_run.status == StatusEnum.DONE.db_instance:
+        if main_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
+            return main_run_type, main_run, None
+
+        error = (
+            f'{type(main_run).__name__} {main_run.id} is not in an allowed status: '
+            f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
+            f'Current status: {main_run.status.name}'
+        )
+        return None, None, ResponseError(error)
+
+    # Cold start exists but is not in a state where cancellation can proceed.
+    error = (
+        f'{ColdStartRun.__name__} {cold_start_run.id} is not in an allowed status: '
+        f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value, StatusEnum.DONE.value])}. '
+        f'Current status: {cold_start_run.status.name}'
+    )
+    return None, None, ResponseError(error)
 
 
 def map_path_to_host(path_to_normalize: str) -> str:
@@ -1417,7 +1457,7 @@ def hindcast_job_slurm_callback(request: Request) -> Response:
     return handle_slurm_callback(
         request,
         HindcastJobSlurmCallbackRequestSerializer,
-        get_forecast_run,
+        get_hindcast_run,
         run_hindcast_job_callback_pw
     )
 

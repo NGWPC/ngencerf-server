@@ -647,7 +647,7 @@ def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun)
     formulations_to_delete_qs.delete()
 
 
-formulation_validations = {
+formulation_validations: dict[str, Any] = {
     "formulation_rules": {
         "group_requirements": {
             "Glacier": {
@@ -808,6 +808,7 @@ def validate_formulation(module_names: set[str], geopackage_path: str | None, re
     # 1) Check module_dependencies
     dependency_defs = formulation_validations["formulation_rules"].get("module_dependencies", {})
     for module_name, rules_list in dependency_defs.items():
+
         if module_name not in module_names:
             continue
 

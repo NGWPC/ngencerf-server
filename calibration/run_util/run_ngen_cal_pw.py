@@ -79,10 +79,11 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
         payload = {
             'hindcast_run_id': (None, run.id),
             'validation_yaml': (None, arguments['validation_yaml']),
-            'config_file': (None, arguments['config_File']),
+            'config_file': (None, arguments['config_file']),
             'run_name': (None, arguments['run_name']),
             'interval_cycle': (None, arguments['interval_cycle']),
             'num_iterations': (None, arguments['num_iterations']),
+            'use_state': (None, arguments['use_state']),
             'stdout_file': (None, stdout_file)
         }
     elif isinstance(run, VerificationRun):

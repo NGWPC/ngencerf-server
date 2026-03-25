@@ -6,7 +6,7 @@ from calibration.models import ForecastRun, ColdStartRun
 from calibration.models.hindcast_run import HindcastRun
 from calibration.util.ngen_locations import get_forecast_dir, BMI_FORCING_TEMPLATES, get_cold_start_dir, get_hindcast_dir
 from calibration.views.called_from import called_from
-from calibration.views.common import format_datetime, join_with_or, ErrorReport, readonly_transaction
+from calibration.views.common import format_datetime, join_with_or, readonly_transaction
 from calibration.views.ngen_cal_input import build_config
 from cerfServer.settings import NGEN_BMI_FORCING_WORK_DIR
 
