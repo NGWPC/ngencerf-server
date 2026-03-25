@@ -4,6 +4,7 @@ import math
 import os
 from collections import defaultdict
 from numbers import Real
+from pathlib import Path
 
 from django.db.models import F, QuerySet
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -11,17 +12,16 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName
+from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory
 from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, IterationParameter, IterationMetric
 from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, \
     ErrorResponseSerializer, GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer, GetLogStatusRequestSerializer, \
     GetLogStatusResponseSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
-    get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
-from calibration.views.calibration_forecast_views import get_forecast_log, get_cold_start_log
+    get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_dir, get_forecast_ngen_stdout_file, \
+    get_forecast_ngen_log_dir, get_cold_start_ngen_stdout_file, get_cold_start_ngen_log_dir, get_verification_stdout_file
 from calibration.views.calibration_run_views import map_path_to_host
-from calibration.views.calibration_verification_views import get_verification_log
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
     get_validation_run, CerfException, process_worker_dirs, get_user_email, get_elapsed_str, \
@@ -268,7 +268,7 @@ def resolve_log_context(
         user,
 ):
     """
-    Shared run-resolution logic for get_log and get_log_status.
+    Shared run-resolution logic for log-related endpoints
 
     Returns:
         (ctx, error_return)
@@ -344,68 +344,69 @@ def resolve_log_context(
     }, None
 
 
-def resolve_log_path(ctx: dict, log_category: LogCategory, log_name: LogName) -> str:
-    """
-    Shared match/case mapping (category, name, ctx) -> filesystem path.
-    """
-    calibration_run = ctx["calibration_run"]
-    validation_run = ctx["validation_run"]
-    forecast_run = ctx["forecast_run"]
-    cold_start_run = ctx["cold_start_run"]
-    verification_run = ctx["verification_run"]
+#
+# def resolve_log_path(ctx: dict, log_category: LogCategory, log_name: LogName) -> str:
+#     """
+#     Shared match/case mapping (category, name, ctx) -> filesystem path.
+#     """
+#     calibration_run = ctx["calibration_run"]
+#     validation_run = ctx["validation_run"]
+#     forecast_run = ctx["forecast_run"]
+#     cold_start_run = ctx["cold_start_run"]
+#     verification_run = ctx["verification_run"]
+#
+#     match log_category:
+#         case LogCategory.CALIBRATION:
+#             return get_calibration_log(calibration_run, log_name)
+#
+#         case LogCategory.VALIDATION:
+#             if not validation_run:
+#                 raise CerfException(f"Log category '{log_category.value}' not applicable for validation run")
+#             return get_validation_log(validation_run, log_name)
+#
+#         case LogCategory.FORECAST:
+#             if not forecast_run:
+#                 raise CerfException(f"Log category '{log_category.value}' not applicable for forecast run")
+#             return get_forecast_log(forecast_run, log_name)
+#
+#         case LogCategory.COLD_START:
+#             if not (forecast_run and cold_start_run):
+#                 raise CerfException(f"Log category '{log_category.value}' not applicable for cold start run")
+#             return get_cold_start_log(cold_start_run, log_name)
+#
+#         case LogCategory.VERIFICATION:
+#             if not verification_run:
+#                 raise CerfException(f"Log category '{log_category.value}' not applicable for verification run")
+#             return get_verification_log(verification_run, log_name)
+#
+#         case LogCategory.GLOBAL:
+#             return get_global_log(validation_run or calibration_run, log_name)
+#
 
-    match log_category:
-        case LogCategory.CALIBRATION:
-            return get_calibration_log(calibration_run, log_name)
-
-        case LogCategory.VALIDATION:
-            if not validation_run:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for validation run")
-            return get_validation_log(validation_run, log_name)
-
-        case LogCategory.FORECAST:
-            if not forecast_run:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for forecast run")
-            return get_forecast_log(forecast_run, log_name)
-
-        case LogCategory.COLD_START:
-            if not (forecast_run and cold_start_run):
-                raise CerfException(f"Log category '{log_category.value}' not applicable for cold start run")
-            return get_cold_start_log(cold_start_run, log_name)
-
-        case LogCategory.VERIFICATION:
-            if not verification_run:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for verification run")
-            return get_verification_log(verification_run, log_name)
-
-        case LogCategory.GLOBAL:
-            return get_global_log(validation_run or calibration_run, log_name)
-
-
-def get_status_name_for_log(ctx: dict, log_category: LogCategory) -> str:
-    """
-    Centralizes the 'status' you return.
-
-    Preserves your current behavior:
-      - COLD_START status comes from cold_start_run.status, not forecast_run.status.
-    """
-    calibration_run = ctx["calibration_run"]
-    validation_run = ctx["validation_run"]
-    forecast_run = ctx["forecast_run"]
-    cold_start_run = ctx["cold_start_run"]
-    verification_run = ctx["verification_run"]
-
-    match log_category:
-        case LogCategory.VALIDATION:
-            return (validation_run or calibration_run).status.name
-        case LogCategory.FORECAST:
-            return (forecast_run or calibration_run).status.name
-        case LogCategory.COLD_START:
-            return (cold_start_run or calibration_run).status.name
-        case LogCategory.VERIFICATION:
-            return (verification_run or calibration_run).status.name
-        case _:
-            return calibration_run.status.name
+# def get_status_name_for_log(ctx: dict, log_category: LogCategory) -> str:
+#     """
+#     Centralizes the 'status' you return.
+#
+#     Preserves your current behavior:
+#       - COLD_START status comes from cold_start_run.status, not forecast_run.status.
+#     """
+#     calibration_run = ctx["calibration_run"]
+#     validation_run = ctx["validation_run"]
+#     forecast_run = ctx["forecast_run"]
+#     cold_start_run = ctx["cold_start_run"]
+#     verification_run = ctx["verification_run"]
+#
+#     match log_category:
+#         case LogCategory.VALIDATION:
+#             return (validation_run or calibration_run).status.name
+#         case LogCategory.FORECAST:
+#             return (forecast_run or calibration_run).status.name
+#         case LogCategory.COLD_START:
+#             return (cold_start_run or calibration_run).status.name
+#         case LogCategory.VERIFICATION:
+#             return (verification_run or calibration_run).status.name
+#         case _:
+#             return calibration_run.status.name
 
 
 @extend_schema(
@@ -421,24 +422,29 @@ def get_status_name_for_log(ctx: dict, log_category: LogCategory) -> str:
             description="Internal server error"
         )
     },
-    description="Retrieve available log names for a given validation run"
+    description="Retrieve available log names for a calibration, validation, forecast, or verification run"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def get_log_names(request: Request) -> Response:
     """
-    Retrieves a list of available log names for a specific calibration or validation run.
+    Retrieves a list of available log names for a specific calibration, validation, forecast, or verification run.
 
     - Handles request validation and user permissions.
-    - Returns logs categorized by their association (calibration, validation, forecast, cold start, verification, global).
+    - Returns log files as a list where each entry is a single-key object
+      mapping one log category to its list of log files.
+    - Within each category, files are sorted by filename only, not full path.
 
-    :param request: The HTTP request object containing validation run ID.
+    :param request: The HTTP request object containing one run ID.
     :return: JSON response with log names or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, data)
+    validator, error_return = validate_request(
+        CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer,
+        data
+    )
     if error_return:
         return error_return
 
@@ -447,109 +453,156 @@ def get_log_names(request: Request) -> Response:
     forecast_run_id = validator.get('forecast_run_id')
     verification_run_id = validator.get('verification_run_id')
 
-    if validation_run_id:
-        validation_run, error_return = get_validation_run(
-            validation_run_id,
-            request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
+    logs_by_category, error_return = get_allowed_logs_for_request(
+        calibration_run_id=calibration_run_id,
+        validation_run_id=validation_run_id,
+        forecast_run_id=forecast_run_id,
+        verification_run_id=verification_run_id,
+        user=request.user,
+    )
+    if error_return:
+        return error_return
 
-        # Define available log categories and names
-        log_names = [
-            {LogCategory.GLOBAL.value: ['ngen']},
-            {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
-            {LogCategory.VALIDATION.value: ['ngen-cal stdout']},
+    category_order = {
+        'Calibration': 0,
+        'Validation': 1,
+        'Cold Start': 2,
+        'Forecast': 3,
+    }
+
+    sorted_categories = sorted(
+        logs_by_category.items(),
+        key=lambda item: (category_order.get(item[0], 999), item[0].lower())
+    )
+
+    response = {
+        'log_names': [
+            {
+                log_category: sorted(
+                    log_paths,
+                    key=lambda path: os.path.basename(path).lower()
+                )
+            }
+            for log_category, log_paths in sorted_categories
+            if log_paths
         ]
-    elif forecast_run_id:
-        forecast_run, error_return = get_forecast_run(
-            forecast_run_id,
-            request.user,
-            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED,
-                        StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
-        cold_start_run = forecast_run.cold_start_run
-
-        # Define available log categories and names
-        shared_logs = ['ngen', 'ngen stdout', 'mswm']
-        log_names: list[dict[str, list[str]]] = []
-
-        # Forecast logs are available if there's no cold-start, or cold-start finished successfully.
-        if not cold_start_run or cold_start_run.status == StatusEnum.DONE.db_instance:
-            log_names.append({LogCategory.FORECAST.value: [*shared_logs, 'forecast stdout']})
-
-        # Cold-start logs are available whenever a cold-start exists (regardless of status).
-        if cold_start_run:
-            log_names.append({LogCategory.COLD_START.value: [*shared_logs, 'cold start stdout']})
-
-    elif verification_run_id:
-        verification_run, error_return = get_verification_run(
-            verification_run_id,
-            request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
-
-        # Define available log categories and names
-        log_names = [
-            {LogCategory.VERIFICATION.value: ['verification stdout', 'verification']}
-        ]
-    else:
-        calibration_run, error_return = get_calibration_run(
-            calibration_run_id,
-            request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
-        )
-        if error_return:
-            return error_return
-
-        # Define available log categories and names
-        log_names = [
-            {LogCategory.GLOBAL.value: ['ngen']},
-            {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
-        ]
-
-    response = {'log_names': log_names}
+    }
 
     response_validator, error_response = validate_response(GetLogNamesResponseSerializer, response)
     if error_response:
         return error_response
 
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
+        f'{json.dumps(response_validator.data)}'
+    )
     return Response(response_validator.data)
 
 
-VALID_LOG_NAMES = {
-    LogCategory.CALIBRATION: [LogName.NGEN_CAL_STDOUT, LogName.NGEN_STDOUT],
-    LogCategory.VALIDATION: [LogName.NGEN_CAL_STDOUT, LogName.NGEN_STDOUT],
-    LogCategory.FORECAST: [LogName.FORECAST_STDOUT, LogName.NGEN_STDOUT, LogName.MSWM, LogName.NGEN],
-    LogCategory.COLD_START: [LogName.COLD_START_STDOUT, LogName.NGEN_STDOUT, LogName.MSWM, LogName.NGEN],
-    LogCategory.VERIFICATION: [LogName.VERIFICATION, LogName.VERIFICATION_STDOUT],
-    LogCategory.GLOBAL: [LogName.NGEN]
-}
-
-
-def validate_log_name(log_category: LogCategory, log_name: LogName):
+def get_allowed_logs_for_request(
+        *,
+        calibration_run_id: int | None,
+        validation_run_id: int | None,
+        forecast_run_id: int | None,
+        verification_run_id: int | None,
+        user,
+) -> tuple[dict[str, list[str]] | None, Response | None]:
     """
-    Validates whether the provided log name is valid for the given log category.
+    Builds the set of logs the authenticated user is allowed to access
+    for the specified run.
 
-    - Ensures the log name exists in the predefined valid logs for the category.
+    - Resolves the requested run in user context.
+    - Collects the applicable logs for that run.
+    - Normalizes all returned paths to canonical absolute paths before returning.
 
-    :param log_category: The category of the log (enum representation of LogCategory).
-    :param log_name: The log name to validate.
-    :raises ValueError: If the log name is not valid for the given category.
+    :return:
+        A tuple of (logs, error_return), where logs is a dict keyed by
+        log category value and each value is a list of normalized absolute paths.
     """
-    valid_logs = VALID_LOG_NAMES.get(log_category, [])
+    ctx, error_return = resolve_log_context(
+        calibration_run_id=calibration_run_id,
+        validation_run_id=validation_run_id,
+        forecast_run_id=forecast_run_id,
+        verification_run_id=verification_run_id,
+        user=user,
+    )
+    if error_return:
+        return None, error_return
 
-    valid_log_values = [log.value for log in valid_logs]
+    calibration_run = ctx["calibration_run"]
+    validation_run = ctx["validation_run"]
+    forecast_run = ctx["forecast_run"]
+    cold_start_run = ctx["cold_start_run"]
+    verification_run = ctx["verification_run"]
 
-    if log_name not in valid_logs:
-        raise ValueError(f"Invalid log name '{log_name.value}' for category '{log_category.value}'. Valid options are: {valid_log_values}.")
+    logs: dict[str, list[str]] = {}
+
+    if validation_run:
+        logs[LogCategory.CALIBRATION.value] = get_calibration_logs(calibration_run)
+
+        validation_logs = []
+        validation_type = validation_run.validation_type
+
+        if validation_type == ValidationType.VALID_CONTROL.value:
+            file = get_validation_control_stdout_file(calibration_run)
+            if os.path.exists(file):
+                validation_logs.append(file)
+        elif validation_type == ValidationType.VALID_BEST.value:
+            file = get_validation_best_stdout_file(calibration_run)
+            if os.path.exists(file):
+                validation_logs.append(file)
+        else:
+            file = get_validation_iteration_stdout_file(
+                calibration_run,
+                validation_run.worker_name,
+                validation_run.iteration_num
+            )
+            if os.path.exists(file):
+                validation_logs.append(file)
+
+        file = find_ngen_stdout_log(validation_run)
+        if file and os.path.exists(file):
+            validation_logs.append(file)
+
+        logs[LogCategory.VALIDATION.value] = validation_logs
+
+    elif forecast_run:
+        forecast_logs = []
+        file = get_forecast_ngen_stdout_file(forecast_run)
+        if os.path.exists(file):
+            forecast_logs.append(file)
+
+        ngen_log_dir = get_forecast_ngen_log_dir(forecast_run)
+        forecast_logs.extend([str(p) for p in Path(ngen_log_dir).glob("*.log")])
+        logs[LogCategory.FORECAST.value] = forecast_logs
+
+        if cold_start_run:
+            cold_start_logs = []
+            file = get_cold_start_ngen_stdout_file(cold_start_run)
+            if os.path.exists(file):
+                cold_start_logs.append(file)
+
+            ngen_log_dir = get_cold_start_ngen_log_dir(cold_start_run)
+            cold_start_logs.extend([str(p) for p in Path(ngen_log_dir).glob("*.log")])
+            logs[LogCategory.COLD_START.value] = cold_start_logs
+
+    elif verification_run:
+        verification_logs = []
+        file = get_verification_stdout_file(verification_run)
+        if os.path.exists(file):
+            verification_logs.append(file)
+
+        logs[LogCategory.VERIFICATION.value] = verification_logs
+
+    else:
+        logs[LogCategory.CALIBRATION.value] = get_calibration_logs(calibration_run)
+
+    normalized_logs = {
+        category: [normalize_log_path(path) for path in paths]
+        for category, paths in logs.items()
+    }
+
+    return normalized_logs, None
 
 
 @extend_schema(
@@ -565,7 +618,7 @@ def validate_log_name(log_category: LogCategory, log_name: LogName):
             description="Internal server error"
         )
     },
-    description="Retrieve a specific log file with pagination support"
+    description="Retrieve a specific allowed log file with pagination support"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
@@ -574,7 +627,8 @@ def get_log(request: Request) -> Response:
     Retrieves a specific log file for a calibration, validation, forecast, cold start, or verification run.
 
     - Supports pagination for large log files.
-    - Validates log category and log name.
+    - Validates that the requested log path is one of the allowed logs
+      for the authenticated user and requested run.
 
     :param request: The HTTP request object containing run and log information.
     :return: JSON response with log file content or error details.
@@ -590,16 +644,11 @@ def get_log(request: Request) -> Response:
     validation_run_id = validator.get('validation_run_id')
     forecast_run_id = validator.get('forecast_run_id')
     verification_run_id = validator.get('verification_run_id')
-    log_category = LogCategory(validator.get('log_category'))
-    log_name = LogName(validator.get('log_name'))
+    log_name = validator.get('log_name')
     start = validator.get('start')
     limit = validator.get('limit')
 
-    # Validate log category and log name
-    validate_log_name(log_category, log_name)
-
-    # Resolve run context (calibration/validation/forecast/cold-start/verification)
-    ctx, error_return = resolve_log_context(
+    logs, error_return = get_allowed_logs_for_request(
         calibration_run_id=calibration_run_id,
         validation_run_id=validation_run_id,
         forecast_run_id=forecast_run_id,
@@ -609,22 +658,29 @@ def get_log(request: Request) -> Response:
     if error_return:
         return error_return
 
-    # Resolve log path from category/name/context
-    log_path = resolve_log_path(ctx, log_category, log_name)
+    requested_log_name = normalize_log_path(log_name)
+    allowed_logs = {
+        path
+        for paths in logs.values()
+        for path in paths
+    }
+
+    if requested_log_name not in allowed_logs:
+        raise CerfException(f"Log file not valid for this run: {log_name}")
 
     # Check if the log file exists
-    if log_path and not os.path.exists(log_path):
-        raise CerfException(f"Log file not found: {log_path}")
+    if not os.path.exists(requested_log_name):
+        raise CerfException(f"Log file not found: {requested_log_name}")
 
     # Get the file size in bytes
-    file_size = os.path.getsize(log_path)
+    file_size = os.path.getsize(requested_log_name)
 
     # Count the total number of lines in the file for pagination metadata
-    with open(log_path, 'r') as f:
+    with open(requested_log_name, 'r') as f:
         total_lines = sum(1 for _ in f)
 
     # Read the requested lines from the log file with null replacement
-    with open(log_path, 'r') as file:
+    with open(requested_log_name, 'r') as file:
         all_lines = [line.replace('\x00', ' ') for line in file]
 
     if start == -1:
@@ -640,15 +696,19 @@ def get_log(request: Request) -> Response:
     }
 
     response = {
-        'message': f"{log_category.value.capitalize()} {log_name.value} log file retrieved",
+        'message': f"Log file {requested_log_name} retrieved",
         'log_data': paginated_lines,
-        'log_path': map_path_to_host(log_path),
+        'log_name': map_path_to_host(requested_log_name),
         'byte_offset': file_size,
         'pagination_metadata': pagination_metadata,
-        'status': get_status_name_for_log(ctx, log_category),
+        # 'status': get_status_name_for_log(ctx, log_category),
     }
 
-    response_validator, error_response = validate_response(GetLogsResponseSerializer, response, fields_to_truncate=['log_data'], max_length=10)
+    response_validator, error_response = validate_response(
+        GetLogsResponseSerializer,
+        response,
+        fields_to_truncate=['log_data'], max_length=10
+    )
     if error_response:
         return error_response
 
@@ -672,18 +732,22 @@ def get_log(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Retrieve a specific log file with pagination support"
+    description="Check whether a specific allowed log file has changed"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_log_status(request: Request) -> Response:
     """
-    Checks the status a specific log file to see if it has been updated since it was last requested.
+    Checks whether a specific log file has been updated since it was last requested.
 
-    - Uses byte_offset to compare the size of the last data set retrieved to what is currently in the file/cache.
+    - Validates that the requested log path is one of the allowed logs
+      for the authenticated user and requested run.
+    - Uses byte_offset to compare the previously returned file size
+      to the current file size on disk.
 
     :param request: The HTTP request object containing run and log information.
-    :return: JSON response with log file content or error details.
+    :return: JSON response indicating whether the log file has changed.
+
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -696,15 +760,11 @@ def get_log_status(request: Request) -> Response:
     validation_run_id = validator.get('validation_run_id')
     forecast_run_id = validator.get('forecast_run_id')
     verification_run_id = validator.get('verification_run_id')
-    log_category = LogCategory(validator.get('log_category'))
-    log_name = LogName(validator.get('log_name'))
+    # log_category = LogCategory(validator.get('log_category'))
+    log_name = validator.get('log_name')
     byte_offset = validator.get('byte_offset')
 
-    # Validate log category and log name
-    validate_log_name(log_category, log_name)
-
-    # Resolve run context (calibration/validation/forecast/cold-start/verification)
-    ctx, error_return = resolve_log_context(
+    logs, error_return = get_allowed_logs_for_request(
         calibration_run_id=calibration_run_id,
         validation_run_id=validation_run_id,
         forecast_run_id=forecast_run_id,
@@ -714,16 +774,24 @@ def get_log_status(request: Request) -> Response:
     if error_return:
         return error_return
 
-    # Resolve log path from category/name/context
-    log_path = resolve_log_path(ctx, log_category, log_name)
+    requested_log_name = normalize_log_path(log_name)
+    allowed_logs = {
+        path
+        for paths in logs.values()
+        for path in paths
+    }
+
+    if requested_log_name not in allowed_logs:
+        raise CerfException(f"Log file not valid for this run: {log_name}")
 
     # Get the file size in bytes
-    file_size = os.path.getsize(log_path) if os.path.exists(log_path) else 0
+    file_size = os.path.getsize(requested_log_name) if os.path.exists(requested_log_name) else 0
 
     response = {
-        'message': f"log file {map_path_to_host(log_path)} has " + ("changed" if file_size != byte_offset else "not changed"),
+        'message': f"Log file {map_path_to_host(requested_log_name)} has " +
+                   ("changed" if file_size != byte_offset else "not changed"),
         'file_updated': (file_size != byte_offset),
-        'status': get_status_name_for_log(ctx, log_category)
+        # 'status': get_status_name_for_log(ctx, log_category)
     }
 
     response_validator, error_response = validate_response(GetLogStatusResponseSerializer, response)
@@ -731,78 +799,40 @@ def get_log_status(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}'
+    )
     return Response(response_validator.data)
 
 
-def get_calibration_log(calibration_run: CalibrationRun, log_name: LogName) -> str:
+def get_calibration_logs(calibration_run: CalibrationRun) -> list[str]:
     """
-    Retrieves the appropriate log file for a given calibration run.
+    Collects available calibration log files for a calibration run.
 
-    - Determines the log file based on the specified log name.
-    - Supports logs like `ngen.stdout` and `ngen-cal.stdout`.
+    Includes:
+    - the calibration stdout log
+    - the ngen stdout log, if present
+    - any *.log files in the calibration log directory
 
-    :param calibration_run: The CalibrationRun object for which the log is retrieved.
-    :param log_name: The LogName enum specifying the log type.
-    :return: The path to the log file.
+    :param calibration_run: The calibration run whose logs should be collected.
+    :return: A list of log file paths.
     """
-    if log_name == LogName.NGEN_STDOUT:
-        return find_ngen_stdout_log(calibration_run)
-    elif log_name == LogName.NGEN_CAL_STDOUT:
-        return get_calibration_stdout_file(calibration_run)
+    logs = []
 
-    raise CerfException(f'Invalid log name: {log_name}')
+    file = get_calibration_stdout_file(calibration_run)
+    if os.path.exists(file):
+        logs.append(file)
 
+    file = find_ngen_stdout_log(calibration_run)
+    if file and os.path.exists(file):
+        logs.append(file)
 
-def get_validation_log(validation_run: ValidationRun, log_name: LogName) -> str:
-    """
-    Fetches the appropriate log file for a specific validation run.
+    ngen_log_dir = get_ngen_log_dir(calibration_run)
+    # Find all log files in this directory
+    base_path = Path(ngen_log_dir)
+    files = [str(p) for p in base_path.glob("*.log")]
+    logs.extend(files)
 
-    - Handles various validation types (best, control, iteration).
-    - Supports logs like `ngen.stdout` and `ngen-cal.stdout`.
-
-    :param validation_run: The ValidationRun object for which the log is retrieved.
-    :param log_name: The LogName enum specifying the log type.
-    :return: The path to the log file.
-    """
-    validation_type = validation_run.validation_type
-
-    if validation_type in {ValidationType.VALID_BEST.value, ValidationType.VALID_CONTROL.value}:
-        if log_name == LogName.NGEN_CAL_STDOUT:
-            return (
-                get_validation_best_stdout_file(validation_run.calibration_run)
-                if validation_type == ValidationType.VALID_BEST.value
-                else get_validation_control_stdout_file(validation_run.calibration_run)
-            )
-
-    elif validation_type == ValidationType.VALID_ITERATION.value:
-        if log_name == LogName.NGEN_CAL_STDOUT:
-            return get_validation_iteration_stdout_file(
-                validation_run.calibration_run,
-                validation_run.worker_name,
-                validation_run.iteration_num
-            )
-
-    if log_name == LogName.NGEN_STDOUT:
-        return find_ngen_stdout_log(validation_run)
-
-    raise CerfException(f'Invalid log_name: {log_name}')
-
-
-def get_global_log(run: CalibrationRun | ValidationRun, log_name: LogName) -> str:
-    """
-    Retrieves the global log file, if applicable.
-
-    - Only supports `ngen` logs currently.
-
-    :param run: The CalibrationRun or ValidationRun object.
-    :param log_name: The LogName enum specifying the log type.
-    :return: The path to the global log file.
-    """
-    if log_name == LogName.NGEN:
-        return get_ngen_log_path(run if isinstance(run, CalibrationRun) else run.calibration_run)
-
-    raise CerfException(f'Invalid log name: {log_name}')
+    return logs
 
 
 def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
@@ -810,7 +840,7 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
     Searches for the `ngen.stdout` log file in worker directories of a given run.
 
     - Iterates over worker directories using `process_worker_dirs`.
-    - Returns the path to the log file if found.
+    - Returns the path to the log file if found, otherwise returns None.
 
     :param run: The CalibrationRun or ValidationRun object.
     :return: The path of the `ngen.stdout` log file, or None if not found.
@@ -832,7 +862,18 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
     # Call process_worker_dirs to iterate through the worker directories
     process_worker_dirs(run, check_worker)
 
-    if not ngen_log_path:
-        raise CerfException('Could not find ngen log in worker directory')
-
     return ngen_log_path
+
+
+def normalize_log_path(path: str) -> str:
+    """
+    Normalizes a log path to a canonical absolute path for reliable comparison.
+
+    - Resolves relative segments such as '.' and '..'.
+    - Uses strict=False so normalization does not fail solely because the file
+      does not exist at the time of normalization.
+
+    :param path: The input filesystem path.
+    :return: A normalized absolute path string.
+    """
+    return str(Path(path).resolve(strict=False))
