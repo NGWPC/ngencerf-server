@@ -14,10 +14,10 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory
 from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, IterationParameter, IterationMetric
-from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, \
+from calibration.util.calibration_validators import CalibrationRunSerializer, \
     ErrorResponseSerializer, GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer, GetLogStatusRequestSerializer, \
-    GetLogStatusResponseSerializer
+    GetLogStatusResponseSerializer, CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_dir, get_forecast_ngen_stdout_file, \
     get_forecast_ngen_log_dir, get_cold_start_ngen_stdout_file, get_cold_start_ngen_log_dir, get_verification_stdout_file
@@ -410,7 +410,7 @@ def resolve_log_context(
 
 
 @extend_schema(
-    request=CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer,
+    request=CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer,
     responses={
         200: GetLogNamesResponseSerializer,
         400: OpenApiResponse(
@@ -441,10 +441,7 @@ def get_log_names(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(
-        CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer,
-        data
-    )
+    validator, error_return = validate_request(CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer, data)
     if error_return:
         return error_return
 

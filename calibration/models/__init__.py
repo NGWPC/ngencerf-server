@@ -12,6 +12,7 @@ from .forecast_configuration import ForecastConfiguration
 from .forecast_run import ForecastRun
 from .gage import Gage
 from .geopackage_source import GeopackageSource
+from .hindcast_run import HindcastRun
 from .iteration import Iteration
 from .iteration_metric import IterationMetric
 from .iteration_parameter import IterationParameter

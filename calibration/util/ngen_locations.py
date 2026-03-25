@@ -7,6 +7,7 @@ from django.conf import settings
 from calibration.enums import ValidationType
 from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun, VerificationRun
+from calibration.models.hindcast_run import HindcastRun
 from calibration.util.file_util import get_single_file
 from cerfServer.settings import NGEN_ENVIRONMENT
 
@@ -144,11 +145,15 @@ def get_output_validation_iteration_plot_dir(run: CalibrationRun, iteration_num:
 
 
 def get_output_cold_start_run_dir(run: CalibrationRun) -> str:
-    return os.path.join(get_output_dir(run), 'Cold_Start_Run')
+    return os.path.join(get_output_dir(run), 'Model_State_Run', 'Cold_Start_Run')
 
 
 def get_output_forecast_run_dir(run: CalibrationRun) -> str:
     return os.path.join(get_output_dir(run), 'Forecast_Run')
+
+
+def get_output_hindcast_run_dir(run: CalibrationRun) -> str:
+    return os.path.join(get_output_dir(run), 'Hindcast_Run')
 
 
 def get_full_worker_filename(short_worker_name: str) -> str:
@@ -267,8 +272,16 @@ def get_cold_start_dir(cold_start_run: ColdStartRun) -> str:
     return os.path.join(get_output_cold_start_run_dir(cold_start_run.calibration_run), f'cold_start_{cold_start_run.id}')
 
 
+def get_cold_start_state(cold_start_run: ColdStartRun) -> str:
+    return os.path.join(get_cold_start_dir(cold_start_run), f'state_save')
+
+
 def get_forecast_dir(forecast_run: ForecastRun) -> str:
     return os.path.join(get_output_forecast_run_dir(forecast_run.calibration_run), f'forecast_{forecast_run.id}')
+
+
+def get_hindcast_dir(hindcast_run: HindcastRun) -> str:
+    return os.path.join(get_output_hindcast_run_dir(hindcast_run.calibration_run), f'hindcast_{hindcast_run.id}')
 
 
 def get_cold_start_output_dir(cold_start_run: ColdStartRun) -> str:
@@ -301,6 +314,10 @@ def get_forecast_stdout_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), 'forecast_stdout.log')
 
 
+def get_hindcast_stdout_file(hindcast_run: HindcastRun) -> str:
+    return os.path.join(get_hindcast_dir(hindcast_run), 'hindcast_stdout.log')
+
+
 def get_cold_start_ngen_stdout_file(cold_start_run: ColdStartRun) -> str:
     return os.path.join(get_cold_start_dir(cold_start_run), 'ngen_stdout_stderr.log')
 
@@ -323,6 +340,10 @@ def get_cold_start_performance_file(cold_start_run: ColdStartRun) -> str:
 
 def get_forecast_performance_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), 'forecast_performance.log')
+
+
+def get_hindcast_performance_file(hindcast_run: HindcastRun) -> str:
+    return os.path.join(get_hindcast_dir(hindcast_run), 'forecast_performance.log')
 
 
 def get_forecast_realization_file(forecast_run: ForecastRun) -> str:
@@ -385,6 +406,10 @@ def get_validation_iteration_git_info_file(run: ValidationRun, worker_name: str,
 
 def get_forecast_git_info_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), "git_info_forecast.json")
+
+
+def get_hindcast_git_info_file(hindcast_run: HindcastRun) -> str:
+    return os.path.join(get_hindcast_dir(hindcast_run), "git_info_hindcast.json")
 
 
 def get_cold_start_git_info_file(cold_start_run: ColdStartRun) -> str:

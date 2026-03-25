@@ -1,4 +1,4 @@
-from django.core.validators import RegexValidator
+from django.core.validators import RegexValidator, MinValueValidator
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
 from rest_framework.fields import empty
@@ -159,12 +159,20 @@ class ForecastRunSerializer(BaseSerializer):
     forecast_run_id = serializers.IntegerField(required=True)
 
 
+class HindcastRunSerializer(BaseSerializer):
+    hindcast_run_id = serializers.IntegerField(required=True)
+
+
 class VerificationRunSerializer(BaseSerializer):
     verification_run_id = serializers.IntegerField(required=True)
 
 
 class DeleteForecastRunResponseSerializer(GenericMessageResponseSerializer):
     forecast_run_id = serializers.IntegerField(required=True)
+
+
+class DeleteHindcastRunResponseSerializer(GenericMessageResponseSerializer):
+    hindcast_run_id = serializers.IntegerField(required=True)
 
 
 class CalibrationRunIdList(BaseSerializer):
@@ -197,10 +205,11 @@ class CalibrationOrValidationRunSerializer(BaseSerializer):
         return data
 
 
-class CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer(BaseSerializer):
+class CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=False, allow_null=False)
     validation_run_id = serializers.IntegerField(required=False, allow_null=False)
     forecast_run_id = serializers.IntegerField(required=False, allow_null=False)
+    hindcast_run_id = serializers.IntegerField(required=False, allow_null=False)
     cold_start_run_id = serializers.IntegerField(required=False, allow_null=False)
     verification_run_id = serializers.IntegerField(required=False, allow_null=False)
 
@@ -230,11 +239,12 @@ class CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer(Ba
         return data
 
 
-class GetStatusRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
+class GetStatusRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer):
     include_performance_metrics = serializers.BooleanField(required=False, default=False)
 
 
-class CancelJobResponseSerializer(GenericMessageAndStatusResponseSerializer, CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
+class CancelJobResponseSerializer(GenericMessageAndStatusResponseSerializer,
+                                  CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer):
     def validate(self, data):
         # Call the parent validate method to include its logic
         return super().validate(data)
@@ -287,8 +297,10 @@ class LoggingConfigSerializer(BaseSerializer):
 
         return normalized
 
+class ForecastConfigurationSerializer(BaseSerializer):
+    configuration_name = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
 
-# TODO Fix these
+
 class CreateColdStartRequestSerializer(CalibrationRunSerializer):
     configuration_name = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=True, allow_null=False)
@@ -299,6 +311,16 @@ class CreateForecastRequestSerializer(CalibrationRunSerializer):
     configuration_name = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=True, allow_null=False)
     cold_start_date = serializers.DateTimeField(required=False, allow_null=True)
+    logging_config = LoggingConfigSerializer(required=False)
+
+
+class CreateHindcastRequestSerializer(CalibrationRunSerializer):
+    configuration_name = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
+    cycle_date = serializers.DateTimeField(required=True, allow_null=False)
+    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24], required=True)
+    num_iterations = serializers.IntegerField(required=True, allow_null=False, validators=[MinValueValidator(1)])
+    cold_start_date = serializers.DateTimeField(required=False, allow_null=True)
+    cold_start_run_id = serializers.IntegerField(required=False, allow_null=True)
     logging_config = LoggingConfigSerializer(required=False)
 
 
@@ -869,6 +891,14 @@ class CreateAndRunForecastResponseSerializer(BaseSerializer):
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
+class CreateAndRunHindcastResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    hindcast_run_id = serializers.IntegerField(required=True)
+    cold_start_run_id = serializers.IntegerField(required=True, allow_null=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=False)
+
+
 # Geopackage from Data Services
 class GeopackageSerializer(BaseSerializer):
     uri = serializers.CharField(required=True, allow_blank=False)
@@ -1350,6 +1380,10 @@ class ForecastJobSlurmCallbackRequestSerializer(ForecastRunSerializer):
     job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
 
 
+class HindcastJobSlurmCallbackRequestSerializer(HindcastRunSerializer):
+    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
+
+
 class VerificationJobSlurmCallbackRequestSerializer(VerificationRunSerializer):
     job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
 
@@ -1420,6 +1454,10 @@ class ForecastConfigSerializer(BaseSerializer):
     fcst_win = serializers.IntegerField(required=True)
 
 
+class LoadForecastTabRequestSerializer(CalibrationRunSerializer):
+    hindcast_only = serializers.BooleanField(allow_null=False, required=True)
+
+
 class LoadForecastTabResponseSerializer(BaseSerializer):
     forecast_configuration_values = ForecastConfigSerializer(many=True)
 
@@ -1450,6 +1488,10 @@ class GetForecastJobsResponseSerializer(BaseSerializer):
     id_range = serializers.ListField(child=serializers.IntegerField(required=True, allow_null=False),
                                      min_length=2, max_length=2, required=False)
     gages = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
+
+
+class GetColdStartJobsForConfigurationResponseSerializer(BaseSerializer):
+    cold_start_jobs = serializers.ListSerializer(child=ColdStartJobsResponseSerializer(), required=True, allow_empty=True)
 
 
 ##################################
@@ -1679,14 +1721,14 @@ class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = ValidationJobsResponseSerializer(many=True, required=True)
 
 
-class GetLogRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
+class GetLogRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer):
     # log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory, allow_blank=False)])
     log_name = serializers.CharField(required=True, allow_blank=False)
     start = serializers.IntegerField(required=False, default=0, min_value=-1)
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
 
-class GetLogStatusRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
+class GetLogStatusRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer):
     # log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory)])
     log_name = serializers.CharField(required=True)
     byte_offset = serializers.IntegerField(required=True, min_value=0)
