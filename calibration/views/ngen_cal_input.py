@@ -17,6 +17,7 @@ from calibration.enums_vanilla import NgenEnvironmentEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun, CalibrationModulePropertyValue
 from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, get_cached_modules_by_id, get_cached_module_properties
+from calibration.util.geopkg import get_geometry_from_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     get_observational_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, UEB_LIB, NGEN_MODULE_PARAMETERS, \
     PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES, get_forcing_dir_for_job, get_geopackage_file_path
@@ -594,7 +595,14 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
             write_parameter_files(params, calibration['calib_parameter_file'])
 
+        print('catchments', run.num_catchments)
         if build and NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+            if run.num_catchments is None:
+                # Handle old jobs which might not have saved num_catchments
+                geopackage_path = get_geopackage_file_path(run)
+                catchments = list(get_geometry_from_gpkg(geopackage_path)['catchments'].keys())
+                run.num_catchments = len(catchments)
+
             config['Parallel'] = parallel
             run.mpi_nprocs = get_mpi_nodes(run.num_catchments)
             parallel['nprocs'] = run.mpi_nprocs
