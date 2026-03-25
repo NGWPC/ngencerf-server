@@ -74,10 +74,10 @@ def get_log_names(request: Request) -> Response:
         return error_return
 
     category_order = {
-        'Calibration': 0,
-        'Validation': 1,
-        'Cold Start': 2,
-        'Forecast': 3,
+        LogCategory.VALIDATION.value: 0,
+        LogCategory.CALIBRATION.value: 1,
+        LogCategory.COLD_START.value: 2,
+        LogCategory.FORECAST.value: 3,
     }
 
     sorted_categories = sorted(
@@ -536,6 +536,7 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
 
     - Iterates over worker directories using `process_worker_dirs`.
     - Returns the path to the log file if found, otherwise returns None.
+    - If the worker output directory does not exist yet, returns None.
 
     :param run: The CalibrationRun or ValidationRun object.
     :return: The path of the `ngen.stdout` log file, or None if not found.
@@ -548,14 +549,17 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
         potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
 
         # Check if ngen stdout file exists in the current worker directory
-        if potential_log_path and os.path.isfile(potential_log_path):
+        if os.path.isfile(potential_log_path):
             ngen_log_path = potential_log_path
             return True  # stop searching
 
         return False  # keep searching
 
     # Call process_worker_dirs to iterate through the worker directories
-    process_worker_dirs(run, check_worker)
+    try:
+        process_worker_dirs(run, check_worker)
+    except CerfException:
+        return None
 
     return ngen_log_path
 
