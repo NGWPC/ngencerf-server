@@ -595,7 +595,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
             write_parameter_files(params, calibration['calib_parameter_file'])
 
-        print('catchments', run.num_catchments)
         if build and NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
             if run.num_catchments is None:
                 # Handle old jobs which might not have saved num_catchments
