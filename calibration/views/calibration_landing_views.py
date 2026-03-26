@@ -1,3 +1,4 @@
+import errno
 import json
 import logging
 import os
@@ -727,7 +728,7 @@ def clone_job(request: Request) -> Response:
 
 
 @lru_cache
-def get_running_statuses():
+def get_running_statuses() -> list:
     return [
         StatusEnum.RUNNING.db_instance,
         StatusEnum.SUBMITTED.db_instance,
@@ -882,12 +883,28 @@ def delete_jobs(request: Request) -> Response:
 @handle_exceptions
 def archive_jobs(request: Request) -> Response:
     """
-    Archive or unarchive multiple calibration jobs. A soft-delete mechanism:
-    archiving moves job data to S3 and removes the local directory;
-    unarchiving restores from S3 into a clean directory.
+    Archive or unarchive multiple calibration jobs.
+
+    Archiving copies the local job directory to S3 and then removes the active
+    local path. After the copy succeeds, the local directory is first renamed to
+    a quarantine path on the same filesystem. This allows the archive to succeed
+    once the active path is gone, even if immediate recursive deletion of the
+    quarantined directory is delayed by NFS/EFS open-file behavior.
+
+    Unarchiving restores the job directory from S3 back to local storage and
+    then deletes the archived S3 objects only after the restore succeeds.
+
+    A job is marked archived only after the requested operation reaches a safe
+    completion point:
+    - Archive: S3 copy verified and active local path moved out of the way.
+    - Unarchive: Local restore verified and archived S3 objects removed.
+
+    Note:
+    Quarantined directories that cannot be immediately deleted are cleaned up
+    later by a scheduled background process.
 
     :param request: The HTTP request object.
-    :return: A Response object with the archive confirmation.
+    :return: A Response object with per-job archive or unarchive results.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -902,7 +919,7 @@ def archive_jobs(request: Request) -> Response:
     if not settings.NGENCERF_ARCHIVE_S3_PATH:
         return ResponseError("NGENCERF_ARCHIVE_S3_PATH is undefined")
 
-    # Make sure it's s3 and ends with a directory slash
+    # Make sure the configured archive root is a valid S3 prefix.
     try:
         s3_prefix = normalize_s3_prefix(settings.NGENCERF_ARCHIVE_S3_PATH)
     except ValueError as e:
@@ -927,7 +944,7 @@ def archive_jobs(request: Request) -> Response:
 
     job_results = []
 
-    # Bulk fetch all the calibration jobs including archived jobs
+    # Bulk fetch all requested runs, including archived ones.
     runs_by_id, errors_by_id = get_calibration_runs_bulk(
         calibration_run_ids=calibration_run_ids,
         user=request.user,
@@ -935,7 +952,7 @@ def archive_jobs(request: Request) -> Response:
         include_archived=True,
     )
 
-    # Process each calibration_run_id in the list
+    # Process each calibration_run_id in the request.
     for calibration_run_id in calibration_run_ids:
 
         # Validation / access errors
@@ -950,7 +967,7 @@ def archive_jobs(request: Request) -> Response:
 
         run = runs_by_id[calibration_run_id]
 
-        # Can't archive if the job is locked
+        # Can't archive or unarchive if the job is locked.
         if run.is_locked:
             job_results.append({
                 "message": f'Calibration Job {calibration_run_id} is locked for archiving/deleting',
@@ -959,7 +976,7 @@ def archive_jobs(request: Request) -> Response:
             })
             continue
 
-        # Already archived/not-archived?
+        # Reject requests that do not change the current archive state.
         if archive == run.is_archived:
             job_results.append({
                 "message": f'Calibration Job {calibration_run_id} is {"already" if archive else "not"} archived',
@@ -973,7 +990,7 @@ def archive_jobs(request: Request) -> Response:
             # ARCHIVE (EFS → S3)
             # ===============================
             if archive:
-                # Prevent archiving while job or child jobs are running
+                # Prevent archiving while the run or any child jobs are active.
                 running_jobs_error = has_running_associated_jobs(run)
                 if running_jobs_error:
                     job_results.append({
@@ -1006,14 +1023,55 @@ def archive_jobs(request: Request) -> Response:
                     f"to {dst_prefix} in {elapsed:.2f}s"
                 )
 
-                # ---- DELETE LOCAL DIRECTORY AFTER SUCCESS ----
+                # ---- MOVE LOCAL DIRECTORY OUT OF THE ACTIVE PATH ----
+                # Move the original active path out of the way before attempting deletion.
+                # On NFS/EFS, open file handles (often exposed as '.nfs*' files) can prevent
+                # immediate recursive deletion. By renaming first, the active job path is
+                # removed deterministically, allowing the archive to succeed even if some
+                # files cannot yet be deleted.
+                quarantined_path = None
                 if os.path.isdir(src_path):
                     try:
-                        shutil.rmtree(src_path)
-                        logger.info(f"Deleted local directory after archive: {src_path}")
+                        quarantined_path = move_tree_out_of_active_path(src_path)
+                        logger.info(
+                            f"Moved local directory out of active path after archive: "
+                            f"{src_path} -> {quarantined_path}"
+                        )
                     except Exception as e:
-                        logger.error(f"Failed to delete local directory {src_path}: {e}")
+                        logger.error(
+                            f"Failed to move local directory out of active path {src_path}: {e}"
+                        )
                         raise
+
+                # ---- BEST-EFFORT DELETE OF THE QUARANTINED DIRECTORY ----
+                # Attempt to delete the quarantined directory immediately.
+                # In most cases this will succeed, but on NFS/EFS it may fail temporarily
+                # if files are still held open by another process.
+                if quarantined_path and os.path.isdir(quarantined_path):
+                    try:
+                        delete_tree_with_retries(
+                            quarantined_path,
+                            attempts=10,
+                            delay_seconds=1.0,
+                        )
+                        logger.info(
+                            f"Deleted quarantined local directory after archive: {quarantined_path}"
+                        )
+                    except Exception as e:
+                        # Archive is still considered successful at this point:
+                        # - The data has been fully copied and verified in S3
+                        # - The original active path no longer exists
+                        #
+                        # Any remaining files are confined to the quarantined directory, which is
+                        # safe to delete later. A separate cleanup process (e.g., cron job) will
+                        # periodically retry deletion of directories matching:
+                        #     *.__archived_pending_delete__.*
+                        #
+                        # This deferred cleanup is required because NFS/EFS may delay releasing
+                        # file handles, preventing immediate removal.
+                        logger.warning(
+                            f"Failed to delete quarantined local directory {quarantined_path}: {e}"
+                        )
 
             # ===============================
             # UNARCHIVE (S3 → EFS)
@@ -1026,9 +1084,11 @@ def archive_jobs(request: Request) -> Response:
 
                 dest_dir = run.job_data_dir
 
-                # Ensure the destination directory exists (empty)
+                # Ensure the destination directory is removed before restore.
                 if os.path.isdir(dest_dir):
-                    shutil.rmtree(dest_dir)
+                    delete_tree_with_retries(dest_dir, attempts=10, delay_seconds=1.0)
+
+                # Recreate the destination directory before copying into it.
                 os.makedirs(dest_dir, exist_ok=True)
 
                 start = time.perf_counter()
@@ -1069,7 +1129,6 @@ def archive_jobs(request: Request) -> Response:
             # ------------------------------------------------------------
             run.is_archived = archive
             run.archive_status_updated_at = datetime.now(tz=timezone.utc)
-
             run.save(update_fields=['is_archived', 'archive_status_updated_at'])
 
             job_results.append({
@@ -1192,12 +1251,14 @@ def lock_jobs(request: Request) -> Response:
 
 def hard_delete(run: CalibrationRun) -> None:
     """
-    Perform a hard delete on a calibration run and its related records. Deletes associated files if they exist.
+    Perform a hard delete on a calibration run and its related records.
+
+    This deletes the database record first, then attempts to remove the local
+    job directory if it still exists.
 
     :param run: The CalibrationRun instance to be deleted.
     """
-
-    job_data_dir = run.job_data_dir  # stash before delete
+    job_data_dir = run.job_data_dir  # Stash before delete
 
     logger.debug(f"Deleting (hard delete) Calibration Job {run.id}, associated records and files")
     run.delete()
@@ -1205,7 +1266,7 @@ def hard_delete(run: CalibrationRun) -> None:
     logger.debug(f'Deleting directory {job_data_dir} for Calibration Job {run.id}')
     if job_data_dir and os.path.isdir(job_data_dir):
         try:
-            shutil.rmtree(job_data_dir)
+            delete_tree_with_retries(job_data_dir, attempts=10, delay_seconds=1.0)
         except Exception:
             logger.exception(
                 f"Failed to delete job directory {job_data_dir} for Calibration Job {run.id}"
@@ -1286,3 +1347,117 @@ def import_job(request: Request) -> Response:
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
+
+
+def delete_tree_with_retries(path: str, attempts: int = 10, delay_seconds: float = 1.0) -> None:
+    """
+    Delete a directory tree with bounded retries for common NFS/EFS cleanup races.
+
+    This helper is intended for cases where shutil.rmtree() may fail because a
+    file in the tree is still open by another process. On NFS/EFS, that can
+    surface as retryable errors such as ENOTEMPTY or EBUSY, often involving
+    temporary '.nfs*' placeholder files.
+
+    A missing path is treated as success. This avoids races where the directory
+    disappears between an existence check and the delete attempt.
+
+    On failure, this helper logs only the single path reported by the exception
+    instead of recursively scanning the remaining tree, which keeps the failure
+    path cheap to evaluate even for very large directories.
+
+    :param path: The directory tree to delete.
+    :param attempts: Maximum number of delete attempts.
+    :param delay_seconds: Delay between retry attempts in seconds.
+    :raises OSError: Re-raises the final deletion error if the tree cannot be removed.
+    """
+    last_exception: OSError | None = None
+
+    # Treat an already-missing path as success.
+    if not os.path.exists(path):
+        return
+
+    for attempt in range(1, attempts + 1):
+        try:
+            shutil.rmtree(path)
+            return
+        except OSError as exc:
+            # The directory may have disappeared after the existence check or
+            # between retry attempts. That is equivalent to successful deletion.
+            if exc.errno == errno.ENOENT or not os.path.exists(path):
+                return
+
+            last_exception = exc
+
+            # Retry only for the NFS/EFS-style cases that may clear once another
+            # process releases an open file handle.
+            is_retryable = exc.errno in {
+                errno.ENOTEMPTY,
+                errno.EBUSY,
+            }
+
+            failed_path = getattr(exc, 'filename', None)
+            full_failed_path = (
+                os.path.join(path, failed_path)
+                if failed_path and not os.path.isabs(failed_path)
+                else failed_path or path
+            )
+
+            is_nfs_placeholder = os.path.basename(full_failed_path).startswith('.nfs')
+
+            logger.warning(
+                f"Delete attempt {attempt}/{attempts} failed for {path}: "
+                f"[Errno {exc.errno}] {exc}. "
+                f"Failed path: {full_failed_path}. "
+                f"NFS placeholder: {is_nfs_placeholder}"
+            )
+
+            # For non-retryable errors, or after the final attempt, let the caller
+            # handle the failure and report the blocking path from this exception.
+            if not is_retryable or attempt == attempts:
+                raise
+
+            time.sleep(delay_seconds)
+
+    if last_exception:
+        raise last_exception
+
+
+def get_archived_pending_delete_path(path: str) -> str:
+    """
+    Build a sibling quarantine path used after a successful archive copy.
+
+    The returned path stays on the same filesystem so that os.replace() can
+    perform an atomic rename. A timestamp is included to reduce the risk of
+    collisions if cleanup from an earlier archive attempt is still present.
+
+    :param path: The original active job directory path.
+    :return: A sibling quarantine path for the archived directory.
+    """
+    parent_dir = os.path.dirname(path)
+    base_name = os.path.basename(path)
+    timestamp = datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%S_%f')
+    return os.path.join(parent_dir, f'{base_name}.__archived_pending_delete__.{timestamp}')
+
+
+def move_tree_out_of_active_path(path: str) -> str:
+    """
+    Rename a directory to a quarantine path on the same filesystem.
+
+    This is used after a successful archive copy so that the original active
+    path is no longer present even if immediate recursive deletion of the
+    directory may still fail due to NFS/EFS open-file behavior.
+
+    :param path: The original active job directory path.
+    :return: The new quarantine path.
+    :raises FileNotFoundError: If the source path does not exist.
+    :raises OSError: If the rename fails.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f'Path does not exist: {path}')
+
+    quarantine_path = get_archived_pending_delete_path(path)
+
+    # os.replace() performs an atomic rename on the same filesystem.
+    os.replace(path, quarantine_path)
+
+    return quarantine_path
