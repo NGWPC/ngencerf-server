@@ -102,7 +102,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         # Success
         logger.info(
-            "JWT login success: user_id=%s %s=%r is_active=%s is_staff=%s",
+            "JWT login success: %s, %s=%r, is_active=%s is_staff=%s",
             getattr(self.user, "id", None),
             login_field,
             getattr(self.user, login_field, None),
