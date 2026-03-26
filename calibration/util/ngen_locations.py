@@ -285,11 +285,11 @@ def get_hindcast_dir(hindcast_run: HindcastRun) -> str:
 
 
 def get_cold_start_output_dir(cold_start_run: ColdStartRun) -> str:
-    return os.path.join(get_cold_start_dir(cold_start_run), 'output')
+    return os.path.join(get_cold_start_dir(cold_start_run), 'Output')
 
 
 def get_forecast_output_dir(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_dir(forecast_run), 'output')
+    return os.path.join(get_forecast_dir(forecast_run), 'Output')
 
 
 def get_forecast_forcing_config_file(forecast_run: ForecastRun) -> str:
