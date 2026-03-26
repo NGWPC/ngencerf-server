@@ -297,6 +297,7 @@ class LoggingConfigSerializer(BaseSerializer):
 
         return normalized
 
+
 class ForecastConfigurationSerializer(BaseSerializer):
     configuration_name = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
 
