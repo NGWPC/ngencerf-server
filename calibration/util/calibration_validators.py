@@ -1455,7 +1455,7 @@ class ForecastConfigSerializer(BaseSerializer):
 
 
 class LoadForecastTabRequestSerializer(CalibrationRunSerializer):
-    hindcast_only = serializers.BooleanField(allow_null=False, required=True)
+    hindcast_only = serializers.BooleanField(allow_null=False, default=False)
 
 
 class LoadForecastTabResponseSerializer(BaseSerializer):
