@@ -101,8 +101,7 @@ def get_run_owner(run: BaseRun):
     """
     Retrieve the owner of a BaseRun object.
 
-    Determines the owner of the job from its `CalibrationRun`, `ValidationRun`,
-    or `ForecastRun` relationship.
+    Determines the owner of the job from its relationship to CalibrationRun
 
     :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.).
     :return: The owner of the associated CalibrationRun or the run itself.
@@ -112,8 +111,8 @@ def get_run_owner(run: BaseRun):
         return run.owner
     elif hasattr(run, 'calibration_run'):
         return run.calibration_run.owner
-    # elif hasattr(run, 'forecast_run') and hasattr(run.forecast_run, 'calibration_run'):
-    #     return run.forecast_run.calibration_run.owner
+    elif hasattr(run, 'forecast_run'):  # VerificationRun
+        return run.forecast_run.calibration_run.owner
     raise AttributeError(f"Cannot determine owner for run of type {type(run).__name__}")
 
 
