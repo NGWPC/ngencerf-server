@@ -69,7 +69,7 @@ def get_plot_names(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
-   
+
     # Determine job type and retrieve the appropriate run instance
     if calibration_run_id:
         run_func = get_calibration_run
@@ -91,7 +91,8 @@ def get_plot_names(request: Request) -> Response:
     fields = ['name', 'display_name', 'description', 'timeseries_available']
     plot_names = []
 
-    filtered_plot_definitions = get_filtered_plot_definitions(run)
+    filtered_plot_definitions: list[dict[str, Any]] = get_filtered_plot_definitions(run)
+
     for plot in filtered_plot_definitions:
         try:
             plot_file_path = plot_exists(run, plot)
@@ -260,14 +261,16 @@ def get_plot(request: Request) -> Response:
     calibration_run = run if calibration_run_id else run.calibration_run
 
     # Fetch plot definition if needed for force_include_plot, include_data, or when plot_url is missing
-    plot_definition = None
+    plot_definition: dict[str, Any] | None = None
     if force_include_plot or not plot_url or include_data:
         plot_definition = get_filtered_plot_definitions(run, plot_name=plot_name, first_match=True)
-        if not plot_definition:
+        if plot_definition is None:
             return ResponseError(f"Invalid plot type '{plot_name}' requested for {run_type} {run.id}.")
 
     # Process plot_url if it doesn't exist in the cache or if force_include_plot is True
     if force_include_plot or not plot_url:
+        assert plot_definition is not None
+
         try:
             plot_file_path = plot_exists(run, plot_definition)
         except Exception as e:
@@ -288,6 +291,8 @@ def get_plot(request: Request) -> Response:
     plot_data = None
     pagination_metadata = None
     if include_data:
+        assert plot_definition is not None
+
         # Retrieve data and total_count from get_plot_data
         plot_result = get_plot_data(run, plot_definition, start, limit)
         plot_data = plot_result.get('data', [])
@@ -397,7 +402,7 @@ def get_plots_for_comparison(request: Request) -> Response:
         if plot['job_type'] == JobType.COMPARISON.value and plot['name'].lower() == plot_name.lower():
             plot_definition = plot
             break
-    if not plot_definition:
+    if plot_definition is None:
         response['errors'].append({
             'calibration_run_id': calibration_run_ids[0],
             'message': 'Invalid plot type ' + plot_name + ' requested'
@@ -414,13 +419,17 @@ def get_plots_for_comparison(request: Request) -> Response:
                 # For Calibration Metrics, we don't need the best run - just pass the Calibration Job ID 
                 # directly into get_bar_chart_metrics and then filter to get data for the best run only
                 for calibration_run_id in calibration_run_ids:
+
                     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
                     if error_return:
                         response['errors'].append({
-                            'calibration_run_id': run.id,
+                            'calibration_run_id': calibration_run_id,
                             'message': error_return.data.get('message')
                         })
-                    elif run.gage.gage_id != gage_id:
+                        continue
+
+                    assert run is not None
+                    if run.gage.gage_id != gage_id:
                         # Gage IDs don't match
                         response['errors'].append({
                             'calibration_run_id': run.id,
@@ -464,10 +473,13 @@ def get_plots_for_comparison(request: Request) -> Response:
                     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
                     if error_return:
                         response['errors'].append({
-                            'calibration_run_id': run.id,
+                            'calibration_run_id': calibration_run_id,
                             'message': error_return.data.get('message')
                         })
-                    elif run.gage.gage_id != gage_id:
+                        continue
+
+                    assert run is not None
+                    if run.gage.gage_id != gage_id:
                         # Gage IDs don't match
                         response['errors'].append({
                             'calibration_run_id': run.id,
@@ -499,7 +511,7 @@ def get_plots_for_comparison(request: Request) -> Response:
                             if plot_data:
                                 response['plots'].append({
                                     'calibration_run_id': run.id,
-                                    'validation_run_id': best_run.id if best_run else 0,
+                                    'validation_run_id': best_run.id,
                                     'plot_name': plot_name,
                                     'plot_data': replace_nan_and_inf_with_none(plot_data),
                                     'pagination_metadata': {
@@ -558,8 +570,6 @@ def determine_plot_location(run: CalibrationRun | ValidationRun | ForecastRun, p
         case 'plot_iteration':
             # TODO Need to return the worker name
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
-            if worker_dir is None:
-                raise CerfException(f'Plots could not be found for {get_job_description(run)}')
             return os.path.join(worker_dir, 'Plot_Iteration')
 
         case 'forecast_output':
@@ -594,8 +604,6 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
         case PlotDefinitionsEnum.OBJECTIVE_FUNCTION_EVOLUTION:
             # Only get iterations for a specific worker
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
-            if worker_dir is None:
-                raise CerfException(f'No plot directory found for {get_job_description(run)}')
             worker_name = get_worker_name_from_directory(worker_dir)
             iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
@@ -622,22 +630,25 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
         case PlotDefinitionsEnum.METRIC_EVOLUTION:
             # Only get iterations for a specific worker
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
-            if worker_dir is None:
-                raise CerfException(f'No plot directory found for {get_job_description(run)}')
             worker_name = get_worker_name_from_directory(worker_dir)
             iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
 
-            data = [{'iteration': iteration.iteration_num,
-                     'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]}
-                    for iteration in iterations[start:start + limit]]
+            data = [
+                {
+                    'iteration': iteration.iteration_num,
+                    'metrics': [
+                        {'name': metric.metric.name, 'value': metric.metric_value}
+                        for metric in iteration.iterationmetric_set.all()
+                    ]
+                }
+                for iteration in iterations[start:start + limit]
+            ]
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.PARAMETER_EVOLUTION:
             # Only get iterations for a specific worker
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
-            if worker_dir is None:
-                raise CerfException(f'No plot directory found for {get_job_description(run)}')
             worker_name = get_worker_name_from_directory(worker_dir)
             iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
@@ -651,8 +662,6 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
         case PlotDefinitionsEnum.METRICS_VS_OBJECTIVE_FUNCTION:
             # Only get iterations for a specific worker
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
-            if worker_dir is None:
-                raise CerfException(f'No plot directory found for {get_job_description(run)}')
             worker_name = get_worker_name_from_directory(worker_dir)
             iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
@@ -682,7 +691,11 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.BAR_CHART_METRICS:
-            combined_data_by_run = get_bar_chart_metrics([calibration_run.id], [run] if isinstance(run, ValidationRun) else [])
+            validation_ids: list[int] = [run.id] if isinstance(run, ValidationRun) else []
+            combined_data_by_run = get_bar_chart_metrics(
+                [calibration_run.id],
+                validation_ids
+            )
             combined_data = combined_data_by_run.get(calibration_run.id, [])
 
             total_count = len(combined_data)
@@ -785,9 +798,16 @@ def load_files_and_merge(file_paths: list[str], column_names: list[str], key_col
                 logger.info(f"Reading file: {file_path}")
                 # Read file and automatically detect value column
                 df = pd.read_csv(file_path, nrows=1)  # Read only the header to determine column names
-                value_col = next((col for col in df.columns if col.lower() not in ["time", "datetime", "date", "timestamp", "value_date"]), None)
+                value_col: str | None = next(
+                    (
+                        col for col in df.columns
+                        if isinstance(col, str)
+                           and col.lower() not in ["time", "datetime", "date", "timestamp", "value_date"]
+                    ),
+                    None
+                )
 
-                if not value_col:
+                if value_col is None:
                     raise ValueError(f"No valid data column found in file {file_path}")
 
                 df = read_and_prepare_hydrograph_files(file_path, column_mapping={value_col: col_name})
@@ -808,18 +828,21 @@ def load_files_and_merge(file_paths: list[str], column_names: list[str], key_col
     merged_df = dataframes[0]  # Start with the first DataFrame
     for df in dataframes[1:]:
         try:
-            # Perform an inner merge to include only rows with matching key column values
-            merged_df = merged_df.merge(df, on=key_col, how="inner")
+            # Perform an outer merge to preserve rows that exist in only some files
+            merged_df = merged_df.merge(df, on=key_col, how="outer")
         except Exception as e:
             # Log and raise an error if merging fails
             logger.error(f"Error merging DataFrames: {e}")
             raise CerfException(f"Error merging DataFrames: {e}")
 
-    # Step 4: Check for empty merged DataFrame
+    # Step 4: Sort by the key column so timestamps remain in chronological order
+    merged_df = merged_df.sort_values(by=key_col).reset_index(drop=True)
+
+    # Step 5: Check for empty merged DataFrame
     if merged_df.empty:
         logger.warning("Merged DataFrame is empty after merging. Check key column values.")
 
-    # Step 5: Log the final structure of the merged DataFrame for debugging
+    # Step 6: Log the final structure of the merged DataFrame for debugging
     logger.debug(f"Merged DataFrame columns: {merged_df.columns.tolist()}, shape: {merged_df.shape}")
 
     return merged_df
@@ -841,11 +864,15 @@ def read_and_prepare_hydrograph_files(file_path: str, column_mapping: dict[str, 
     logger.debug(f"Loaded file: {file_path}, Columns: {df.columns.tolist()}, Shape: {df.shape}")
 
     # Step 2: Detect the timestamp column dynamically
-    timestamp_col = next(
-        (col for col in df.columns if col.lower() in ["datetime", "time", "date", "timestamp", "value_date"]),
+    timestamp_col: str | None = next(
+        (
+            col for col in df.columns
+            if isinstance(col, str)
+               and col.lower() in ["datetime", "time", "date", "timestamp", "value_date"]
+        ),
         None
     )
-    if not timestamp_col:
+    if timestamp_col is None:
         # This is not an error, unless the file is expected to have timestamp information and does not
         logger.info(f"No timestamp column found in file {file_path}. Columns: {df.columns.tolist()}")
         raise ValueError(f"No timestamp column found in file {file_path}. Columns: {df.columns.tolist()}")
@@ -865,16 +892,20 @@ def read_and_prepare_hydrograph_files(file_path: str, column_mapping: dict[str, 
     # Step 5: Rename value columns based on the provided mapping
     df = df.rename(columns=column_mapping)
 
-    # Step 6: Log the final DataFrame structure
+    # Step 6: Keep only the key column and renamed value columns
+    renamed_value_columns = list(column_mapping.values())
+    df = df[["time", *renamed_value_columns]]
+
+    # Step 7: Log the final DataFrame structure
     logger.debug(f"Processed file: {file_path}, Final Columns: {df.columns.tolist()}, Final Shape: {df.shape}")
 
     return df
 
 
 def count_and_read_file_in_chunks(
-    file_path: str,
-    start: int | None = None,
-    limit: int | None = None
+        file_path: str,
+        start: int | None = None,
+        limit: int | None = None
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Counts the total number of rows (excluding the header) in a file and retrieves
@@ -898,12 +929,14 @@ def count_and_read_file_in_chunks(
             df = pd.read_csv(file_path)
         else:
             # Normalize start
-            start = start or 0
-            if start >= total_count:
+            start_i: int = 0 if start is None else start
+
+            if start_i >= total_count:
                 return [], total_count  # Nothing to return
+
             df = pd.read_csv(
                 file_path,
-                skiprows=list(range(1, start + 1)),
+                skiprows=list(range(1, start_i + 1)),
                 nrows=limit,
                 names=header,
                 header=0
@@ -921,14 +954,16 @@ def count_and_read_file_in_chunks(
 
 
 @lru_cache()
-def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -> str | None:
+def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -> str:
     """
-    Uses process_worker_dirs to find the worker directory that has a non-empty 'Plot_Iteration' subdirectory.
+    Uses process_worker_dirs to find the worker directory that has a non-empty
+    'Plot_Iteration' subdirectory.
 
     :param calibration_run: The calibration run object.
-    :return: The path of the worker directory with a non-empty 'Plot_Iteration' directory, or None if not found
+    :return: The path of the worker directory with a non-empty 'Plot_Iteration' directory.
+    :raises CerfException: If no worker directory with a non-empty 'Plot_Iteration' directory is found.
     """
-    found_worker_dir = None
+    found_worker_dir: str | None = None
 
     # Custom function to check worker directories
     def check_worker(worker_dir: str, _run: CalibrationRun) -> bool:
@@ -945,10 +980,16 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
     # Call process_worker_dirs to iterate through the worker directories
     process_worker_dirs(calibration_run, check_worker)
 
+    if found_worker_dir is None:
+        raise CerfException(f'Plots could not be found for {get_job_description(calibration_run)}')
+
     return found_worker_dir
 
 
-def get_bar_chart_metrics(calibration_run_ids: list[int], validation_run_ids: list[int] = []) -> dict[int, list[dict[str, Any]]]:
+def get_bar_chart_metrics(
+        calibration_run_ids: list[int],
+        validation_run_ids: list[int] | None = None
+) -> dict[int, list[dict[str, Any]]]:
     """
     Retrieves ValidationMetrics and NWMRetrospectiveMetrics for a list of calibration_run_ids 
     (and optional validation_run_ids) and organizes the results by calibration_run_id.
@@ -969,6 +1010,8 @@ def get_bar_chart_metrics(calibration_run_ids: list[int], validation_run_ids: li
     :param validation_run_ids: List of ValidationRun IDs to query.
     :return: A dictionary where each key is a calibration_run_id and the value is a list of result dictionaries.
     """
+    validation_ids: list[int] = validation_run_ids or []
+
     valid_periods = ValidationMetricPeriod.get_names()
     valid_run_types = ValidationType.get_names()
 
@@ -980,11 +1023,11 @@ def get_bar_chart_metrics(calibration_run_ids: list[int], validation_run_ids: li
     )
 
     validation_metrics_qs_alt = None
-    if len(validation_run_ids) > 0:
+    if validation_ids:
         # Query ValidationMetrics (for alt iteration) and concatenate with previous query
         validation_metrics_qs_alt = ValidationMetrics.objects.select_related('metric', 'validation_run').filter(
             validation_run__calibration_run_id__in=calibration_run_ids,
-            validation_run_id__in=validation_run_ids,
+            validation_run_id__in=validation_ids,
             period__in=valid_periods
         ).exclude(run_type__in=valid_run_types)
 
@@ -1050,19 +1093,21 @@ def get_bar_chart_metrics(calibration_run_ids: list[int], validation_run_ids: li
 @lru_cache()
 def get_worker_name_from_directory(worker_dir: str) -> str:
     """
-    Extracts the worker name from a given worker directory string.
+    Extracts the worker name from a worker directory path.
 
-    This function assumes that the worker directory string contains a pattern of the form
-    'ngen_<worker_name>_worker'. It does not check for a missing match; if the pattern
-    is not found, an AttributeError will be raised.
+    The directory name is expected to contain a pattern of the form
+    'ngen_<worker_name>_worker'.
 
     :param worker_dir: The full path of the worker directory.
     :return: The extracted worker name.
+    :raises CerfException: If the directory name does not match the expected pattern.
     """
     pattern = r'ngen_([^_]+)_worker'
     dir_name = os.path.basename(worker_dir)
     match = re.search(pattern, dir_name)
     # This will raise an AttributeError if the pattern is not found.
+    if match is None:
+        raise CerfException(f"Could not extract worker name from directory: {dir_name}")
     return match.group(1)
 
 
