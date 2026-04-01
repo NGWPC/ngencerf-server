@@ -24,6 +24,7 @@ This ensures:
 import json
 import logging
 import os
+from typing import Any, Literal, overload
 
 import yaml
 from django.conf import settings
@@ -320,9 +321,32 @@ def get_cached_optimization_inputs(optimization_name: str) -> list[dict[str, str
     return optimization_inputs
 
 
+@overload
 def get_filtered_plot_definitions(
-        run: CalibrationRun | ValidationRun, plot_name: str | None = None, first_match: bool = False
-) -> list[dict] | dict | None:
+        run: CalibrationRun | ValidationRun,
+        plot_name: str | None = None,
+        *,
+        first_match: Literal[False] = False,
+) -> list[dict[str, Any]]:
+    ...
+
+
+@overload
+def get_filtered_plot_definitions(
+        run: CalibrationRun | ValidationRun,
+        plot_name: str | None = None,
+        *,
+        first_match: Literal[True],
+) -> dict[str, Any] | None:
+    ...
+
+
+def get_filtered_plot_definitions(
+        run: CalibrationRun | ValidationRun,
+        plot_name: str | None = None,
+        *,
+        first_match: bool = False
+) -> list[dict[str, Any]] | dict[str, Any] | None:
     """
     Retrieve filtered plot definitions for the specified run and plot name, with a case-insensitive match.
 
@@ -331,17 +355,19 @@ def get_filtered_plot_definitions(
     - CalibrationRun with LSTM module → only plots with lstm_flag=True.
     - Otherwise → plots must have a valid_optimizations list containing run.optimization.name.
 
-    :param run: The run object, which could be a calibration, validation, or forecast run.
+    :param run: The run object, which could be a calibration or validation run.
     :param plot_name: The name of the plot to filter by (case-insensitive), or None to retrieve all valid plots.
     :param first_match: If True, returns only the first matching plot definition as a dictionary, or None if no match.
-    :return: A list of dictionaries representing plot definitions that match the criteria, a single dictionary if first_match is True, or None if no match is found.
+    :return: A list of dictionaries representing plot definitions that match the criteria, a single dictionary if
+        first_match is True, or None if no match is found.
     """
     cached_plot_definitions = PlotDefinitionsEnum.get_choices_with_fields(
-        fields=['name', 'display_name', 'description', 'valid_optimizations', 'job_type', 'location', 'filename_mask',
+        fields=['name', 'display_name', 'description', 'valid_optimizations',
+                'job_type', 'location', 'filename_mask',
                 'timeseries_available', 'lstm_flag']
     )
 
-    have_LSTM_flag = have_LSTM(run if isinstance(run, CalibrationRun) else run.calibration_run)
+    have_lstm_flag = have_LSTM(run if isinstance(run, CalibrationRun) else run.calibration_run)
 
     plot_name_lower = plot_name.lower() if plot_name else None
 
@@ -352,16 +378,16 @@ def get_filtered_plot_definitions(
 
     optimization = run.optimization if isinstance(run, CalibrationRun) else run.calibration_run.optimization
 
-    def matches_common_criteria(plot: dict) -> bool:
+    def matches_common_criteria(plot: dict[str, Any]) -> bool:
         return (
-                (plot_name is None or plot['name'].lower() == plot_name_lower)
+                (plot_name_lower is None or plot['name'].lower() == plot_name_lower)
                 and (
                         plot['job_type'] == JobType.CALIBRATION.value
                         or (include_validation_plots and plot['job_type'] == JobType.VALIDATION.value)
                 )
         )
 
-    if have_LSTM_flag:
+    if have_lstm_flag:
         # LSTM mode: only include plots with lstm_flag=True
         filtered_plots = [
             plot for plot in cached_plot_definitions
@@ -376,8 +402,10 @@ def get_filtered_plot_definitions(
                and optimization.name in json.loads(plot['valid_optimizations'])
         ]
 
-    # Return the first match if first_match is True, otherwise return the list of matches
-    return filtered_plots[0] if first_match and filtered_plots else filtered_plots
+    if first_match:
+        return filtered_plots[0] if filtered_plots else None
+
+    return filtered_plots
 
 
 def have_LSTM(run: CalibrationRun) -> bool:

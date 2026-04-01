@@ -43,4 +43,3 @@ class CalibrationSortField(Enum):
     def get_names(cls) -> list[str]:
         """Return the canonical API names (i.e., the first slot of each tuple)."""
         return [member.value[0] for member in cls]
-
