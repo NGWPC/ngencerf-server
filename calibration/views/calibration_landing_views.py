@@ -383,10 +383,18 @@ def create_and_run_hindcast(request: Request) -> Response:
     logging_config = validator.get('logging_config')
     validate_only = validator.get('validate_only')
 
-    if not cold_start_run_id and not cold_start_date:
-        return ResponseError("You must specify either a cold start date or an existing cold start id")
-    if cold_start_run_id and cold_start_date:
-        return ResponseError("You must specify either a cold start date or an existing cold start id but not both")
+    if cold_start_run_id:
+        if cold_start_date or cycle_date:
+            return ResponseError(
+                "You must specify either an existing cold start id, or both cycle date "
+                "and cold start date, but not both"
+            )
+    else:
+        if not cold_start_date or not cycle_date:
+            return ResponseError(
+                "You must specify either an existing cold start id, or both cycle date "
+                "and cold start date"
+            )
 
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
@@ -414,6 +422,7 @@ def create_and_run_hindcast(request: Request) -> Response:
         assert cold_start_run is not None
 
         cold_start_date = cold_start_run.cold_start_date
+        cycle_date = cold_start_run.cycle_date
 
     # Define the supported forecast window used to validate both the requested
     # hindcast cycle date and the furthest projected cycle date.
