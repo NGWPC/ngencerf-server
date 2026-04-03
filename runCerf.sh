@@ -43,6 +43,7 @@ set -a  # auto-export
 
 # Always load cerfserver.env
 # Prerequisite: must exist at $SCRIPT_DIR/cerfserver.env
+# shellcheck source=./cerfserver.env
 source "$SCRIPT_DIR/cerfserver.env"
 
 # Detect Docker (AFTER cerfserver.env is loaded)
@@ -65,6 +66,7 @@ if [ "$IN_DOCKER" = false ]; then
 
     if [ -f "$ENV_FILE" ]; then
         echo "Loaded env file: $ENV_FILE"
+        # shellcheck source=./cerfServer/.env
         source "$ENV_FILE"
     else
         echo "WARNING: env file not found: $ENV_FILE"
@@ -72,6 +74,7 @@ if [ "$IN_DOCKER" = false ]; then
 
     if [ -f "$ENV_OVERRIDE_FILE" ]; then
         echo "Loaded env override file: $ENV_OVERRIDE_FILE"
+        # shellcheck source=./cerfServer/.env-override
         source "$ENV_OVERRIDE_FILE"
     fi
 else
@@ -133,7 +136,6 @@ ensure_virtualenv() {
             python3.11 -m venv "$VENV_PATH"
         fi
 
-        # shellcheck disable=SC1090
         source "$VENV_PATH/bin/activate"
         echo "Activated virtual environment at $VENV_PATH"
     fi
@@ -152,7 +154,7 @@ ensure_virtualenv() {
 #     - IN_DOCKER has been set
 #=======================================================================
 check_aws_credentials_early() {
-    # Skip in Docker.  We'll rely on the server check
+    # Skip in Docker.
     if [ "$IN_DOCKER" = true ]; then
         echo "Skipping AWS credential check (Docker environment)"
         return 0
@@ -802,20 +804,29 @@ else
 
     echo "Not running in Docker: cloning bmi_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_TAG}"
 
-    cd "$STATIC_DIR"
+    cd "$STATIC_DIR" || {
+    echo "ERROR: could not cd to $STATIC_DIR"
+    exit 1
+    }
 
     git clone --depth 1 --filter=blob:none --sparse \
         -b "${NGEN_FORCING_TAG}" \
         "$NGEN_FORCING_URL" tmp-ngen-forcing
 
-    cd tmp-ngen-forcing
+    cd tmp-ngen-forcing || {
+    echo "ERROR: could not cd to tmp-ngen-forcing"
+    exit 1
+    }
     git sparse-checkout set NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates
 
     # Move *contents* of config_templates into TARGET_DIR
     cp -a NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates/. \
         "$TARGET_DIR"/
 
-    cd "$STATIC_DIR"
+    cd "$STATIC_DIR" || {
+    echo "ERROR: could not cd to $STATIC_DIR"
+    exit 1
+    }
     rm -rf tmp-ngen-forcing
 
     echo "bmi_forcing_templates updated successfully in $TARGET_DIR (non-Docker)."
@@ -884,14 +895,14 @@ if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
     # --graceful-timeout extra time to finish in-flight requests on restart
     exec gunicorn cerfServer.asgi:application \
             --name ngencerf \
-            --workers ${WORKERS} \
+            --workers "${WORKERS}" \
             --worker-class uvicorn.workers.UvicornWorker \
-            --max-requests ${GUNICORN_MAX_REQUESTS:-300} \
-            --max-requests-jitter ${GUNICORN_MAX_REQUESTS_JITTER:-100} \
+            --max-requests "${GUNICORN_MAX_REQUESTS:-300}" \
+            --max-requests-jitter "${GUNICORN_MAX_REQUESTS_JITTER:-100}" \
             --preload \
-            --bind ${BIND_ADDR} \
-            --timeout ${TIMEOUT} \
-            --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30} \
+            --bind "${BIND_ADDR}" \
+            --timeout "${TIMEOUT}" \
+            --graceful-timeout "${GUNICORN_GRACEFUL_TIMEOUT:-30}" \
             --config "$(dirname "$0")/gunicorn_conf.py"
 else
     echo "Launching Django development server (runserver)"
