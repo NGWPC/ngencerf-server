@@ -4,7 +4,7 @@ from typing import Any, Type, cast, Literal
 
 from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case, Sum, IntegerField, QuerySet, Min, Max
 from django.db.models.functions import Lower
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, OpenApiResponse, PolymorphicProxySerializer
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -169,12 +169,14 @@ Read-only execution
     request=CalibrationPaginationSerializer,
     responses={
         200: OpenApiResponse(
-            response={
-                "oneOf": [
+            response=PolymorphicProxySerializer(
+                component_name='GetCalibrationJobsForEvaluationResponse',
+                serializers=[
                     GetCalibrationJobsResponseSerializer,
                     GetCalibrationJobIDsResponseSerializer,
-                ]
-            },
+                ],
+                resource_type_field_name=None,
+            ),
             description="Full job list or ID-only list depending on ids_only flag"
         ),
         400: OpenApiResponse(
@@ -247,7 +249,17 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
 @extend_schema(
     request=CalibrationPaginationSerializer,
     responses={
-        200: GetCalibrationJobsResponseSerializer,
+        200: OpenApiResponse(
+            response=PolymorphicProxySerializer(
+                component_name='GetCalibrationJobsForEvaluationResponse',
+                serializers=[
+                    GetCalibrationJobsResponseSerializer,
+                    GetCalibrationJobIDsResponseSerializer,
+                ],
+                resource_type_field_name=None,
+            ),
+            description="Full job list or ID-only list depending on ids_only flag"
+        ),
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -257,7 +269,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Get all calibration jobs for Forecast"
+    description="Get all Calibration jobs for Forecast"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
@@ -321,12 +333,14 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     request=CalibrationPaginationSerializer,
     responses={
         200: OpenApiResponse(
-            response={
-                "oneOf": [
+            response=PolymorphicProxySerializer(
+                component_name='GetCalibrationJobsResponse',
+                serializers=[
                     GetCalibrationJobsResponseSerializer,
                     GetCalibrationJobIDsResponseSerializer,
-                ]
-            },
+                ],
+                resource_type_field_name=None,
+            ),
             description="Full job list or ID-only list depending on ids_only flag"
         ),
         400: OpenApiResponse(
