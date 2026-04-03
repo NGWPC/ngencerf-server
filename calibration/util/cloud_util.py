@@ -1858,6 +1858,8 @@ def get_s3_client(*, profile_name: str | None = None) -> botocore.client.BaseCli
 
 def check_aws_credentials(*, timeout_seconds: int = 3) -> None:
     """
+    This function is not used anymore
+
     Fast sanity check that AWS credentials are present and valid.
 
     Raises S3CredentialsExpired if credentials are missing, expired,
