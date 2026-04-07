@@ -669,18 +669,25 @@ def create_hindcast_run_internal(
     return hindcast_run
 
 
-def create_verification_run_internal(forecast_run: ForecastRun) -> VerificationRun:
+def create_verification_run_internal(run: ForecastRun | HindcastRun) -> VerificationRun:
     """
-    Create a new VerificationRun for the given user.
+    Create a new VerificationRun for the given ForecastRun or HindcastRun.
 
     - Calls create_verification_input(verification_run) to generate the config
 
-    :param forecast_run Forecast Job to associate with this verification run
+    :param run: Forecast or Hindcast job to associate with this verification run
     :return: New VerificationRun instance.
     """
-    verification_run = VerificationRun.objects.create(
-        status=StatusEnum.SAVED.db_instance,
-        forecast_run=forecast_run)
+    if isinstance(run, ForecastRun):
+        verification_run = VerificationRun.objects.create(
+            status=StatusEnum.SAVED.db_instance,
+            forecast_run=run,
+        )
+    else:
+        verification_run = VerificationRun.objects.create(
+            status=StatusEnum.SAVED.db_instance,
+            hindcast_run=run,
+        )
 
     os.makedirs(get_verification_run_dir(verification_run))
     logger.info(f"Creating {get_job_description(verification_run)}")
@@ -983,7 +990,7 @@ def get_job_description(run: BaseRun) -> str:
     """
     Get a descriptive string identifying the job type and owner.
 
-    :param run: Job instance (CalibrationRun, ValidationRun, ForecastRun, VerificationRun).
+    :param run: Job instance (CalibrationRun, ValidationRun, ForecastRun, HindcastRun, ColdStartRun, VerificationRun).
     :return: Description of the job.
     """
     if isinstance(run, CalibrationRun):
@@ -999,7 +1006,13 @@ def get_job_description(run: BaseRun) -> str:
     elif isinstance(run, ColdStartRun):
         return f"Cold Start Job {run.id} for Calibration Job {run.calibration_run.id}, user: {run.calibration_run.owner.username}"
     elif isinstance(run, VerificationRun):
-        return f"Verification Job {run.id} for Forecast Job {run.forecast_run.id} for Calibration Job {run.forecast_run.calibration_run.id}, user: {run.forecast_run.calibration_run.owner.username}"
+        parent_run = run.parent_run
+        parent_job_type = 'Forecast' if run.forecast_run_id is not None else 'Hindcast'
+        return (
+            f"Verification Job {run.id} for {parent_job_type} Job {parent_run.id} "
+            f"for Calibration Job {parent_run.calibration_run.id}, "
+            f"user: {parent_run.calibration_run.owner.username}"
+        )
 
     raise ValueError(f"Unknown job type: {type(run).__name__}")
 

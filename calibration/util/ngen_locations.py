@@ -296,6 +296,10 @@ def get_forecast_output_dir(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), 'Output')
 
 
+def get_hindcast_output_dir(hindcast_run: HindcastRun) -> str:
+    return os.path.join(get_hindcast_dir(hindcast_run), 'Output')
+
+
 def get_forecast_forcing_config_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_config.yaml')
 
@@ -306,8 +310,20 @@ def get_cold_start_output_file(run: ForecastRun | HindcastRun) -> str | None:
     return os.path.join(get_cold_start_output_dir(run.cold_start_run), f'{run.calibration_run.gage.gage_id}_output.csv')
 
 
-def get_forecast_output_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_output_dir(forecast_run), f'{forecast_run.calibration_run.gage.gage_id}_output.csv')
+def get_forecast_output_file_name(forecast_run: ForecastRun) -> str:
+    return f'{forecast_run.calibration_run.gage.gage_id}_output.csv'
+
+
+def get_hindcast_output_file_name(hindcast_run: HindcastRun) -> str:
+    return f'{hindcast_run.calibration_run.gage.gage_id}_output.csv'
+
+
+def get_forecast_output_file_path(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_output_dir(forecast_run), get_forecast_output_file_name(forecast_run))
+
+
+def get_hindcast_output_file_path(hindcast_run: HindcastRun) -> str:
+    return os.path.join(get_hindcast_output_dir(hindcast_run), get_hindcast_output_file_name(hindcast_run))
 
 
 def get_hindcast_output_file(hindcast_run: HindcastRun, iteration: int) -> str:
@@ -368,7 +384,12 @@ def get_cold_start_realization_file(cold_start_run: ColdStartRun) -> str:
 
 
 def get_verification_run_dir(run: VerificationRun) -> str:
-    return os.path.join(get_forecast_dir(run.forecast_run), 'Verification_Run', f'verification_{run.id}')
+    if run.forecast_run_id is not None:
+        base_dir = get_forecast_dir(run.forecast_run)
+    else:
+        base_dir = get_hindcast_dir(run.hindcast_run)
+
+    return os.path.join(base_dir, 'Verification_Run', f'verification_{run.id}')
 
 
 def get_verification_yaml_config_file(run: VerificationRun) -> str:
