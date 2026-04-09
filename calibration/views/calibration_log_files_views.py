@@ -504,6 +504,7 @@ def get_allowed_logs_for_request(
         logs[LogCategory.VERIFICATION.value] = verification_logs
 
     else:
+        logs[LogCategory.GENERAL.value] = get_general_logs(calibration_run)
         logs[LogCategory.CALIBRATION.value] = get_calibration_logs(calibration_run)
         logs[LogCategory.VALIDATION.value] = get_all_validation_logs(calibration_run)
 
@@ -515,21 +516,36 @@ def get_allowed_logs_for_request(
     return normalized_logs, None
 
 
-def get_calibration_logs(calibration_run: CalibrationRun) -> list[str]:
+def get_general_logs(calibration_run: CalibrationRun) -> list[str]:
     """
-    Collects available calibration-related log files for a calibration run.
+    Collect general log files for a calibration run.
 
-    Includes any *.log files found in:
-    - the ngen log directory
-    - the calibration run output directory
+    Includes any *.log files found in the bootstrap ngen log directory
+    associated with the calibration run.
 
-    :param calibration_run: The calibration run whose logs should be collected.
+    :param calibration_run: The calibration run whose general logs should be collected.
     :return: A list of log file paths.
     """
     logs = []
 
     bootstrap_ngen_log_dir = get_ngen_log_dir(calibration_run)
     logs.extend(get_log_files_in_directory(bootstrap_ngen_log_dir))
+
+    return logs
+
+
+def get_calibration_logs(calibration_run: CalibrationRun) -> list[str]:
+    """
+    Collect calibration-specific log files for a calibration run.
+
+    Includes any *.log files found in:
+    - the calibration ngen log directory
+    - the calibration output directory
+
+    :param calibration_run: The calibration run whose calibration logs should be collected.
+    :return: A list of log file paths.
+    """
+    logs = []
 
     ngen_log_dir = get_calibration_ngen_logs(calibration_run)
     logs.extend(get_log_files_in_directory(ngen_log_dir))
