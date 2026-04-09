@@ -1,4 +1,4 @@
-Django~=5.2.12
+Django~=5.2.13
 djangorestframework~=3.17.1
 djangorestframework-simplejwt~=5.5.1
 django-redis~=6.0.0
@@ -17,7 +17,7 @@ pyjwt~=2.12.1
 PyYAML~=6.0.3
 drf_spectacular~=0.29.0
 django-cors-headers~=4.9.0
-requests~=2.32.5
+requests~=2.33.1
 pyarrow~=22.0.0
 pyogrio~=0.12.1
 tabulate~=0.10.0
