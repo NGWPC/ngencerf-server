@@ -120,6 +120,10 @@ def get_ngen_log_dir(run: CalibrationRun) -> str:
     return os.path.join(get_gage_dir(run), 'logs')
 
 
+def get_calibration_ngen_logs(run: CalibrationRun) -> str:
+    return os.path.join(get_output_dir(run), 'logs')
+
+
 def get_input_dir(run: CalibrationRun) -> str:
     return os.path.join(get_gage_dir(run), 'Input')
 

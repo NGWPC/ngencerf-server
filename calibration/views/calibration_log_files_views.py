@@ -14,13 +14,15 @@ from calibration.util.calibration_validators import CalibrationOrValidationOrCol
     GetLogStatusResponseSerializer
 from calibration.util.ngen_locations import get_forecast_ngen_stdout_file, get_forecast_ngen_log_dir, get_cold_start_ngen_stdout_file, \
     get_cold_start_ngen_log_dir, \
-    get_verification_stdout_file, get_ngen_log_dir, get_output_validation_run_dir, \
-    get_output_calibration_run_dir, get_validation_iteration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file
+    get_verification_stdout_file, get_calibration_ngen_logs, get_output_validation_run_dir, \
+    get_output_calibration_run_dir, get_validation_iteration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
+    get_ngen_log_dir
 from calibration.views.calibration_evaluation_views import logger
 from calibration.views.calibration_run_views import map_path_to_host
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_validation_run, get_forecast_run, get_verification_run, get_calibration_run, handle_exceptions, \
-    get_user_email, validate_request, validate_response, get_elapsed_str, CerfException, truncate_large_fields
+    get_user_email, validate_request, validate_response, get_elapsed_str, CerfException, truncate_large_fields, \
+    find_validation_worker_with_matching_id, worker_directory_pattern
 
 
 @extend_schema(
@@ -352,6 +354,8 @@ def resolve_log_context(
         )
         if error_return:
             return None, error_return
+        assert validation_run is not None
+
         calibration_run = validation_run.calibration_run
 
     elif forecast_run_id:
@@ -363,6 +367,7 @@ def resolve_log_context(
         )
         if error_return:
             return None, error_return
+        assert forecast_run is not None
         calibration_run = forecast_run.calibration_run
         cold_start_run = forecast_run.cold_start_run
 
@@ -374,6 +379,8 @@ def resolve_log_context(
         )
         if error_return:
             return None, error_return
+        assert verification_run is not None
+
         calibration_run = verification_run.forecast_run.calibration_run
 
     else:
@@ -437,13 +444,13 @@ def get_allowed_logs_for_request(
 
         # Only get the logs for this specific validation run
         validation_logs = []
-        validation_type = validation_run.validation_type
+        validation_type = ValidationType(validation_run.validation_type)
 
-        if validation_type == ValidationType.VALID_CONTROL.value:
+        if validation_type == ValidationType.VALID_CONTROL:
             file = get_validation_control_stdout_file(calibration_run)
             if os.path.exists(file):
                 validation_logs.append(file)
-        elif validation_type == ValidationType.VALID_BEST.value:
+        elif validation_type == ValidationType.VALID_BEST:
             file = get_validation_best_stdout_file(calibration_run)
             if os.path.exists(file):
                 validation_logs.append(file)
@@ -455,6 +462,16 @@ def get_allowed_logs_for_request(
             )
             if os.path.exists(file):
                 validation_logs.append(file)
+
+        # Ngen logs are in the worker
+        matching_worker = find_validation_worker_with_matching_id(
+            validation_run,
+            worker_name=validation_run.iteration.worker_name if validation_type == ValidationType.VALID_ITERATION else None,
+            iteration_num=validation_run.iteration.iteration_num if validation_type == ValidationType.VALID_ITERATION else None,
+        )
+        if matching_worker:
+            ngen_log_dir = os.path.join(matching_worker, 'ngen')
+            validation_logs.extend(get_log_files_in_directory(ngen_log_dir))
 
         logs[LogCategory.VALIDATION.value] = validation_logs
 
@@ -511,7 +528,10 @@ def get_calibration_logs(calibration_run: CalibrationRun) -> list[str]:
     """
     logs = []
 
-    ngen_log_dir = get_ngen_log_dir(calibration_run)
+    bootstrap_ngen_log_dir = get_ngen_log_dir(calibration_run)
+    logs.extend(get_log_files_in_directory(bootstrap_ngen_log_dir))
+
+    ngen_log_dir = get_calibration_ngen_logs(calibration_run)
     logs.extend(get_log_files_in_directory(ngen_log_dir))
 
     calibration_run_dir = get_output_calibration_run_dir(calibration_run)
@@ -522,18 +542,32 @@ def get_calibration_logs(calibration_run: CalibrationRun) -> list[str]:
 
 def get_all_validation_logs(calibration_run: CalibrationRun) -> list[str]:
     """
-    Collects available validation log files associated with a calibration run.
+    Collect available validation log files associated with a calibration run.
 
-    Includes any *.log files found in the validation output directory.
+    Includes:
+    - any *.log files found directly in the Validation_Run directory
+    - any *.log files found directly in each worker directory under Validation_Run
+    - any *.log files found in the `logs` subdirectory of each worker under Validation_Run
 
     :param calibration_run: The calibration run whose validation logs should be collected.
     :return: A list of log file paths.
     """
-
     logs = []
 
+    # Top-level validation logs (for example stdout logs) in Validation_Run
     validation_run_dir = get_output_validation_run_dir(calibration_run)
     logs.extend(get_log_files_in_directory(validation_run_dir))
+
+    # Worker-specific logs
+    for item in os.listdir(validation_run_dir):
+        worker_dir = os.path.join(validation_run_dir, item)
+        if os.path.isdir(worker_dir) and worker_directory_pattern.match(item):
+            # Log files directly in the worker directory
+            logs.extend(get_log_files_in_directory(worker_dir))
+
+            # Log files in the worker's logs subdirectory
+            worker_logs_dir = os.path.join(worker_dir, 'logs')
+            logs.extend(get_log_files_in_directory(worker_logs_dir))
 
     return logs
 
@@ -560,4 +594,7 @@ def get_log_files_in_directory(directory: str) -> list[str]:
     :return: List of log file paths as strings.
     """
     base_path = Path(directory)
-    return [str(p) for p in base_path.glob("*.log")]
+
+    files = [str(p) for p in base_path.glob("*.log")]
+    logger.info(f"Found {len(files)} log file(s) in {directory}")
+    return files
