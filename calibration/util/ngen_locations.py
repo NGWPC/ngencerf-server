@@ -100,7 +100,7 @@ def get_observational_filename(run: CalibrationRun) -> str:
 
 
 # Job-specific observation file
-def get_observational_file_for_job(run: CalibrationRun) -> str:
+def get_observational_file_for_job(run: CalibrationRun) -> str | None:
     return os.path.join(get_observational_dir_for_job(run), get_observational_filename(run)) if run.gage else None
 
 

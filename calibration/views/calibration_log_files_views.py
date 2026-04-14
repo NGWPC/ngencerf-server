@@ -16,7 +16,7 @@ from calibration.util.ngen_locations import get_forecast_ngen_stdout_file, get_f
     get_cold_start_ngen_log_dir, \
     get_verification_stdout_file, get_calibration_ngen_logs, get_output_validation_run_dir, \
     get_output_calibration_run_dir, get_validation_iteration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
-    get_ngen_log_dir
+    get_ngen_log_dir, get_gage_dir
 from calibration.views.calibration_evaluation_views import logger
 from calibration.views.calibration_run_views import map_path_to_host
 from calibration.views.called_from import get_caller_name
@@ -470,9 +470,10 @@ def get_allowed_logs_for_request(
             iteration_num=validation_run.iteration.iteration_num if validation_type == ValidationType.VALID_ITERATION else None,
         )
         if matching_worker:
-            ngen_log_dir = os.path.join(matching_worker, 'ngen')
+            ngen_log_dir = os.path.join(matching_worker, 'logs')
             validation_logs.extend(get_log_files_in_directory(ngen_log_dir))
 
+        logs[LogCategory.GENERAL.value] = get_general_logs(calibration_run)
         logs[LogCategory.VALIDATION.value] = validation_logs
 
     elif forecast_run:
@@ -528,6 +529,9 @@ def get_general_logs(calibration_run: CalibrationRun) -> list[str]:
     """
     logs = []
 
+    gage_dir = get_gage_dir(calibration_run)
+    logs.extend(get_log_files_in_directory(gage_dir))
+
     bootstrap_ngen_log_dir = get_ngen_log_dir(calibration_run)
     logs.extend(get_log_files_in_directory(bootstrap_ngen_log_dir))
 
@@ -546,6 +550,7 @@ def get_calibration_logs(calibration_run: CalibrationRun) -> list[str]:
     :return: A list of log file paths.
     """
     logs = []
+
 
     ngen_log_dir = get_calibration_ngen_logs(calibration_run)
     logs.extend(get_log_files_in_directory(ngen_log_dir))
@@ -575,15 +580,16 @@ def get_all_validation_logs(calibration_run: CalibrationRun) -> list[str]:
     logs.extend(get_log_files_in_directory(validation_run_dir))
 
     # Worker-specific logs
-    for item in os.listdir(validation_run_dir):
-        worker_dir = os.path.join(validation_run_dir, item)
-        if os.path.isdir(worker_dir) and worker_directory_pattern.match(item):
-            # Log files directly in the worker directory
-            logs.extend(get_log_files_in_directory(worker_dir))
+    if validation_run_dir:
+        for item in os.listdir(validation_run_dir):
+            worker_dir = os.path.join(validation_run_dir, item)
+            if os.path.isdir(worker_dir) and worker_directory_pattern.match(item):
+                # Log files directly in the worker directory
+                logs.extend(get_log_files_in_directory(worker_dir))
 
-            # Log files in the worker's logs subdirectory
-            worker_logs_dir = os.path.join(worker_dir, 'logs')
-            logs.extend(get_log_files_in_directory(worker_logs_dir))
+                # Log files in the worker's logs subdirectory
+                worker_logs_dir = os.path.join(worker_dir, 'logs')
+                logs.extend(get_log_files_in_directory(worker_logs_dir))
 
     return logs
 
