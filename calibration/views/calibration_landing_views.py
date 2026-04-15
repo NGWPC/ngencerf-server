@@ -896,12 +896,12 @@ def archive_jobs(request: Request) -> Response:
 
     A job is marked archived only after the requested operation reaches a safe
     completion point:
-    - Archive: S3 copy verified and active local path moved out of the way.
+    - Archive: S3 copy completed and active local path moved out of the way.
     - Unarchive: Local restore verified and archived S3 objects removed.
 
     Note:
-    Quarantined directories that cannot be immediately deleted are cleaned up
-    later by a scheduled background process.
+    Quarantined directories are not deleted in the request path after archive.
+    They are left for a scheduled background cleanup process.
 
     :param request: The HTTP request object.
     :return: A Response object with per-job archive or unarchive results.
@@ -1009,7 +1009,10 @@ def archive_jobs(request: Request) -> Response:
                 start = time.perf_counter()
                 logger.info(f"Archiving Calibration Job {calibration_run_id}: copy {src_path} -> {dst_prefix}")
 
-                # ---- COPY LOCAL → CLOUD ----
+                # Archive copy:
+                # - upload files to S3
+                # - write manifest from source-side hashes only
+                # - do not hash-read uploaded S3 objects back
                 copied = copy_tree(
                     src_path,
                     dst_prefix,
@@ -1043,35 +1046,15 @@ def archive_jobs(request: Request) -> Response:
                         )
                         raise
 
-                # ---- BEST-EFFORT DELETE OF THE QUARANTINED DIRECTORY ----
-                # Attempt to delete the quarantined directory immediately.
-                # In most cases this will succeed, but on NFS/EFS it may fail temporarily
-                # if files are still held open by another process.
-                if quarantined_path and os.path.isdir(quarantined_path):
-                    try:
-                        delete_tree_with_retries(
-                            quarantined_path,
-                            attempts=10,
-                            delay_seconds=1.0,
-                        )
-                        logger.info(
-                            f"Deleted quarantined local directory after archive: {quarantined_path}"
-                        )
-                    except Exception as e:
-                        # Archive is still considered successful at this point:
-                        # - The data has been fully copied and verified in S3
-                        # - The original active path no longer exists
-                        #
-                        # Any remaining files are confined to the quarantined directory, which is
-                        # safe to delete later. A separate cleanup process (e.g., cron job) will
-                        # periodically retry deletion of directories matching:
-                        #     *.__archived_pending_delete__.*
-                        #
-                        # This deferred cleanup is required because NFS/EFS may delay releasing
-                        # file handles, preventing immediate removal.
-                        logger.warning(
-                            f"Failed to delete quarantined local directory {quarantined_path}: {e}"
-                        )
+                # Do not synchronously delete quarantined archive directories here.
+                # They are safe once moved out of the active path and will be
+                # cleaned up later by the background cleanup job.
+                if quarantined_path:
+                    logger.info(
+                        f"Deferred deletion of quarantined local directory to background cleanup: "
+                        f"{quarantined_path}"
+                    )
+
 
             # ===============================
             # UNARCHIVE (S3 → EFS)
@@ -1084,9 +1067,9 @@ def archive_jobs(request: Request) -> Response:
 
                 dest_dir = run.job_data_dir
 
-                # Ensure the destination directory is removed before restore.
+                # Remove any existing destination directory before restore.
                 if os.path.isdir(dest_dir):
-                    delete_tree_with_retries(dest_dir, attempts=10, delay_seconds=1.0)
+                    delete_tree_with_retries(dest_dir, attempts=3, delay_seconds=0.5)
 
                 # Recreate the destination directory before copying into it.
                 os.makedirs(dest_dir, exist_ok=True)
@@ -1266,7 +1249,7 @@ def hard_delete(run: CalibrationRun) -> None:
     logger.debug(f'Deleting directory {job_data_dir} for Calibration Job {run.id}')
     if job_data_dir and os.path.isdir(job_data_dir):
         try:
-            delete_tree_with_retries(job_data_dir, attempts=10, delay_seconds=1.0)
+            delete_tree_with_retries(job_data_dir, attempts=3, delay_seconds=0.5)
         except Exception:
             logger.exception(
                 f"Failed to delete job directory {job_data_dir} for Calibration Job {run.id}"
@@ -1349,7 +1332,7 @@ def import_job(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def delete_tree_with_retries(path: str, attempts: int = 10, delay_seconds: float = 1.0) -> None:
+def delete_tree_with_retries(path: str, attempts: int = 3, delay_seconds: float = 1.0) -> None:
     """
     Delete a directory tree with bounded retries for common NFS/EFS cleanup races.
 
