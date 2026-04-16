@@ -145,7 +145,7 @@ CONFIG_TEMPLATE = {
 }
 
 
-def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport | None, str | None]:
+def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport, str | None]:
     """
     Validate the given CalibrationRun and prepare it for execution.
 

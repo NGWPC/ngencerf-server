@@ -100,7 +100,7 @@ def get_observational_filename(run: CalibrationRun) -> str:
 
 
 # Job-specific observation file
-def get_observational_file_for_job(run: CalibrationRun) -> str:
+def get_observational_file_for_job(run: CalibrationRun) -> str | None:
     return os.path.join(get_observational_dir_for_job(run), get_observational_filename(run)) if run.gage else None
 
 
@@ -118,6 +118,10 @@ def get_ngen_stdout_log_filename() -> str:
 
 def get_ngen_log_dir(run: CalibrationRun) -> str:
     return os.path.join(get_gage_dir(run), 'logs')
+
+
+def get_calibration_ngen_logs(run: CalibrationRun) -> str:
+    return os.path.join(get_output_dir(run), 'logs')
 
 
 def get_input_dir(run: CalibrationRun) -> str:
@@ -307,23 +311,15 @@ def get_forecast_output_file(forecast_run: ForecastRun) -> str:
 
 
 def get_cold_start_stdout_file(cold_start_run: ColdStartRun) -> str:
-    return os.path.join(get_cold_start_dir(cold_start_run), 'cold_start_stdout.log')
+    return os.path.join(get_cold_start_dir(cold_start_run), f'cold_start_{cold_start_run.id}_stdout.log')
 
 
 def get_forecast_stdout_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_dir(forecast_run), 'forecast_stdout.log')
+    return os.path.join(get_forecast_dir(forecast_run), f'forecast_{forecast_run.id}_stdout.log')
 
 
 def get_hindcast_stdout_file(hindcast_run: HindcastRun) -> str:
-    return os.path.join(get_hindcast_dir(hindcast_run), 'hindcast_stdout.log')
-
-
-def get_cold_start_ngen_stdout_file(cold_start_run: ColdStartRun) -> str:
-    return os.path.join(get_cold_start_dir(cold_start_run), 'ngen_stdout_stderr.log')
-
-
-def get_forecast_ngen_stdout_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_dir(forecast_run), 'ngen_stdout_stderr.log')
+    return os.path.join(get_hindcast_dir(hindcast_run), f'hindcast_{hindcast_run.id}_stdout.log')
 
 
 def get_cold_start_ngen_log_dir(cold_start_run: ColdStartRun) -> str:
@@ -362,12 +358,8 @@ def get_verification_yaml_config_file(run: VerificationRun) -> str:
     return os.path.join(get_verification_run_dir(run), f'verification_{run.id}_config.yaml')
 
 
-# def get_verification_log_file(run: VerificationRun) -> str:
-#     return os.path.join(get_verification_run_dir(run), 'verification.log')
-
-
 def get_verification_stdout_file(run: VerificationRun) -> str:
-    return os.path.join(get_verification_run_dir(run), 'verification_stdout.log')
+    return os.path.join(get_verification_run_dir(run), f'verification_{run.id}_stdout.log')
 
 
 def get_verification_performance_file(run: VerificationRun) -> str:

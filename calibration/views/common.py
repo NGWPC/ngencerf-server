@@ -393,7 +393,6 @@ def get_hindcast_run(
     )
 
 
-
 def get_verification_run(
         verification_run_id: int,
         user: User | None,
@@ -1005,7 +1004,7 @@ def process_worker_dirs(
 
     :param run: The CalibrationRun or ValidationRun instance.
     :param worker_lambda: A callback function applied to each worker directory.
-                         Return True to stop iterating, False to continue.
+                          Return True to stop iterating, False to continue.
     """
 
     if isinstance(run, CalibrationRun):

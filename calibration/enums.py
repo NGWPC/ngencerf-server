@@ -218,6 +218,7 @@ class ValidationType(AbstractEnum):
 
 
 class LogCategory(AbstractEnum):
+    GENERAL = 'general'
     CALIBRATION = 'calibration'
     VALIDATION = 'validation'
     FORECAST = 'forecast'
