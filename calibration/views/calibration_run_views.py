@@ -153,9 +153,15 @@ def get_status(request: Request) -> Response:
             if error_return:
                 return error_return
 
-            logger.info('Calling check_slurm_reconciliation')
+            logger.info(
+                f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}) - "
+                f"calling check_slurm_reconciliation"
+            )
             needs_reconcile, sacct_status = check_slurm_reconciliation(run)
-            logger.info(f"Needs_reconcile={needs_reconcile} sacct_status={sacct_status}")
+            logger.info(
+                f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}) - "
+                f"needs_reconcile={needs_reconcile}, sacct_status={sacct_status}"
+            )
 
             response = get_status_for_calibration(run, include_performance_metrics)
 
@@ -218,7 +224,10 @@ def get_status(request: Request) -> Response:
     # WRITE PHASE (ONLY IF NECESSARY)
     # ─────────────────────────────────────────────────────────────
     if needs_reconcile:
-        logger.info('reconciling')
+        logger.info(
+            f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}) - "
+            f"applying Slurm reconciliation"
+        )
 
         with transaction.atomic():
             # Re-fetch the row outside readonly_transaction before mutating
@@ -1586,35 +1595,35 @@ def get_slurm_token(request: Request) -> Response:
 
 def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:
     """
-    Determine whether a run requires Slurm reconciliation.
+    Determine whether a run requires reconciliation against Slurm.
 
-    A run is eligible for reconciliation only if:
+    A run is considered for reconciliation only if:
     - it has a slurm_job_id, and
-    - its DB status is active (RUNNING or SUBMITTED).
+    - its database status is still active (SUBMITTED or RUNNING).
 
-    Reconciliation is needed when the DB says the job is active but Slurm no longer
-    reports it as active (squeue empty / job not present).
+    This function relies on get_slurm_status() to interpret the Slurm response
+    and decide whether the job is still active.
 
-    Race-condition exception:
-    - If Slurm reports the job as not active but sacct_status is "COMPLETED",
-      reconciliation is skipped. This indicates the job finished and the Slurm
-      callback is expected imminently, so the server status should be left unchanged.
+    Reconciliation is needed when:
+    - the database still shows the run as active, but
+    - Slurm no longer considers the job active.
 
-    Fallback behavior note:
-    - This relies on the Slurm callback to eventually arrive and update the run.
-      If callbacks are not reliably delivered in some environments, this logic
-      will need to be extended with a retry or timeout-based reconciliation path
-      (e.g., reconcile if the job remains COMPLETED in Slurm for longer than a
-      configured grace period).
+    Application-level exception:
+    - If Slurm reports the job as inactive and the returned status is "COMPLETED",
+      reconciliation is skipped. In that case, the job is treated as having
+      finished normally and the server waits for the Slurm callback to perform
+      the final database update.
 
-    This function performs no database writes and is safe to call inside a readonly transaction.
+    This function performs no database writes and is safe to call inside a
+    readonly transaction.
 
-    :param run: The run object (CalibrationRun / ValidationRun / ForecastRun / VerificationRun),
-        which must inherit from BaseRun.
+    :param run: The run object to inspect. Must inherit from BaseRun.
     :return: Tuple (needs_reconciliation, sacct_status)
-        - needs_reconciliation: True if the DB indicates an active job but Slurm indicates the job is not active
-          (excluding the COMPLETED race-condition exception).
-        - sacct_status: The terminal status reported by Slurm accounting (sacct), or None/UNKNOWN if indeterminate.
+        - needs_reconciliation: True if the database indicates the run is still
+          active but Slurm indicates it is no longer active, excluding the
+          COMPLETED callback-wait case.
+        - sacct_status: The status detail returned by get_slurm_status(), used
+          for logging and reconciliation messaging.
     """
     if not run.slurm_job_id:
         return False, None
@@ -1628,19 +1637,24 @@ def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:
     slurm_is_active, sacct_status = get_slurm_status(run.slurm_job_id)
 
     logger.debug(
-        f"{get_job_description(run)}: "
+        f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}): "
         f"Slurm active={slurm_is_active}, sacct_status={sacct_status}"
     )
 
     # Race-condition exception:
     if not slurm_is_active and sacct_status == "COMPLETED":
         logger.info(
-            f"{get_job_description(run)}: slurm inactive but sacct_status=COMPLETED; "
+            f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}): "
+            f"slurm inactive but sacct_status=COMPLETED; "
             f"skipping reconciliation (awaiting callback)"
         )
         return False, sacct_status
 
     if not slurm_is_active:
+        logger.warning(
+            f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}): "
+            f"reconciliation needed; DB status={run.status.name}, sacct_status={sacct_status}"
+        )
         return True, sacct_status
 
     return False, None
@@ -1648,15 +1662,23 @@ def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:
 
 def apply_slurm_reconciliation(run: BaseRun, sacct_status: str) -> None:
     """
-    Escalate a run to SERVER_ERROR due to a Slurm/DB inconsistency.
+    Mark a run as SERVER_ERROR due to a Slurm/database inconsistency.
 
-    This is used when the database indicates the run is active (RUNNING/SUBMITTED),
-    but Slurm indicates the job is no longer active. The run is moved to SERVER_ERROR
-    and a structured reconciliation entry is appended to failure_messages.
+    This is used when the database still shows the run as active
+    (RUNNING or SUBMITTED), but Slurm indicates the job is no longer active
+    and reconciliation has been deemed necessary.
 
-    :param run: The run object to mutate (must inherit from BaseRun). This object is expected
-        to be re-fetched under a write-capable transaction (e.g., select_for_update()) by the caller.
-    :param sacct_status: The terminal status reported by Slurm accounting (sacct) for the job.
+    The inconsistency is both:
+    - logged as an error, and
+    - appended to failure_messages in structured form
+
+    so that it is visible in logs as well as persisted for later debugging
+    and API responses.
+
+    :param run: The run object to update. The caller is expected to re-fetch
+        it inside a write-capable transaction before calling this function.
+    :param sacct_status: The Slurm status detail associated with the
+        inconsistency.
     :return: None
     """
     original_status = run.status.name
@@ -1666,9 +1688,11 @@ def apply_slurm_reconciliation(run: BaseRun, sacct_status: str) -> None:
         f"{original_status}; sacct_status={sacct_status}"
     )
 
+    # Record the reconciliation event in server logs
     logger.error(f"{get_job_description(run)}: {message}")
 
-    # failure_messages is a TEXT field → treat as JSON string
+    # failure_messages is stored as text, so normalize it and append
+    # a structured reconciliation entry before re-serializing to JSON.
     existing = normalize_failure_messages(run.failure_messages)
 
     existing.append({
@@ -1689,16 +1713,18 @@ def get_slurm_status(slurm_id: int) -> tuple[bool, str | None]:
     Query the Slurm status service for the current status of a job.
 
     Semantics:
-    - If squeue indicates the job is present/active, that is authoritative and the job is treated as active.
-    - If squeue is empty but sacct provides a terminal status, the job is treated as not active and the
-      terminal status is returned.
-    - If the response is non-200, not JSON, or missing usable fields, the job is treated as not active
-      with status "UNKNOWN" (conservative for reconciliation logic).
+    - If squeue is empty, the job is no longer active.
+    - If squeue reports COMPLETING, the job is in teardown/cleanup rather than normal execution.
+      In that case, if sacct already reports a terminal state, treat the job as inactive and use sacct.
+      Otherwise, treat it as still active and allow time for callback/accounting to settle.
+    - For any other non-empty squeue state, treat the job as active.
+    - If the response is unusable (non-200, invalid JSON, or missing fields), treat the job as not active
+      with status "UNKNOWN".
 
     :param slurm_id: Slurm job ID to query.
-    :return: Tuple (is_active, sacct_status)
-        - is_active: True if the job is currently active (squeue authoritative), False otherwise.
-        - sacct_status: The terminal status from sacct when available, or "UNKNOWN"/None if indeterminate.
+    :return: Tuple (is_active, status_detail)
+        - is_active: True if the job is considered active, False otherwise.
+        - status_detail: A relevant Slurm status string, or "UNKNOWN" if indeterminate.
     """
     # ----------------------------------
     # TODO Get rid of this debug code
@@ -1739,16 +1765,25 @@ def get_slurm_status(slurm_id: int) -> tuple[bool, str | None]:
         squeue_status = data.get("squeue")
         sacct_status = data.get("sacct")
 
-        if squeue_status:
-            # Job still active → squeue authoritative
-            return True, squeue_status
+        if isinstance(squeue_status, str):
+            squeue_status = squeue_status.strip().upper()
 
-        if sacct_status:
-            # Job finished → sacct authoritative
-            return False, sacct_status
+        if isinstance(sacct_status, str):
+            sacct_status = sacct_status.strip().upper()
 
-        # Defensive fallback: no usable status provided
-        return False, "UNKNOWN"
+        # No squeue entry -> job is no longer active; use sacct if available.
+        if not squeue_status:
+            return False, sacct_status or "UNKNOWN"
+
+        # COMPLETING is a cleanup/teardown state. If sacct already reports a terminal
+        # outcome, trust sacct; otherwise keep treating the job as active for now.
+        if squeue_status == "COMPLETING":
+            if sacct_status and sacct_status != "COMPLETED":
+                return False, sacct_status
+            return True, "COMPLETING"
+
+        # Any other visible squeue state is treated as active.
+        return True, squeue_status
 
     except Exception as ex:
         logger.exception(f"Error querying Slurm status for job {slurm_id}: {ex}")
