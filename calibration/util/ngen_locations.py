@@ -311,15 +311,15 @@ def get_forecast_output_file(forecast_run: ForecastRun) -> str:
 
 
 def get_cold_start_stdout_file(cold_start_run: ColdStartRun) -> str:
-    return os.path.join(get_cold_start_dir(cold_start_run), 'cold_start_stdout.log')
+    return os.path.join(get_cold_start_dir(cold_start_run), f'cold_start_{cold_start_run.id}_stdout.log')
 
 
 def get_forecast_stdout_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_dir(forecast_run), 'forecast_stdout.log')
+    return os.path.join(get_forecast_dir(forecast_run), f'forecast_{forecast_run.id}_stdout.log')
 
 
 def get_hindcast_stdout_file(hindcast_run: HindcastRun) -> str:
-    return os.path.join(get_hindcast_dir(hindcast_run), 'hindcast_stdout.log')
+    return os.path.join(get_hindcast_dir(hindcast_run), f'hindcast_{hindcast_run.id}_stdout.log')
 
 
 def get_cold_start_ngen_log_dir(cold_start_run: ColdStartRun) -> str:
@@ -356,6 +356,10 @@ def get_verification_run_dir(run: VerificationRun) -> str:
 
 def get_verification_yaml_config_file(run: VerificationRun) -> str:
     return os.path.join(get_verification_run_dir(run), f'verification_{run.id}_config.yaml')
+
+
+def get_verification_stdout_file(run: VerificationRun) -> str:
+    return os.path.join(get_verification_run_dir(run), f'verification_{run.id}_stdout.log')
 
 
 def get_verification_performance_file(run: VerificationRun) -> str:
