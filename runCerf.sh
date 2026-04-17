@@ -558,7 +558,9 @@ if [ "$IN_DOCKER" = false ]; then
 
 
         # requirements.txt does not reliably pick up changes in the git-installed repos.
-        # With SHA caching, we only reinstall when the branch tip SHA changes (or FORCE_REINSTALL_VCS=1).
+        # With SHA caching, reinstall when the branch tip SHA changes
+        # (or FORCE_REINSTALL_VCS=1). Do NOT use --no-deps here, because these
+        # packages may add or change dependencies in pyproject.toml.
 
         echo
         echo --------------------------------------------------------
@@ -567,21 +569,12 @@ if [ "$IN_DOCKER" = false ]; then
         if MSWM_SHA="$(resolve_branch_sha "$MSWM_REPO" "$MSWM_BRANCH")"; then
             echo "mswm ${MSWM_BRANCH} -> ${MSWM_SHA}"
             if should_reinstall_git_pkg "mswm" "$MSWM_SHA" "$MSWM_SHA_MARKER"; then
-                pip install --force-reinstall --no-deps --no-cache-dir "git+${MSWM_REPO}@${MSWM_BRANCH}"
+                pip install --force-reinstall --no-cache-dir "git+${MSWM_REPO}@${MSWM_BRANCH}"
                 record_sha_marker "$MSWM_SHA" "$MSWM_SHA_MARKER"
             fi
         else
             # Fallback: could not resolve the branch SHA; revert to branch-based install behavior.
-            if pip show "mswm" > /dev/null 2>&1; then
-                # Already installed → force reinstall without dependencies.
-                # If upstream added new deps, you may need to run this *before* rerunning this script:
-                #   pip uninstall -y mswm
-                # Not an issue in production (fresh Docker image).
-                pip install --force-reinstall --no-deps --no-cache-dir "git+${MSWM_REPO}@${MSWM_BRANCH}"
-            else
-                # Not installed → normal install (allow pip to resolve dependencies).
-                pip install "git+${MSWM_REPO}@${MSWM_BRANCH}"
-            fi
+            pip install --force-reinstall --no-cache-dir "git+${MSWM_REPO}@${MSWM_BRANCH}"
         fi
 
         echo
@@ -591,21 +584,12 @@ if [ "$IN_DOCKER" = false ]; then
         if DATA_ASSIM_SHA="$(resolve_branch_sha "$DATA_ASSIM_REPO" "$DATA_ASSIMILATION_BRANCH")"; then
             echo "data_assimilation_engine ${DATA_ASSIMILATION_BRANCH} -> ${DATA_ASSIM_SHA}"
             if should_reinstall_git_pkg "data_assimilation_engine" "$DATA_ASSIM_SHA" "$DATA_ASSIM_SHA_MARKER"; then
-                pip install --force-reinstall --no-deps --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_BRANCH}"
+                pip install --force-reinstall --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_BRANCH}"
                 record_sha_marker "$DATA_ASSIM_SHA" "$DATA_ASSIM_SHA_MARKER"
             fi
         else
             # Fallback: could not resolve the branch SHA; revert to branch-based install behavior.
-            if pip show "data_assimilation_engine" > /dev/null 2>&1; then
-                # Already installed → force reinstall without dependencies.
-                # If upstream added new deps, you may need to run this *before* rerunning this script:
-                #   pip uninstall -y data_assimilation_engine
-                # Not an issue in production (fresh Docker image).
-                pip install --force-reinstall --no-deps --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_BRANCH}"
-            else
-                # Not installed → normal install (allow pip to resolve dependencies).
-                pip install "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_BRANCH}"
-            fi
+            pip install --force-reinstall --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_BRANCH}"
         fi
 
         echo
