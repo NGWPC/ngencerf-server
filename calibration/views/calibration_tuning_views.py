@@ -279,9 +279,14 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
                 f"{time.perf_counter() - daterange_intersection_start:.2f}s")
 
     if daterange:
+        start_time = daterange.start_datetime
+        end_time = daterange.end_datetime
+
+        assert start_time is not None and end_time is not None
+
         return {
-            'start_time': daterange.start_datetime,
-            'end_time': daterange.end_datetime
+            'start_time': start_time,
+            'end_time': end_time
         }
 
     return {}
@@ -971,7 +976,7 @@ def validate_time_range(
         start_time: datetime | None,
         end_time: datetime | None,
         field_name: str
-) -> tuple[str | None, tuple[datetime | None, datetime | None] | None]:
+) -> tuple[str | None, tuple[datetime, datetime] | None]:
     """
     Validates a given time range, ensuring that both start and end times are provided and that the start time
     is not later than the end time.
@@ -987,8 +992,10 @@ def validate_time_range(
 
     # Check if start time is earlier than or equal to end time
     if start_time > end_time:
-        return (f'{field_name.capitalize()} must have a start time earlier than or equal to the end time - '
-                f'{format_datetime(start_time)} > {format_datetime(end_time)}'), None
+        return (
+            f'{field_name.capitalize()} must have a start time earlier than or equal to the end time - '
+            f'{format_datetime(start_time)} > {format_datetime(end_time)}'
+        ), None
 
     # If all validations pass, return the valid range
     return None, (start_time, end_time)
@@ -1032,8 +1039,14 @@ def validate_parameter_values(run: CalibrationRun, parameters: list[dict[str, st
 
     # Validate each provided parameter
     for p in parameters:
-        module_name: str = p['module']
-        key = (module_name, p['name'])
+        module_name = p['module']
+        param_name = p['name']
+
+        if not isinstance(module_name, str) or not isinstance(param_name, str):
+            continue
+
+        key = (module_name, param_name)
+
         if key not in parameter_lookup:
             # Check if module is valid
             if get_cached_module_by_name(module_name):
@@ -1041,15 +1054,19 @@ def validate_parameter_values(run: CalibrationRun, parameters: list[dict[str, st
             else:
                 invalid_modules.append(key)
         else:
-            min_val = p.get('minimum')
-            max_val = p.get('maximum')
-            initial = p.get('initial_value')
+            min_val_raw = p.get('minimum')
+            max_val_raw = p.get('maximum')
+            initial_raw = p.get('initial_value')
 
-            # Only check range if all values are provided
-            if min_val is not None and max_val is not None and initial is not None:
+            if min_val_raw is not None and max_val_raw is not None and initial_raw is not None:
+                min_val = float(min_val_raw)
+                max_val = float(max_val_raw)
+                initial = float(initial_raw)
+
+                # Only check range if all values are provided
                 if not (min_val <= initial <= max_val):
                     msg = (
-                        f"Initial value {initial} for parameter '{p['name']}' in module '{module_name}' "
+                        f"Initial value {initial} for parameter '{param_name}' in module '{module_name}' "
                         f"is outside the range [{min_val}, {max_val}]"
                     )
                     logger.warning(msg)
@@ -1117,12 +1134,21 @@ def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]
         for p in existing_parameters
     }
 
-    selected_for_tuning = {(p['module'], p['name']) for p in parameters}
+    selected_for_tuning = {
+        (p['module'], p['name'])
+        for p in parameters
+    }
     parameters_to_update = []
 
     # Update existing parameters
     for p in parameters:
-        key = (p['module'], p['name'])
+        module_name = p['module']
+        param_name = p['name']
+
+        if not isinstance(module_name, str) or not isinstance(param_name, str):
+            continue
+
+        key = (module_name, param_name)
         existing = parameter_lookup.get(key)
         if not existing:
             continue  # Ignore unknown parameters
@@ -1264,7 +1290,7 @@ def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
     return timerange
 
 
-def get_date_range_intersection(run: CalibrationRun, forcing_dir_path: str = None) -> DateTimeRange | None:
+def get_date_range_intersection(run: CalibrationRun, forcing_dir_path: str | None = None) -> DateTimeRange | None:
     """
     Calculates the intersection of date ranges between observational and forcing data.
     Supports both local paths and cloud URLs.
@@ -1283,10 +1309,20 @@ def get_date_range_intersection(run: CalibrationRun, forcing_dir_path: str = Non
 
     # Compute the intersection of the two ranges
     if obs_range and forcing_range:
-        start_time = max(obs_range.start_datetime, forcing_range.start_datetime)
-        end_time = min(obs_range.end_datetime, forcing_range.end_datetime)
+        obs_start = obs_range.start_datetime
+        obs_end = obs_range.end_datetime
+        forcing_start = forcing_range.start_datetime
+        forcing_end = forcing_range.end_datetime
+
+        assert obs_start is not None and obs_end is not None
+        assert forcing_start is not None and forcing_end is not None
+
+        start_time = max(obs_start, forcing_start)
+        end_time = min(obs_end, forcing_end)
+
         if start_time <= end_time:
             return DateTimeRange(start_time, end_time)
+
     return None
 
 

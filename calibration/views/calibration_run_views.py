@@ -155,8 +155,7 @@ def get_status(request: Request) -> Response:
                 return error_return
             assert calibration_run is not None
 
-            run = calibration_run
-
+            run: CalibrationRun = calibration_run
 
             logger.info(
                 f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}) - "

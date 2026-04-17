@@ -458,7 +458,6 @@ def copy_tree(src_url: str,
     # can be recreated later during cloud→local restore.
     manifest_symlinks = [] if verify and src_scheme == "file" and dst_scheme != "file" else None
 
-
     # ------------------------------------------------------------
     # Helper to compute SHA256 when verify=True
     # ------------------------------------------------------------
@@ -473,7 +472,7 @@ def copy_tree(src_url: str,
     # If verify and source is cloud → load manifest.json
     # ------------------------------------------------------------
     source_manifest_dict = None  # fast lookup dict: rel_path → sha256
-    source_manifest_raw = None   # full manifest JSON (includes symlinks)
+    source_manifest_raw = None  # full manifest JSON (includes symlinks)
     if verify and src_scheme != "file":
         manifest_url = join_url(src_base, src_prefix, "_manifest.json")
 
@@ -1545,7 +1544,6 @@ def upload_file_to_s3(*, local_path: str, s3_uri: str, profile_name: str | None 
                 _expired_credentials_message("upload_file_to_s3", s3_uri, profile_name)
             ) from e
         raise
-
 
     except PermissionError as e:
         if "expired" in str(e).lower():

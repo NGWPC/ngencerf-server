@@ -255,8 +255,10 @@ def validate_optimizations(
             name = o['name']
             value = o['value']
             optimization_input_data = valid_inputs_dict.get(name)
-            if not optimization_input_data:
+            if optimization_input_data is None:
                 return None, None, f"'{name}' is not a valid parameter input for '{optimization_name}'"
+
+            optimization_input_data: dict[str, Any]
 
             # Safely retrieve min and max values
             min_value = optimization_input_data['min']
