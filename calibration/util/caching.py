@@ -30,7 +30,7 @@ import yaml
 from django.conf import settings
 from django.core.cache import cache
 
-from calibration.enums import PlotDefinitionsEnum, ForecastConfigEnum
+from calibration.enums import PlotDefinitionsEnum, ForecastConfigEnum, HindcastConfigEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import Module, ModuleGroup, Gage, CalibrationRun, ValidationRun, CalibrationFormulation, OptimizationInput, \
     ModulePropertyChoice, ModuleProperty
@@ -428,9 +428,6 @@ def have_LSTM(run: CalibrationRun) -> bool:
     return any(modules_by_id[f.module_id].name == "LSTM" for f in formulations if f.module_id in modules_by_id)
 
 
-_FORECAST_CFG_FILE_CACHE_KEY = f"{CACHE_PREFIX}forecast_config_file_created"
-
-
 class _FlowSeqDumper(yaml.SafeDumper):
     """
     Custom YAML dumper that keeps mappings in normal block style
@@ -460,28 +457,43 @@ def _represent_sequence_flow(dumper, data):
 # Register the custom representer for all Python lists
 _FlowSeqDumper.add_representer(list, _represent_sequence_flow)
 
+_FORECAST_CFG_FILE_CACHE_KEY_BASE = f"{CACHE_PREFIX}forecast_config_yaml"
 
-def generate_forecast_config_yaml() -> str:
+
+def generate_forecast_config_yaml(
+        enum_class: type[ForecastConfigEnum] | type[HindcastConfigEnum] = ForecastConfigEnum
+) -> str:
     """
-    Generate (once per server run) a YAML mapping of forecast configurations.
+    Generate (once per server run, per enum type) a YAML mapping of forecast configurations.
 
     Example output:
         short_range: [0, 23, 1, 18, 1]
         short_range_hawaii: [0, 12, 12, 48, 0.25]
 
-    Uses cached ForecastConfiguration data from ForecastConfigEnum (no DB hit).
+    Uses cached ForecastConfiguration data from the supplied enum class (no DB hit).
 
+    :param enum_class: ForecastConfigEnum for all active forecast configs,
+                       HindcastConfigEnum for hindcast-supported configs only.
     :return: Full path of the generated forecast configuration YAML file.
     """
-    output_file = os.path.join(settings.NGEN_VERIFICATION_WORK_DIR, "forecast_configurations.yaml")
+    is_hindcast = enum_class is HindcastConfigEnum
 
-    # Only generate once per server process
-    if cache.get(_FORECAST_CFG_FILE_CACHE_KEY):
+    file_name = "hindcast_configurations.yaml" if is_hindcast else "forecast_configurations.yaml"
+    output_file = os.path.join(settings.NGEN_VERIFICATION_WORK_DIR, file_name)
+
+    cache_key = (
+        f"{_FORECAST_CFG_FILE_CACHE_KEY_BASE}_hindcast"
+        if is_hindcast
+        else f"{_FORECAST_CFG_FILE_CACHE_KEY_BASE}_forecast"
+    )
+
+    # Only generate once per server process, per config type
+    if cache.get(cache_key):
         return output_file
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-    configs = ForecastConfigEnum.get_choices_with_fields(
+    configs = enum_class.get_choices_with_fields(
         fields=[
             "internal_name",
             "is_active",
@@ -526,5 +538,5 @@ def generate_forecast_config_yaml() -> str:
             width=2048,  # prevent line wrapping inside lists
         )
 
-    cache.set(_FORECAST_CFG_FILE_CACHE_KEY, True, timeout=None)
+    cache.set(cache_key, True, timeout=None)
     return output_file

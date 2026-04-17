@@ -4,6 +4,7 @@ from typing import Any
 
 import yaml
 
+from calibration.enums import HindcastConfigEnum, ForecastConfigEnum
 from calibration.models import VerificationRun
 from calibration.util.caching import generate_forecast_config_yaml
 from calibration.util.ngen_locations import get_verification_run_dir, VERF_CROSSWALK_NGEN_FILE, get_forecast_output_file_path, \
@@ -97,7 +98,9 @@ def create_verification_input(run: VerificationRun) -> str:
     file_paths: dict[str, Any] = config['file_paths']
     file_paths['base_dir'] = get_verification_run_dir(run)
     file_paths['crosswalk_file'] = {'ngen': VERF_CROSSWALK_NGEN_FILE}
-    file_paths['fcst_config_file'] = generate_forecast_config_yaml()
+    file_paths['fcst_config_file'] = generate_forecast_config_yaml(
+        enum_class=HindcastConfigEnum if is_hindcast else ForecastConfigEnum
+    )
 
     if is_hindcast:
         file_paths['fcst_data_dir'] = {

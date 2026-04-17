@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import ForecastConfigEnum, StatusEnum
+from calibration.enums import ForecastConfigEnum, StatusEnum, HindcastConfigEnum
 from calibration.models import ColdStartRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, LoadForecastTabResponseSerializer, \
@@ -76,17 +76,10 @@ def load_forecast_tab(request: Request) -> Response:
         return error_return
     assert calibration_run is not None
 
-    extra_filter = {
-        'domain': calibration_run.gage.domain,
-    }
-
-    # Hindcast can only use configurations explicitly marked as supported.
-    # Forecast can use all active configurations for the domain.
-    if hindcast_only:
-        extra_filter['supports_hindcast'] = True
+    enum_class = HindcastConfigEnum if hindcast_only else ForecastConfigEnum
 
     with readonly_transaction():
-        configuration_values = ForecastConfigEnum.get_choices_with_fields(
+        configuration_values = enum_class.get_choices_with_fields(
             fields=[
                 'name',
                 'data_sources',
@@ -97,7 +90,9 @@ def load_forecast_tab(request: Request) -> Response:
                 'availability_lag',
                 'order'  # included ONLY so we can sort
             ],
-            extra_filter=extra_filter,
+            extra_filter={
+                'domain': calibration_run.gage.domain,
+            },
         )
 
     # Sort with NULLs at bottom

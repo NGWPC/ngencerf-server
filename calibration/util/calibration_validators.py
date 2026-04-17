@@ -6,7 +6,7 @@ from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
     OptimizationEnum, GeopackageSourceEnum, SlurmCallbackStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastConfigEnum, LogCategory, \
-    NgenLogging
+    NgenLogging, HindcastConfigEnum
 from calibration.enums_vanilla import CalibrationSortField, VerificationSortField, ForecastSortField, HindcastSortField
 from calibration.util.caching import get_cached_modules_with_groups
 
@@ -354,7 +354,7 @@ class CreateForecastRequestSerializer(CalibrationRunIdSerializer):
 
 
 class CreateHindcastRequestSerializer(CalibrationRunIdSerializer):
-    configuration_name = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
+    configuration_name = serializers.CharField(required=True, validators=[enum_validator(HindcastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=False, allow_null=True)
     interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24], required=True)
     num_iterations = serializers.IntegerField(required=True, allow_null=False, validators=[MinValueValidator(1)])
