@@ -8,19 +8,20 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, LogCategory, ValidationType
-from calibration.models import CalibrationRun, ValidationRun
+from calibration.models import CalibrationRun
 from calibration.util.calibration_validators import CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunIdSerializer, \
     GetLogNamesResponseSerializer, ErrorResponseSerializer, GetLogRequestSerializer, GetLogsResponseSerializer, GetLogStatusRequestSerializer, \
     GetLogStatusResponseSerializer
 from calibration.util.ngen_locations import get_validation_control_stdout_file, get_validation_best_stdout_file, get_validation_iteration_stdout_file, \
-    get_forecast_ngen_stdout_file, get_forecast_ngen_log_dir, get_cold_start_ngen_stdout_file, get_cold_start_ngen_log_dir, \
-    get_verification_stdout_file, get_calibration_stdout_file, get_ngen_log_dir, get_ngen_stdout_log_filename, get_hindcast_ngen_log_dir, \
-    get_hindcast_ngen_stdout_file
+    get_forecast_ngen_log_dir, get_ngen_log_dir, get_hindcast_ngen_log_dir, \
+    get_output_validation_run_dir, get_forecast_dir, get_cold_start_dir, get_calibration_ngen_logs, \
+    get_output_calibration_run_dir, get_gage_dir, get_verification_run_dir, get_hindcast_dir, get_cold_start_ngen_log_dir
 from calibration.views.calibration_evaluation_views import logger
 from calibration.views.calibration_run_views import map_path_to_host
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_validation_run, get_forecast_run, get_verification_run, get_calibration_run, handle_exceptions, \
-    get_user_email, validate_request, validate_response, get_elapsed_str, CerfException, truncate_large_fields, process_worker_dirs, get_hindcast_run
+    get_user_email, validate_request, validate_response, get_elapsed_str, CerfException, truncate_large_fields, get_hindcast_run, \
+    find_validation_worker_with_matching_id, worker_directory_pattern
 
 
 @extend_schema(
@@ -75,6 +76,7 @@ def get_log_names(request: Request) -> Response:
     )
     if error_return:
         return error_return
+    assert logs_by_category is not None
 
     category_order = {
         LogCategory.GENERAL.value: 0,
@@ -170,6 +172,7 @@ def get_log(request: Request) -> Response:
     )
     if error_return:
         return error_return
+    assert logs is not None
 
     requested_log_name = normalize_log_path(log_name)
     allowed_logs = {
@@ -284,10 +287,11 @@ def get_log_status(request: Request) -> Response:
         forecast_run_id=forecast_run_id,
         hindcast_run_id=hindcast_run_id,
         verification_run_id=verification_run_id,
-        user=request.user,
+        user=request.user
     )
     if error_return:
         return error_return
+    assert logs is not None
 
     requested_log_name = normalize_log_path(log_name)
     allowed_logs = {
@@ -536,42 +540,20 @@ def get_allowed_logs_for_request(
 
     elif hindcast_run:
         hindcast_logs = []
-        file = get_hindcast_ngen_stdout_file(hindcast_run)
-        if os.path.exists(file):
-            hindcast_logs.append(file)
+        hindcast_dir = get_hindcast_dir(hindcast_run)
+        hindcast_logs.extend(get_log_files_in_directory(hindcast_dir))
 
         ngen_log_dir = get_hindcast_ngen_log_dir(hindcast_run)
-        hindcast_logs.extend([str(p) for p in Path(ngen_log_dir).glob("*.log")])
+        hindcast_logs.extend(get_log_files_in_directory(ngen_log_dir))
         logs[LogCategory.HINDCAST.value] = hindcast_logs
 
         if cold_start_run:
+            cold_start_dir = get_cold_start_dir(cold_start_run)
             cold_start_logs = []
-            file = get_cold_start_ngen_stdout_file(cold_start_run)
-            if os.path.exists(file):
-                cold_start_logs.append(file)
+            cold_start_logs.extend(get_log_files_in_directory(cold_start_dir))
 
             ngen_log_dir = get_cold_start_ngen_log_dir(cold_start_run)
-            cold_start_logs.extend([str(p) for p in Path(ngen_log_dir).glob("*.log")])
-            logs[LogCategory.COLD_START.value] = cold_start_logs
-
-    elif hindcast_run:
-        hindcast_logs = []
-        file = get_hindcast_ngen_stdout_file(hindcast_run)
-        if os.path.exists(file):
-            hindcast_logs.append(file)
-
-        ngen_log_dir = get_hindcast_ngen_log_dir(hindcast_run)
-        hindcast_logs.extend([str(p) for p in Path(ngen_log_dir).glob("*.log")])
-        logs[LogCategory.HINDCAST.value] = hindcast_logs
-
-        if cold_start_run:
-            cold_start_logs = []
-            file = get_cold_start_ngen_stdout_file(cold_start_run)
-            if os.path.exists(file):
-                cold_start_logs.append(file)
-
-            ngen_log_dir = get_cold_start_ngen_log_dir(cold_start_run)
-            cold_start_logs.extend([str(p) for p in Path(ngen_log_dir).glob("*.log")])
+            cold_start_logs.extend(get_log_files_in_directory(ngen_log_dir))
             logs[LogCategory.COLD_START.value] = cold_start_logs
 
     elif verification_run:

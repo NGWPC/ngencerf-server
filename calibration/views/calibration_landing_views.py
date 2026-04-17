@@ -381,22 +381,21 @@ def create_and_run_hindcast(request: Request) -> Response:
     interval_cycle = validator.get('interval_cycle')
     num_iterations = validator.get('num_iterations')
     cold_start_date = validator.get('cold_start_date')
-    cold_start_cycle_date = validator.get('cold_start_cycle_date')
     cold_start_run_id = validator.get('cold_start_run_id')
     logging_config = validator.get('logging_config')
     validate_only = validator.get('validate_only')
 
     if cold_start_run_id:
-        if cold_start_date or cold_start_cycle_date:
+        if cold_start_date or cycle_date:
             return ResponseError(
-                "You must specify either an existing cold start id, or both cold start cycle date "
-                "and cold start date, but not both"
+                "You must specify either an existing cold start id, or both cycle_date "
+                "and cold_start_date, but not both"
             )
     else:
-        if not cold_start_date or not cold_start_cycle_date:
+        if not cold_start_date or not cycle_date:
             return ResponseError(
-                "You must specify either an existing cold start id, or both cold start cycle date "
-                "and cold start date"
+                "You must specify either an existing cold start id, or both cycle_date "
+                "and cold_start_date"
             )
 
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
@@ -500,7 +499,7 @@ def create_and_run_hindcast(request: Request) -> Response:
             calibration_run,
             configuration,
             cold_start_date=cold_start_date,
-            cycle_date=cold_start_cycle_date
+            cycle_date=cycle_date
         )
         run_cold_start = True
 
@@ -1103,7 +1102,6 @@ def archive_jobs(request: Request) -> Response:
                         f"Deferred deletion of quarantined local directory to background cleanup: "
                         f"{quarantined_path}"
                     )
-
 
             # ===============================
             # UNARCHIVE (S3 → EFS)
