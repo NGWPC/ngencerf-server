@@ -222,6 +222,7 @@ class DataTypeEnum(AbstractEnum):
 
 
 class SlurmCallbackStatusEnum(AbstractEnum):
+    SUBMITTED = "Submitted"
     DONE = 'DONE'
     FAILED = 'FAILED'
     CANCELED = 'CANCELED'

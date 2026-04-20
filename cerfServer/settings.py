@@ -22,7 +22,7 @@ DJANGO_START_TIME = datetime.now(tz=timezone.utc)
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = str(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 print(f'Loading values from {dotenv_path}')
@@ -167,10 +167,6 @@ SIMPLE_JWT = {
 
 WSGI_APPLICATION = 'cerfServer.wsgi.application'
 
-# Password validation
-# https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
-
-
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -179,22 +175,24 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Internationalization
-# https://docs.djangoproject.com/en/5.0/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.0/howto/static-files/
-
 STATIC_URL = 'static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ------------------------------------------------------------
+# Messaging
+# ------------------------------------------------------------
+RABBITMQ_URL = os.getenv('RABBITMQ_URL')
+RABBITMQ_QUEUE = os.getenv("RABBITMQ_QUEUE", "jobs_queue")
 
 # -----------------------------
 # Enterprise Data
@@ -207,7 +205,7 @@ ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = 'api/v1/streamflow_observations/{gag
 ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL')
 ENTERPRISE_DATA_ENV = os.getenv('ENTERPRISE_DATA_ENV')
 
-# Due to circular imports, can't use the enums as keys.  But the values must match exactly
+# Due to circular imports, can't use the enums as keys. But the values must match exactly
 FORCING_DATA_DIRS_AORC = {
     "AORC": 's3://ngwpc-forcing/aorc_2.2',
     "NWM Retrospective": 's3://ngwpc-forcing/retrospective_2.2'
@@ -220,14 +218,12 @@ FORCING_DATA_DIRS_RETRO = {
 FORCING_BMI_DATE_RANGE = DateTimeRange("1980-01-01T00:00:00+0000", "2024-12-31T23:59:59+0000")
 USE_BMI_FORCING = str(os.getenv('USE_BMI_FORCING', 'true')).lower() == 'true'
 
-# Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
-# S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))
-
 # Location of archive files
 NGENCERF_ARCHIVE_S3_PATH = os.getenv('NGENCERF_ARCHIVE_S3_PATH')
 
 # Location of download zip files on S3
 NGENCERF_ZIPS_S3_PATH = os.getenv('NGENCERF_ZIPS_S3_PATH')
+
 # AWS Profile to use for r/w buckets (.e.g, for archives and zips)
 # Use None for AWS Dev (uses default profile)
 NGENCERF_RW_PROFILE = os.getenv('NGENCERF_RW_PROFILE') or None
@@ -242,24 +238,14 @@ ZIP_DOWNLOAD_URL_TTL_SECONDS = 300
 # How long the ZIP object is kept in S3 (and how long status is cached) before cleanup may delete it
 ZIP_RETENTION_SECONDS = 3600
 
-
 # -----------------------------
-# ngen/nwm-cal-mgr Locations
+# Data / working directories
 # -----------------------------
-
-# Locations for running nwm-cal-mgr
-
 # Must match the repo root used in the docker container.
 # It is not necessary for you to have local copies of the ngen and nwm-cal-mgr repos if you are using Docker
 # But these directories still need to be set to reflect the directory of the repos in the docker container.
 REPO_ROOT = '/ngen-app'
-# Directory that Ngen is cloned into
 NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
-# directory that nwm-cal-mgr is cloned into
-CAL_MGR_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-cal-mgr')
-NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-fcst-mgr')
-NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
-NWM_VERF_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-verf')
 
 # This must match the data location in the ngen/nwm-cal-mgr docker
 # Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data
@@ -268,70 +254,24 @@ NWM_VERF_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-verf')
 NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
 NGEN_CAL_DATA_PATH = os.getenv('NGEN_CAL_DATA_PATH', NGEN_CAL_MOUNT_POINT)
 
-# Used only by get_git_info when running on PW
-SINGULARITY_DIR = '/ngencerf/containers'
-
 NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'logs')
 print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
 os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
+# Static and working directories
 NGEN_STATIC_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-static-files')
 NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
 NGEN_VERIFICATION_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'verification_work')
+
 # The NGEN_BMI_FORCING_WORK_DIR directory is owned by ngen-forcing.  It will be responsible for creating it
 NGEN_BMI_FORCING_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'bmi_forcing_work')
 
-# -----------------------------
-# Forcing environments
-# -----------------------------
-FORCING_MESH_ENV = 'ngen_esmf_mesh_domain'
-FORCING_EXTRACT_ENV = 'ngen_forcing_extraction'
-FORCING_ENGINE_ENV = 'ngen_forcings_engine_bmi'
 
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
-# Directory where verification runs are stored
-NWM_VERF_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_verif')
 
-# Directory containing the nwm-cal-mgr virtual environment
-# This is used only if we are running with NGEN_ENVIRONMENT=LOCAL and not in a separate container
-NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
-
-# Used when running in NGEN_ENVIRONMENT=DOCKER
-# --rm ensures containers are auto-removed after exit
-# Use {name} placeholder for the container name, which will be substituted at runtime
-CAL_MGR_DOCKER_CMD = f'docker run --rm --network host --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-cal-mgr'
-NGEN_FORECAST_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-fcst-mgr'
-NWM_VERF_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-verf'
-
-# Used when running in NGEN_ENVIRONMENT=LOCAL
-CAL_MGR_SCRIPT = os.path.join(CAL_MGR_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
-NGEN_FORECAST_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
-NGEN_COLD_START_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
-VERIFICATION_SCRIPT = os.path.join(NWM_VERF_REPO_ROOT, 'docker', 'run-ngen-verf.sh')
-
-RUNTIME_INFO = {
-    ScriptEnum.CALIBRATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
-    ScriptEnum.VALIDATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
-    ScriptEnum.VALIDATION_ITERATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
-    ScriptEnum.COLD_START: (NGEN_FORECAST_DOCKER_CMD, NGEN_COLD_START_SCRIPT),
-    ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
-    ScriptEnum.HINDCAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
-    ScriptEnum.VERIFICATION: (NWM_VERF_DOCKER_CMD, VERIFICATION_SCRIPT)
-}
-
-# -----------------------------
-# Job Simulation Flags for use with NGEN_ENVIRONMENT=LOCAL or DOCKER
-# -----------------------------
-SIMULATE_FLAGS = {
-    JobType.CALIBRATION: False,
-    JobType.VALIDATION: False,
-    JobType.FORECAST: False,
-    JobType.VERIFICATION: False,
-}
-
-NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
+NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.DOCKER.name)
 try:
     # noinspection PyTypeHints
     NGEN_ENVIRONMENT = NgenEnvironmentEnum[NGEN_ENVIRONMENT_STR]
@@ -343,14 +283,9 @@ except KeyError:
 # -----------------------------
 # Slurm
 # -----------------------------
-
+# These remain in Django because the server still performs
+# status reconciliation and cancel operations against Slurm.
 SLURM_URL = os.getenv("SLURM_URL")
-SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT = 'submit-calibration-job'
-SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT = 'submit-validation-job'
-SLURM_SUBMIT_COLD_START_JOB_ENDPOINT = 'submit-cold-start-job'
-SLURM_SUBMIT_FORECAST_JOB_ENDPOINT = 'submit-forecast-job'
-SLURM_SUBMIT_HINDCAST_JOB_ENDPOINT = 'submit-hindcast-job'
-SLURM_SUBMIT_VERIFICATION_JOB_ENDPOINT = 'submit-verification-job'
 SLURM_JOB_STATUS_ENDPOINT = 'job-status'
 SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 
@@ -406,7 +341,7 @@ LOGGING = {
         'django.db.backends': {
             'handlers': ['file_db'],
             'level': 'DEBUG',
-            'propagate': False  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'django': {
             'handlers': ['console', 'file_dev'],

@@ -14,15 +14,13 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType
-from calibration.enums_vanilla import JobType, SecondaryDataEnum
+from calibration.enums import StatusEnum, ValidationType, SlurmCallbackStatusEnum
+from calibration.enums_vanilla import JobType, SecondaryDataEnum, NgenEnvironmentEnum
 from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
-from calibration.run_util.run_common import cancel_job_common, submit_job
-from calibration.run_util.run_ngen_cal_pw import SlurmCallbackStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
-    run_forecast_job_callback_pw, run_cold_start_job_callback_pw, run_verification_job_callback_pw, run_hindcast_job_callback_pw
-from calibration.util.calibration_validators import CalibrationRunIdSerializer, GenericResponseSerializer, \
+from calibration.run_util.run_common import cancel_job_common, submit_job, run_job_callback_pw
+from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
     GetStatusForCalibrationResponseSerializer, GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
@@ -1374,7 +1372,7 @@ def calibration_job_slurm_callback(request: Request) -> Response:
         request,
         CalibrationJobSlurmCallbackRequestSerializer,
         get_calibration_run,
-        run_calibration_job_callback_pw
+        run_job_callback_pw
     )
 
 
@@ -1407,7 +1405,7 @@ def validation_job_slurm_callback(request: Request) -> Response:
         request,
         ValidationJobSlurmCallbackRequestSerializer,
         get_validation_run,
-        run_validation_job_callback_pw
+        run_job_callback_pw
     )
 
 
@@ -1440,7 +1438,7 @@ def cold_start_job_slurm_callback(request: Request) -> Response:
         request,
         ColdStartJobSlurmCallbackRequestSerializer,
         get_cold_start_run,
-        run_cold_start_job_callback_pw
+        run_job_callback_pw
     )
 
 
@@ -1473,7 +1471,7 @@ def forecast_job_slurm_callback(request: Request) -> Response:
         request,
         ForecastJobSlurmCallbackRequestSerializer,
         get_forecast_run,
-        run_forecast_job_callback_pw
+        run_job_callback_pw
     )
 
 
@@ -1506,7 +1504,7 @@ def hindcast_job_slurm_callback(request: Request) -> Response:
         request,
         HindcastJobSlurmCallbackRequestSerializer,
         get_hindcast_run,
-        run_hindcast_job_callback_pw
+        run_job_callback_pw
     )
 
 
@@ -1539,13 +1537,18 @@ def verification_job_slurm_callback(request: Request) -> Response:
         request,
         VerificationJobSlurmCallbackRequestSerializer,
         get_verification_run,
-        run_verification_job_callback_pw
+        run_job_callback_pw
     )
 
 
 def handle_slurm_callback(request: Request, serializer_class, get_run_fn, job_end_callback_fn) -> Response:
     """
     Common handler for Slurm callback endpoints for any run type that inherits from BaseRun.
+
+    Supports:
+    - submission acknowledgement (job_status=SUBMITTED)
+    - start notification (job_status=STARTING)
+    - terminal/end-of-job callbacks
 
     :param request: The incoming HTTP request.
     :param serializer_class: The serializer used for validating the incoming data.
@@ -1562,31 +1565,108 @@ def handle_slurm_callback(request: Request, serializer_class, get_run_fn, job_en
 
     run_id = validator.get(next(k for k in validator.keys() if k.endswith("_id")))
     job_status = validator.get("job_status")
+    slurm_job_id = validator.get("slurm_job_id")
     slurm_status = SlurmCallbackStatusEnum(job_status)
 
-    # If Slurm is reporting that the job is now starting, we expect to be in Submitted status
-    # For any other status changes, we should be Running or Submitted.  We allow Submitted just in case
-    #  1) The job doesn't properly transition to Running
-    #  2) To allow a submitted job to be canceled
-    expected_status = [StatusEnum.SUBMITTED] if slurm_status == SlurmCallbackStatusEnum.STARTING else [StatusEnum.RUNNING, StatusEnum.SUBMITTED]
+    # In PW, every callback must include a Slurm job ID.
+    if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS and slurm_job_id is None:
+        return ResponseError(
+            "slurm_job_id is required for callbacks when NGEN_ENVIRONMENT is PARALLEL_WORKS"
+        )
+
+    # ------------------------------------------------------------
+    # Determine allowed DB states for the incoming callback
+    # ------------------------------------------------------------
+    if slurm_status in [SlurmCallbackStatusEnum.SUBMITTED, SlurmCallbackStatusEnum.STARTING]:
+        expected_status = [StatusEnum.SUBMITTED]
+    else:
+        # End callbacks are allowed from RUNNING or SUBMITTED to tolerate races
+        expected_status = [StatusEnum.RUNNING, StatusEnum.SUBMITTED]
 
     run, error_return = get_run_fn(run_id, None, run_status=expected_status)
     if error_return:
         return error_return
 
     job_description = f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id})"
+
+    # ------------------------------------------------------------
+    # Submission acknowledgement
+    # ------------------------------------------------------------
+    if slurm_status == SlurmCallbackStatusEnum.SUBMITTED:
+        logger.info(
+            f"{job_description} received submission acknowledgement "
+            f"with callback slurm_job_id={slurm_job_id}"
+        )
+        if slurm_job_id is not None:
+            acknowledge_slurm_submission(run, slurm_job_id)
+        logger.debug(
+            f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}'
+        )
+        return Response(status=status.HTTP_202_ACCEPTED)
+
+    # ------------------------------------------------------------
+    # Starting
+    # ------------------------------------------------------------
     if slurm_status == SlurmCallbackStatusEnum.STARTING:
+        # Ensure the callback slurm_job_id is recorded and consistent.
+        if slurm_job_id is not None:
+            acknowledge_slurm_submission(run, slurm_job_id)
+
         logger.info(f'{job_description} is starting')
         run.status = StatusEnum.RUNNING.db_instance
         run.run_start = datetime.now(timezone.utc)
         run.save(update_fields=["status", "run_start"])
-    else:
-        # Job has ended
-        logger.info(f'{job_description} is ending')
-        job_end_callback_fn(run, slurm_status)
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}')
+        logger.debug(
+            f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}'
+        )
+        return Response(status=status.HTTP_202_ACCEPTED)
+
+    # ------------------------------------------------------------
+    # End-of-job callbacks
+    # ------------------------------------------------------------
+    if slurm_job_id is not None:
+        acknowledge_slurm_submission(run, slurm_job_id)
+
+    logger.info(f'{job_description} is ending')
+    job_end_callback_fn(run, slurm_status)
+
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}'
+    )
     return Response(status=status.HTTP_202_ACCEPTED)
+
+
+def acknowledge_slurm_submission(run: BaseRun, slurm_job_id: int) -> None:
+    """
+    Persist the Slurm job ID for an asynchronously acknowledged submission.
+
+    Rules:
+    - If no slurm_job_id is stored yet, save it.
+    - If the same slurm_job_id is already stored, treat as idempotent/no-op.
+    - If a different slurm_job_id is already stored, raise an error.
+    """
+    job_description = get_job_description(run)
+
+    if run.slurm_job_id is None:
+        run.slurm_job_id = slurm_job_id
+        run.save(update_fields=["slurm_job_id"])
+        logger.info(
+            f"{job_description} submission acknowledged with slurm_job_id={slurm_job_id}"
+        )
+        return
+
+    if run.slurm_job_id == slurm_job_id:
+        logger.info(
+            f"{job_description} received duplicate submission acknowledgement "
+            f"for slurm_job_id={slurm_job_id}"
+        )
+        return
+
+    raise ResponseError(
+        f"{job_description} already has slurm_job_id={run.slurm_job_id}, "
+        f"but callback reported slurm_job_id={slurm_job_id}"
+    )
 
 
 @extend_schema(

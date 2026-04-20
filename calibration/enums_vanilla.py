@@ -15,7 +15,6 @@ class ScriptEnum(StrEnum):
 
 
 class NgenEnvironmentEnum(StrEnum):
-    LOCAL = "LOCAL"
     PARALLEL_WORKS = "PARALLEL_WORKS"
     DOCKER = "DOCKER"
 
