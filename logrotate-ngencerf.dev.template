@@ -38,10 +38,6 @@ __LOG_DIR__/ngencerf.log {
 
     # keep 14 rotations
     rotate 14
-    # gzip older logs
-    compress
-    # don’t compress the most recent rotated log
-    delaycompress
     # don’t error if file missing
     missingok
     # don’t rotate empty logs
