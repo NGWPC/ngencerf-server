@@ -618,13 +618,18 @@ def normalize_log_path(path: str) -> str:
 
 def get_log_files_in_directory(directory: str) -> list[str]:
     """
-    Returns all *.log files in the given directory.
+    Returns all *.log files in the given directory, excluding *performance.log.
 
     :param directory: Directory to search.
     :return: List of log file paths as strings.
     """
     base_path = Path(directory)
 
-    files = [str(p) for p in base_path.glob("*.log")]
+    files = [
+        str(p)
+        for p in base_path.glob("*.log")
+        if not p.name.endswith("performance.log")
+    ]
+
     logger.info(f"Found {len(files)} log file(s) in {directory}")
     return files
