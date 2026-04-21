@@ -16,7 +16,7 @@ from enum import StrEnum, auto
 from datetimerange import DateTimeRange
 from dotenv import load_dotenv
 
-from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum, JobType
+from calibration.enums_vanilla import JobExecutionMode, ScriptEnum, JobType
 
 DJANGO_START_TIME = datetime.now(tz=timezone.utc)
 
@@ -271,14 +271,14 @@ NGEN_BMI_FORCING_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'bmi_forcing_work
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
 
-NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.DOCKER.name)
+JOB_EXECUTION_MODE_STR = os.getenv('JOB_EXECUTION_MODE', JobExecutionMode.DOCKER.name)
 try:
     # noinspection PyTypeHints
-    NGEN_ENVIRONMENT = NgenEnvironmentEnum[NGEN_ENVIRONMENT_STR]
+    JOB_EXECUTION_MODE = JobExecutionMode[JOB_EXECUTION_MODE_STR]
 except KeyError:
     # noinspection PyUnresolvedReferences
     raise SystemExit(
-        f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in NgenEnvironmentEnum])}")
+        f"Invalid environment value for JOB_EXECUTION_MODE: {JOB_EXECUTION_MODE_STR}.  Must be one of {', '.join([e.name for e in JobExecutionMode])}")
 
 # -----------------------------
 # Slurm

@@ -13,7 +13,7 @@ from django.db.models import F
 from toml import TomlEncoder
 
 from calibration.enums import StatusEnum, DataTypeEnum
-from calibration.enums_vanilla import NgenEnvironmentEnum
+from calibration.enums_vanilla import JobExecutionMode
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun, CalibrationModulePropertyValue
 from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, get_cached_modules_by_id, get_cached_module_properties
@@ -29,7 +29,7 @@ from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
 from calibration.views.data_services import should_use_bmi_forcing, get_observational_data_from_data_services
 from calibration.views.mpi_rules import get_mpi_nodes
-from cerfServer.settings import NGEN_ENVIRONMENT, NGEN_BMI_FORCING_WORK_DIR
+from cerfServer.settings import NGEN_BMI_FORCING_WORK_DIR, JOB_EXECUTION_MODE
 
 logger = logging.getLogger(__name__)
 
@@ -595,7 +595,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
             calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
             write_parameter_files(params, calibration['calib_parameter_file'])
 
-        if build and NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        if build and JOB_EXECUTION_MODE == JobExecutionMode.PARALLEL_WORKS:
             if run.num_catchments is None:
                 # Handle old jobs which might not have saved num_catchments
                 geopackage_path = get_geopackage_file_path(run)

@@ -8,7 +8,7 @@ from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdS
 from calibration.models.base_run import BaseRun
 from calibration.views.calibration_run_views import get_slurm_status
 from calibration.views.common import get_job_description
-from cerfServer.settings import NgenEnvironmentEnum
+from cerfServer.settings import JobExecutionMode
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class Command(BaseCommand):
             # Case 1: NOT on Parallel Works → we trust DB state only.
             # Safe to bulk mark *all* RUNNING entries immediately.
             # ─────────────────────────────────────────────────────────────
-            if settings.NGEN_ENVIRONMENT != NgenEnvironmentEnum.PARALLEL_WORKS:
+            if settings.JOB_EXECUTION_MODE != JobExecutionMode.PARALLEL_WORKS:
 
                 total_count = 0
                 for model in RUN_MODELS:

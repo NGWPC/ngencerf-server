@@ -15,7 +15,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, SlurmCallbackStatusEnum
-from calibration.enums_vanilla import JobType, SecondaryDataEnum, NgenEnvironmentEnum
+from calibration.enums_vanilla import JobType, SecondaryDataEnum, JobExecutionMode
 from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
@@ -1569,7 +1569,7 @@ def handle_slurm_callback(request: Request, serializer_class, get_run_fn, job_en
     slurm_status = SlurmCallbackStatusEnum(job_status)
 
     # In PW, every callback must include a Slurm job ID.
-    if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS and slurm_job_id is None:
+    if settings.NGEN_ENVIRONMENT == JobExecutionMode.PARALLEL_WORKS and slurm_job_id is None:
         return ResponseError(
             "slurm_job_id is required for callbacks when NGEN_ENVIRONMENT is PARALLEL_WORKS"
         )

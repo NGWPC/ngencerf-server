@@ -14,7 +14,7 @@ class ScriptEnum(StrEnum):
     VERIFICATION = "verification"
 
 
-class NgenEnvironmentEnum(StrEnum):
+class JobExecutionMode(StrEnum):
     PARALLEL_WORKS = "PARALLEL_WORKS"
     DOCKER = "DOCKER"
 

@@ -6,8 +6,8 @@ from typing import Any, Callable
 
 import requests
 
-from job_consumer.config import JOB_CONSUMER_ENVIRONMENT, RUNTIME_INFO, CERF_SERVER_URL
-from job_consumer.job_consumer_enums import ConsumerEnvironmentEnum, SlurmCallbackStatusEnum
+from job_consumer.config import JOB_EXECUTIION_MODE, RUNTIME_INFO, CERF_SERVER_URL
+from job_consumer.job_consumer_enums import JobExecutionMode, SlurmCallbackStatusEnum
 
 logger = logging.getLogger(__name__)
 
@@ -373,15 +373,15 @@ def dispatch_message(body: dict[str, Any]) -> None:
         "Dispatching job_type=%s run_id=%s environment=%s",
         job_type,
         run_id,
-        JOB_CONSUMER_ENVIRONMENT,
+        JOB_EXECUTIION_MODE,
     )
 
-    if JOB_CONSUMER_ENVIRONMENT == ConsumerEnvironmentEnum.DOCKER:
+    if JOB_EXECUTIION_MODE == JobExecutionMode.DOCKER:
         run_docker_job(job_type, run_id, payload, auth_token)
         return
 
-    if JOB_CONSUMER_ENVIRONMENT == ConsumerEnvironmentEnum.PARALLEL_WORKS:
+    if JOB_EXECUTIION_MODE == JobExecutionMode.PARALLEL_WORKS:
         submit_parallel_works_job(job_type, run_id, payload, auth_token)
         return
 
-    raise ValueError(f"Unsupported consumer environment: {JOB_CONSUMER_ENVIRONMENT}")
+    raise ValueError(f"Unsupported consumer environment: {JOB_EXECUTIION_MODE}")

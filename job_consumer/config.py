@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from job_consumer.job_consumer_enums import ConsumerEnvironmentEnum
+from job_consumer.job_consumer_enums import JobExecutionMode
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -11,27 +11,27 @@ RABBITMQ_QUEUE = os.getenv("RABBITMQ_QUEUE", "jobs_queue")
 # ------------------------------------------------------------
 # Job execution environment
 # ------------------------------------------------------------
-JOB_CONSUMER_ENVIRONMENT_STR = os.getenv(
-    "JOB_CONSUMER_ENVIRONMENT",
-    ConsumerEnvironmentEnum.DOCKER.name,
+JOB_EXECUTION_MODE_STR = os.getenv(
+    "JOB_EXECUTION_MODE",
+    JobExecutionMode.DOCKER.name,
 )
 
 try:
-    JOB_CONSUMER_ENVIRONMENT = ConsumerEnvironmentEnum(JOB_CONSUMER_ENVIRONMENT_STR)
+    JOB_EXECUTIION_MODE = JobExecutionMode(JOB_EXECUTION_MODE_STR)
 except ValueError:
     raise SystemExit(
-        "Invalid environment value for JOB_CONSUMER_ENVIRONMENT: "
-        f"{JOB_CONSUMER_ENVIRONMENT_STR}. Must be one of "
-        f"{ConsumerEnvironmentEnum.DOCKER.name}, {ConsumerEnvironmentEnum.PARALLEL_WORKS.name}"
+        "Invalid environment value for JOB_EXECUTION_MODE: "
+        f"{JOB_EXECUTION_MODE_STR}. Must be one of "
+        f"{JobExecutionMode.DOCKER.name}, {JobExecutionMode.PARALLEL_WORKS.name}"
     )
 
-if JOB_CONSUMER_ENVIRONMENT not in [
-    ConsumerEnvironmentEnum.DOCKER,
-    ConsumerEnvironmentEnum.PARALLEL_WORKS,
+if JOB_EXECUTIION_MODE not in [
+    JobExecutionMode.DOCKER,
+    JobExecutionMode.PARALLEL_WORKS,
 ]:
     raise SystemExit(
-        "JOB_CONSUMER_ENVIRONMENT must be either "
-        f"{ConsumerEnvironmentEnum.DOCKER.name} or {ConsumerEnvironmentEnum.PARALLEL_WORKS.name}"
+        "JOB_EXECUTION_MODE must be either "
+        f"{JobExecutionMode.DOCKER.name} or {JobExecutionMode.PARALLEL_WORKS.name}"
     )
 
 # ------------------------------------------------------------
@@ -56,7 +56,7 @@ NGEN_CAL_MOUNT_POINT = "/ngencerf/data"
 # ------------------------------------------------------------
 # Docker runtime commands
 # ------------------------------------------------------------
-# Used when running in JOB_CONSUMER_ENVIRONMENT=DOCKER
+# Used when running in JOB_EXECUTION_MODE=DOCKER
 # --rm ensures containers are auto-removed after exit
 # Use {name} placeholder for the container name, which will be substituted at runtime
 CAL_MGR_DOCKER_CMD = (

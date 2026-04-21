@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 
-class ConsumerEnvironmentEnum(StrEnum):
+class JobExecutionMode(StrEnum):
     PARALLEL_WORKS = "PARALLEL_WORKS"
     DOCKER = "DOCKER"
 
