@@ -641,7 +641,7 @@ class Command(BaseCommand):
                 "name": "Long Range MEM1", "internal_name": "long_range_mem1", "order": 5,
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 1,
                 "availability_lag": 12,
                 "supports_hindcast": True,
                 "is_active": True
@@ -650,7 +650,7 @@ class Command(BaseCommand):
                 "name": "Long Range MEM2", "internal_name": "long_range_mem2", "order": 6,
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 1,
                 "availability_lag": 12,
                 "supports_hindcast": True,
                 "is_active": True
@@ -659,7 +659,7 @@ class Command(BaseCommand):
                 "name": "Long Range MEM3", "internal_name": "long_range_mem3", "order": 7,
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 1,
                 "availability_lag": 12,
                 "supports_hindcast": True,
                 "is_active": True
@@ -668,7 +668,7 @@ class Command(BaseCommand):
                 "name": "Long Range MEM4", "internal_name": "long_range_mem4", "order": 8,
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 1,
                 "availability_lag": 12,
                 "supports_hindcast": True,
                 "is_active": True
