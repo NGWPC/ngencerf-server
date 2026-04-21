@@ -6,8 +6,8 @@ from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
     OptimizationEnum, GeopackageSourceEnum, SlurmCallbackStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastConfigEnum, LogCategory, \
-    NgenLogging, HindcastConfigEnum
-from calibration.enums_vanilla import CalibrationSortField, VerificationSortField, ForecastSortField, HindcastSortField
+    NgenLogging
+from calibration.enums_vanilla import CalibrationSortField, VerificationSortField, ForecastSortField, JobType
 from calibration.util.caching import get_cached_modules_with_groups
 
 
@@ -1425,37 +1425,14 @@ class GetIterationsResponseSerializer(GenericResponseSerializer):
     iteration = serializers.IntegerField(required=True, allow_null=True)
 
 
-class CalibrationJobSlurmCallbackRequestSerializer(CalibrationRunIdSerializer):
+class JobEventSerializer(BaseSerializer):
+    job_type = serializers.CharField(required=True, validators=[enum_validator(JobType, allow_blank=False)])
+    run_id = serializers.IntegerField(required=True)
     job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
     slurm_job_id = serializers.IntegerField(required=False, allow_null=True)
 
 
-class ValidationJobSlurmCallbackRequestSerializer(ValidationRunIdSerializer):
-    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
-    slurm_job_id = serializers.IntegerField(required=False, allow_null=True)
-
-
-class ColdStartJobSlurmCallbackRequestSerializer(ColdStartRunIdSerializer):
-    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
-    slurm_job_id = serializers.IntegerField(required=False, allow_null=True)
-
-
-class ForecastJobSlurmCallbackRequestSerializer(ForecastRunIdSerializer):
-    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
-    slurm_job_id = serializers.IntegerField(required=False, allow_null=True)
-
-
-class HindcastJobSlurmCallbackRequestSerializer(HindcastRunIdSerializer):
-    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
-    slurm_job_id = serializers.IntegerField(required=False)
-
-
-class VerificationJobSlurmCallbackRequestSerializer(VerificationRunIdSerializer):
-    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum, allow_blank=False)])
-    slurm_job_id = serializers.IntegerField(required=False)
-
-
-class RunCalibrationJob(CalibrationRunIdSerializer):
+class RunCalibrationJob(CalibrationRunSerializer):
     logging_config = LoggingConfigSerializer(required=False)
 
 

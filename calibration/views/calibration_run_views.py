@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from datetime import datetime, timezone
 
 import requests
 from django.conf import settings
@@ -9,17 +8,16 @@ from django.db import transaction
 from django.forms import model_to_dict
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
-from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, SlurmCallbackStatusEnum
-from calibration.enums_vanilla import JobType, SecondaryDataEnum, JobExecutionMode
+from calibration.enums import StatusEnum, ValidationType
+from calibration.enums_vanilla import JobType, SecondaryDataEnum
 from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
-from calibration.run_util.run_common import cancel_job_common, submit_job, run_job_callback_pw
+from calibration.run_util.run_common import cancel_job_common, submit_job
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
@@ -35,7 +33,7 @@ from calibration.views.calibration_secondary_data_views import generate_secondar
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, TOKEN_SLURM_SCOPE, get_validation_run, get_forecast_run, get_user_email, \
-    get_job_description, get_elapsed_str, readonly_transaction, auth_scope_required, get_cold_start_run, get_verification_run, \
+    get_job_description, get_elapsed_str, readonly_transaction, get_verification_run, \
     join_with_or, get_calibration_runs_bulk, get_hindcast_run
 from calibration.views.end_of_job_processing import read_calibration_output
 
@@ -1341,300 +1339,6 @@ def map_path_to_host(path_to_normalize: str) -> str:
         return os.path.join(settings.NGEN_CAL_DATA_PATH, relative_path)
 
     return path_to_normalize
-
-
-@extend_schema(
-    request=CalibrationJobSlurmCallbackRequestSerializer,
-    responses={
-        202: None,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Callback for Slurm to call when a calibration job ends"
-)
-@api_view(['POST'])
-@handle_exceptions
-@auth_scope_required(TOKEN_SLURM_SCOPE)
-def calibration_job_slurm_callback(request: Request) -> Response:
-    """
-    Handles a callback from Slurm to update the status of a calibration job.
-
-    :param request: HTTP request containing Slurm job details and status.
-    :return: HTTP 202 response indicating the callback was processed.
-    """
-    return handle_slurm_callback(
-        request,
-        CalibrationJobSlurmCallbackRequestSerializer,
-        get_calibration_run,
-        run_job_callback_pw
-    )
-
-
-@extend_schema(
-    request=ValidationJobSlurmCallbackRequestSerializer,
-    responses={
-        202: None,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Callback for Slurm to call when a validation job ends"
-)
-@api_view(['POST'])
-@handle_exceptions
-@auth_scope_required(TOKEN_SLURM_SCOPE)
-def validation_job_slurm_callback(request: Request) -> Response:
-    """
-    Handles a callback from Slurm to update the status of a validation job.
-
-    :param request: HTTP request containing Slurm job details and status.
-    :return: HTTP 202 response indicating the callback was processed.
-    """
-    return handle_slurm_callback(
-        request,
-        ValidationJobSlurmCallbackRequestSerializer,
-        get_validation_run,
-        run_job_callback_pw
-    )
-
-
-@extend_schema(
-    request=ColdStartJobSlurmCallbackRequestSerializer,
-    responses={
-        202: None,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Callback for Slurm to call when a cold start job ends"
-)
-@api_view(['POST'])
-@handle_exceptions
-@auth_scope_required(TOKEN_SLURM_SCOPE)
-def cold_start_job_slurm_callback(request: Request) -> Response:
-    """
-    Handles a callback from Slurm to update the status of a cold start job.
-
-    :param request: HTTP request containing Slurm job details and status.
-    :return: HTTP 202 response indicating the callback was processed.
-    """
-    return handle_slurm_callback(
-        request,
-        ColdStartJobSlurmCallbackRequestSerializer,
-        get_cold_start_run,
-        run_job_callback_pw
-    )
-
-
-@extend_schema(
-    request=ForecastJobSlurmCallbackRequestSerializer,
-    responses={
-        202: None,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Callback for Slurm to call when a forecast job ends"
-)
-@api_view(['POST'])
-@handle_exceptions
-@auth_scope_required(TOKEN_SLURM_SCOPE)
-def forecast_job_slurm_callback(request: Request) -> Response:
-    """
-    Handles a callback from Slurm to update the status of a forecast job.
-
-    :param request: HTTP request containing Slurm job details and status.
-    :return: HTTP 202 response indicating the callback was processed.
-    """
-    return handle_slurm_callback(
-        request,
-        ForecastJobSlurmCallbackRequestSerializer,
-        get_forecast_run,
-        run_job_callback_pw
-    )
-
-
-@extend_schema(
-    request=HindcastJobSlurmCallbackRequestSerializer,
-    responses={
-        202: None,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Callback for Slurm to call when a hindcast job ends"
-)
-@api_view(['POST'])
-@handle_exceptions
-@auth_scope_required(TOKEN_SLURM_SCOPE)
-def hindcast_job_slurm_callback(request: Request) -> Response:
-    """
-    Handles a callback from Slurm to update the status of a hindcast job.
-
-    :param request: HTTP request containing Slurm job details and status.
-    :return: HTTP 202 response indicating the callback was processed.
-    """
-    return handle_slurm_callback(
-        request,
-        HindcastJobSlurmCallbackRequestSerializer,
-        get_hindcast_run,
-        run_job_callback_pw
-    )
-
-
-@extend_schema(
-    request=VerificationJobSlurmCallbackRequestSerializer,
-    responses={
-        202: None,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Callback for Slurm to call when a verification job ends"
-)
-@api_view(['POST'])
-@handle_exceptions
-@auth_scope_required(TOKEN_SLURM_SCOPE)
-def verification_job_slurm_callback(request: Request) -> Response:
-    """
-    Handles a callback from Slurm to update the status of a verification job.
-
-    :param request: HTTP request containing Slurm job details and status.
-    :return: HTTP 202 response indicating the callback was processed.
-    """
-    return handle_slurm_callback(
-        request,
-        VerificationJobSlurmCallbackRequestSerializer,
-        get_verification_run,
-        run_job_callback_pw
-    )
-
-
-def handle_slurm_callback(request: Request, serializer_class, get_run_fn, job_end_callback_fn) -> Response:
-    """
-    Common handler for Slurm callback endpoints for any run type that inherits from BaseRun.
-
-    Supports:
-    - submission acknowledgement (job_status=SUBMITTED)
-    - start notification (job_status=STARTING)
-    - terminal/end-of-job callbacks
-
-    :param request: The incoming HTTP request.
-    :param serializer_class: The serializer used for validating the incoming data.
-    :param get_run_fn: A function that returns the correct run object given its ID.
-    :param job_end_callback_fn: A function that handles the job completion logic.
-    :return: HTTP 202 Response or error Response.
-    """
-    data = request.data
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(serializer_class, data)
-    if error_return:
-        return error_return
-
-    run_id = validator.get(next(k for k in validator.keys() if k.endswith("_id")))
-    job_status = validator.get("job_status")
-    slurm_job_id = validator.get("slurm_job_id")
-    slurm_status = SlurmCallbackStatusEnum(job_status)
-
-    # In PW, every callback must include a Slurm job ID.
-    if settings.NGEN_ENVIRONMENT == JobExecutionMode.PARALLEL_WORKS and slurm_job_id is None:
-        return ResponseError(
-            "slurm_job_id is required for callbacks when NGEN_ENVIRONMENT is PARALLEL_WORKS"
-        )
-
-    # ------------------------------------------------------------
-    # Determine allowed DB states for the incoming callback
-    # ------------------------------------------------------------
-    if slurm_status in [SlurmCallbackStatusEnum.SUBMITTED, SlurmCallbackStatusEnum.STARTING]:
-        expected_status = [StatusEnum.SUBMITTED]
-    else:
-        # End callbacks are allowed from RUNNING or SUBMITTED to tolerate races
-        expected_status = [StatusEnum.RUNNING, StatusEnum.SUBMITTED]
-
-    run, error_return = get_run_fn(run_id, None, run_status=expected_status)
-    if error_return:
-        return error_return
-
-    job_description = f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id})"
-
-    # ------------------------------------------------------------
-    # Submission acknowledgement
-    # ------------------------------------------------------------
-    if slurm_status == SlurmCallbackStatusEnum.SUBMITTED:
-        logger.info(
-            f"{job_description} received submission acknowledgement "
-            f"with callback slurm_job_id={slurm_job_id}"
-        )
-        if slurm_job_id is not None:
-            acknowledge_slurm_submission(run, slurm_job_id)
-        logger.debug(
-            f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}'
-        )
-        return Response(status=status.HTTP_202_ACCEPTED)
-
-    # ------------------------------------------------------------
-    # Starting
-    # ------------------------------------------------------------
-    if slurm_status == SlurmCallbackStatusEnum.STARTING:
-        # Ensure the callback slurm_job_id is recorded and consistent.
-        if slurm_job_id is not None:
-            acknowledge_slurm_submission(run, slurm_job_id)
-
-        logger.info(f'{job_description} is starting')
-        run.status = StatusEnum.RUNNING.db_instance
-        run.run_start = datetime.now(timezone.utc)
-        run.save(update_fields=["status", "run_start"])
-
-        logger.debug(
-            f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}'
-        )
-        return Response(status=status.HTTP_202_ACCEPTED)
-
-    # ------------------------------------------------------------
-    # End-of-job callbacks
-    # ------------------------------------------------------------
-    if slurm_job_id is not None:
-        acknowledge_slurm_submission(run, slurm_job_id)
-
-    logger.info(f'{job_description} is ending')
-    job_end_callback_fn(run, slurm_status)
-
-    logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}'
-    )
-    return Response(status=status.HTTP_202_ACCEPTED)
 
 
 def acknowledge_slurm_submission(run: BaseRun, slurm_job_id: int) -> None:

@@ -219,7 +219,79 @@ run_manage_command() {
     return $status
 }
 
+#=======================================================================
+# Function: run_manage_command_background
+#
+# PREREQUISITES (must be true before calling this function):
+#   - Logging must already be initialized
+#   - The desired log file path must be passed as the first argument
+#   - The virtual environment must already be activated if one is required
+#   - manage.py must be available at $SCRIPT_DIR/manage.py
+#
+# REASON:
+#   This function starts a long-running Django management command in the
+#   background and redirects all of its stdout/stderr directly into the
+#   specified logfile.
+#
+#   Unlike run_manage_command(), this function does NOT manipulate the
+#   shell's stdout/stderr file descriptors with exec. That makes it safer
+#   for background processes that should continue running independently
+#   while the main script proceeds to start the server.
+#
+#   The background process PID is stored in RUN_MANAGE_COMMAND_BG_PID so
+#   callers can track or stop the process later.
+#=======================================================================
+run_manage_command_background() {
+    local log_file="$1"
+    shift
 
+    echo "Running manage.py $* in background -> $log_file"
+
+    python "$SCRIPT_DIR/manage.py" "$@" >> "$log_file" 2>&1 &
+    local pid=$!
+
+    echo "Started manage.py $* with PID $pid"
+
+    RUN_MANAGE_COMMAND_BG_PID="$pid"
+}
+
+#=======================================================================
+# Background management consumer helpers
+#   - Starts the Django management consumer in the background
+#   - Tracks its PID so it can be stopped on exit
+#=======================================================================
+start_job_event_consumer() {
+    echo
+    echo --------------------------------------------------------
+    echo "Starting Django job event consumer in background"
+
+    JOB_EVENT_CONSUMER_LOG="$cerfServer/logs/job_event_consumer.log"
+    run_manage_command_background "$JOB_EVENT_CONSUMER_LOG" consume_job_events
+    JOB_EVENT_CONSUMER_PID="$RUN_MANAGE_COMMAND_BG_PID"
+
+    # Give the process a moment to fail fast if the command is invalid
+    sleep 2
+
+    if ! kill -0 "$JOB_EVENT_CONSUMER_PID" 2>/dev/null; then
+        echo "WARNING: consume_job_events failed to start. Check $JOB_EVENT_CONSUMER_LOG"
+        echo "Last lines from $JOB_EVENT_CONSUMER_LOG:"
+        tail -n 20 "$JOB_EVENT_CONSUMER_LOG" || true
+        unset JOB_EVENT_CONSUMER_PID
+        return 1
+    fi
+
+    echo "consume_job_events is running with PID $JOB_EVENT_CONSUMER_PID"
+    return 0
+}
+
+stop_job_event_consumer() {
+    if [ -n "${JOB_EVENT_CONSUMER_PID:-}" ]; then
+        echo "Stopping consume_job_events (PID $JOB_EVENT_CONSUMER_PID)"
+        kill "$JOB_EVENT_CONSUMER_PID" 2>/dev/null || true
+        wait "$JOB_EVENT_CONSUMER_PID" 2>/dev/null || true
+        unset JOB_EVENT_CONSUMER_PID
+    fi
+}
 
 #=======================================================================
 # Function: generate_git_info
@@ -836,7 +908,17 @@ if [ $status -ne 0 ]; then
     exit $status
 fi
 
+# Restore original stdout/stderr so startup messages go to the terminal
+exec 1>&3 2>&4
+if ! start_job_event_consumer; then
+    echo "WARNING: Continuing startup without consume_job_events"
+    # exit 1 # if we don't want to start on error
+else
+    trap stop_job_event_consumer EXIT INT TERM
+fi
+
 echo
+echo --------------------------------------------------------
 echo "Starting server"
 
 ASGI_FLAG="${CERF_ASGI:-}" # explicit override
@@ -866,7 +948,7 @@ if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
     TIMEOUT=${GUNICORN_TIMEOUT:-120}
     BIND_ADDR=${GUNICORN_BIND:-0.0.0.0:8000}
     # --graceful-timeout extra time to finish in-flight requests on restart
-    exec gunicorn cerfServer.asgi:application \
+    gunicorn cerfServer.asgi:application \
             --name ngencerf \
             --workers "${WORKERS}" \
             --worker-class uvicorn.workers.UvicornWorker \
@@ -877,6 +959,8 @@ if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
             --timeout "${TIMEOUT}" \
             --graceful-timeout "${GUNICORN_GRACEFUL_TIMEOUT:-30}" \
             --config "$(dirname "$0")/gunicorn_conf.py"
+
+    exit $?
 else
     echo "Launching Django development server (runserver)"
 
@@ -887,8 +971,7 @@ else
         echo "Auto-reload DISABLED (--noreload)"
         python "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
     fi
+
+    exit $?
 fi
 
-if [ -n "${CERF_VENV}" ]; then
-    deactivate
-fi

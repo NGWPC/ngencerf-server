@@ -7,7 +7,7 @@ from django.conf import settings
 from kombu import Connection, Producer, Queue
 
 SLURM_SUBMIT_QUEUE = Queue(
-    name="jobs_queue",
+    name=settings.RABBITMQ_JOBS_QUEUE,
     durable=True,
 )
 
@@ -39,7 +39,7 @@ def publish_job_message(payload: dict[str, Any]) -> None:
             producer.publish(
                 payload,
                 exchange="",  # default exchange
-                routing_key=settings.RABBITMQ_QUEUE,
+                routing_key=settings.RABBITMQ_JOBS_QUEUE,
                 serializer="json",
                 delivery_mode=2,
                 retry=True,

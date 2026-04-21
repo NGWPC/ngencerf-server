@@ -14,6 +14,7 @@ from calibration.models.hindcast_run import HindcastRun
 from calibration.util.calibration_validators import GenericMessageResponseSerializer
 from calibration.util.messaging import publish_job_message
 from calibration.views.common import generate_custom_token, TOKEN_SLURM_SCOPE, get_job_description, validate_response_data
+from cerfServer.settings import RABBITMQ_JOBS_QUEUE
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +49,9 @@ def publish_job_request(
 
     # Probably too much information to publish
     logger.info(
-        "Publishing job request for %s to jobs_queue: %s",
+        "Publishing job request for %s to queue %s: %s",
         job_description,
+        RABBITMQ_JOBS_QUEUE,
         message,
     )
     # logger.info(

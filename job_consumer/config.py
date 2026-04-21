@@ -6,7 +6,8 @@ from job_consumer.job_consumer_enums import JobExecutionMode
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
-RABBITMQ_QUEUE = os.getenv("RABBITMQ_QUEUE", "jobs_queue")
+RABBITMQ_JOBS_QUEUE = os.getenv("RABBITMQ_JOBS_QUEUE", "jobs_queue")
+RABBITMQ_JOB_EVENTS_QUEUE = os.getenv("RABBITMQ_JOB_EVENTS_QUEUE", "job_events_queue")
 
 # ------------------------------------------------------------
 # Job execution environment
@@ -17,7 +18,7 @@ JOB_EXECUTION_MODE_STR = os.getenv(
 )
 
 try:
-    JOB_EXECUTIION_MODE = JobExecutionMode(JOB_EXECUTION_MODE_STR)
+    JOB_EXECUTION_MODE = JobExecutionMode(JOB_EXECUTION_MODE_STR)
 except ValueError:
     raise SystemExit(
         "Invalid environment value for JOB_EXECUTION_MODE: "
@@ -25,7 +26,7 @@ except ValueError:
         f"{JobExecutionMode.DOCKER.name}, {JobExecutionMode.PARALLEL_WORKS.name}"
     )
 
-if JOB_EXECUTIION_MODE not in [
+if JOB_EXECUTION_MODE not in [
     JobExecutionMode.DOCKER,
     JobExecutionMode.PARALLEL_WORKS,
 ]:
