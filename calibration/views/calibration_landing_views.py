@@ -286,13 +286,14 @@ def create_and_run_forecast(request: Request) -> Response:
     if forecast_errors:
         return ResponseError("Error submitting forecast", errors=forecast_errors)
 
-    cold_start_run = create_cold_start_run_internal(
-        calibration_run,
-        configuration,
-        cold_start_date=cold_start_date,
-        cycle_date=cycle_date
-    ) if run_cold_start else None
-    assert cold_start_run is not None
+    cold_start_run = None
+    if run_cold_start:
+        cold_start_run = create_cold_start_run_internal(
+            calibration_run,
+            configuration,
+            cold_start_date=cold_start_date,
+            cycle_date=cycle_date
+        )
 
     forecast_run = create_forecast_run_internal(
         calibration_run,

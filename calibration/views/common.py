@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from contextlib import contextmanager
 from datetime import timedelta, datetime
 from functools import wraps
@@ -781,17 +781,26 @@ class CheckTokenScope(BasePermission):
         # We should already have a validated token in request.auth
         token = request.auth
 
-        if not isinstance(token, Mapping):
+        logger.debug(
+            f"Scope check token type={type(token)}, "
+            f"has_get={hasattr(token, 'get')}, "
+            f"has_payload={hasattr(token, 'payload')}, "
+            f"repr={token!r}"
+        )
+
+        try:
+            token_scope = str(token.get('scope', '')).split()
+        except AttributeError:
             logger.debug(f"Invalid token object for scope check: {token!r}")
             return False
 
-        # Log the available scopes and the required one
-        token_scope = str(token.get('scope', '')).split()
         logger.debug(f"Validating token: Token scope: {token_scope}, Required scope: {self.required_scope}")
 
         # Make sure we have our custom scope
         if self.required_scope not in token_scope:
-            logger.debug(f"Permission denied: required scope '{self.required_scope}' not in token scope {token_scope}")
+            logger.debug(
+                f"Permission denied: required scope '{self.required_scope}' not in token scope {token_scope}"
+            )
             return False
 
         return True
