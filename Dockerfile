@@ -1,7 +1,39 @@
+############################################################################
+# Change/Verify these values when adopting this Dockerfile into another org:
+#   GH_ORG, IMAGE_NAMESPACE,
+#   DATA_ASSIMILATION_ORG, DATA_ASSIMILATION_REF,
+#   MSW_MGR_ORG, MSW_MGR_REF,
+#   NGEN_FORCING_ORG, NGEN_FORCING_REF
+############################################################################
+
+# Ownership / branding overrides
+ARG GH_ORG=NGWPC
+ARG IMAGE_NAMESPACE=ngwpc
+
+# External repository sources (org and ref/branch overrides)
+ARG DATA_ASSIMILATION_ORG=${GH_ORG}
+ARG DATA_ASSIMILATION_REF=development
+ARG MSW_MGR_ORG=${GH_ORG}
+ARG MSW_MGR_REF=development
+ARG NGEN_FORCING_ORG=${GH_ORG}
+ARG NGEN_FORCING_REF=development
+############################################################################
+
 ARG BASE_REPO=rockylinux
 ARG BASE_TAG=8
 
 FROM ${BASE_REPO}:${BASE_TAG}
+
+# Re-expose args after FROM for the remaining build stage
+# Keeps whatever value was already set
+ARG GH_ORG
+ARG IMAGE_NAMESPACE
+ARG DATA_ASSIMILATION_ORG
+ARG DATA_ASSIMILATION_REF
+ARG MSW_MGR_ORG
+ARG MSW_MGR_REF
+ARG NGEN_FORCING_ORG
+ARG NGEN_FORCING_REF
 
 # OCI Metadata Arguments
 ARG BASE_REPO
@@ -18,7 +50,7 @@ ARG IMAGE_CREATED="unknown"
 # OCI Standard Labels
 LABEL org.opencontainers.image.base.name="${BASE_NAME}" \
     org.opencontainers.image.base.digest="${BASE_DIGEST}" \
-    io.ngwpc.image.base.revision="${BASE_REVISION}" \
+    io.${IMAGE_NAMESPACE}.image.base.revision="${BASE_REVISION}" \
     org.opencontainers.image.source="${IMAGE_SOURCE}" \
     org.opencontainers.image.vendor="${IMAGE_VENDOR}" \
     org.opencontainers.image.version="${IMAGE_VERSION}" \
@@ -63,18 +95,9 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     pip3 install -r requirements.txt && \
     rm -f requirements.txt
 
-ARG MSWM_ORG=NGWPC
-ARG MSWM_REF=development
-
-ARG DATA_ASSIMILATION_ORG=NGWPC
-ARG DATA_ASSIMILATION_REF=development
-
-ARG NGEN_FORCING_ORG=NGWPC
-ARG NGEN_FORCING_REF=development
-
 ARG CACHE_BUST=1
 RUN set -eux && \
-    echo $CACHE_BUST && pip3 install "git+https://github.com/${MSWM_ORG}/nwm-msw-mgr.git@${MSWM_REF}" && \
+    echo $CACHE_BUST && pip3 install "git+https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git@${MSW_MGR_REF}" && \
     echo $CACHE_BUST && pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}" && \
     pip3 cache purge
 
@@ -107,11 +130,11 @@ RUN set -eux && \
     tmpdir=$(mktemp -d) && \
     git init "$tmpdir" && \
     cd "$tmpdir" && \
-    git remote add origin "https://github.com/${MSWM_ORG}/nwm-msw-mgr.git" && \
-    (git fetch --depth 1 origin "${MSWM_REF}" \
-     || git fetch --depth 1 origin "refs/tags/${MSWM_REF}:refs/tags/${MSWM_REF}" \
-     || git fetch origin "${MSWM_REF}" \
-     || git fetch origin "refs/tags/${MSWM_REF}:refs/tags/${MSWM_REF}") && \
+    git remote add origin "https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git" && \
+    (git fetch --depth 1 origin "${MSW_MGR_REF}" \
+     || git fetch --depth 1 origin "refs/tags/${MSW_MGR_REF}:refs/tags/${MSW_MGR_REF}" \
+     || git fetch origin "${MSW_MGR_REF}" \
+     || git fetch origin "refs/tags/${MSW_MGR_REF}:refs/tags/${MSW_MGR_REF}") && \
     git checkout FETCH_HEAD && \
     # detect branch vs tag vs bare SHA for git_info metadata
     branch=$(git branch -r --contains HEAD 2>/dev/null \
