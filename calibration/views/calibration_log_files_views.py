@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -84,7 +85,8 @@ def get_log_names(request: Request) -> Response:
         LogCategory.CALIBRATION.value: 2,
         LogCategory.COLD_START.value: 3,
         LogCategory.FORECAST.value: 4,
-        LogCategory.VERIFICATION.value: 5,
+        LogCategory.HINDCAST.value: 5,
+        LogCategory.VERIFICATION.value: 6
     }
 
     sorted_categories = sorted(
@@ -540,13 +542,7 @@ def get_allowed_logs_for_request(
             logs[LogCategory.COLD_START.value] = cold_start_logs
 
     elif hindcast_run:
-        hindcast_logs = []
-        hindcast_dir = get_hindcast_dir(hindcast_run)
-        hindcast_logs.extend(get_log_files_in_directory(hindcast_dir))
-
-        ngen_log_dir = get_hindcast_ngen_log_dir(hindcast_run)
-        hindcast_logs.extend(get_log_files_in_directory(ngen_log_dir))
-        logs[LogCategory.HINDCAST.value] = hindcast_logs
+        logs[LogCategory.HINDCAST.value] = get_hindcast_logs(hindcast_run)
 
         if cold_start_run:
             cold_start_dir = get_cold_start_dir(cold_start_run)
@@ -652,6 +648,58 @@ def get_all_validation_logs(calibration_run: CalibrationRun) -> list[str]:
                 logs.extend(get_log_files_in_directory(worker_logs_dir))
 
     return logs
+
+def get_hindcast_logs(hindcast_run) -> list[str]:
+    """
+    Collect hindcast-specific log files.
+
+    Includes:
+    - any *.log files found directly in the Hindcast run directory
+    - any *.log files found directly in each hindcast_<cycle> worker directory
+    - any *.log files found in the logs subdirectory of each hindcast_<cycle> worker
+    - any *.log files found in the hindcast ngen log directory
+
+    Worker directories are expected to follow the pattern hindcast_<n>,
+    where <n> is the cycle offset determined by interval_cycle and num_iterations.
+
+    :param hindcast_run: The hindcast run whose logs should be collected.
+    :return: A list of log file paths.
+    """
+    logs = []
+
+    hindcast_dir = get_hindcast_dir(hindcast_run)
+
+    # Top-level hindcast logs (for example hindcast_stdout.log)
+    logs.extend(get_log_files_in_directory(hindcast_dir))
+
+    # Worker-specific hindcast logs: hindcast_<cycle> and hindcast_<cycle>/logs
+    if hindcast_dir and os.path.exists(hindcast_dir):
+        for item in os.listdir(hindcast_dir):
+            worker_dir = os.path.join(hindcast_dir, item)
+            if os.path.isdir(worker_dir) and is_hindcast_iteration_directory(item):
+                # Log files directly in the worker directory
+                logs.extend(get_log_files_in_directory(worker_dir))
+
+                # Log files in the worker's logs subdirectory
+                worker_logs_dir = os.path.join(worker_dir, 'logs')
+                logs.extend(get_log_files_in_directory(worker_logs_dir))
+
+    # Top-level hindcast ngen logs directory, if present
+    ngen_log_dir = get_hindcast_ngen_log_dir(hindcast_run)
+    logs.extend(get_log_files_in_directory(ngen_log_dir))
+
+    return logs
+
+
+def is_hindcast_iteration_directory(directory_name: str) -> bool:
+    """
+    Return True when the directory name matches a hindcast iteration directory,
+    for example hindcast_0, hindcast_3, hindcast_6, etc.
+
+    :param directory_name: Directory name to evaluate.
+    :return: True if the directory is a hindcast worker directory.
+    """
+    return re.fullmatch(r"hindcast_\d+", directory_name) is not None
 
 
 def normalize_log_path(path: str) -> str:
