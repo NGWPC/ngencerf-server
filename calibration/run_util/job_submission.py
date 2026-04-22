@@ -5,25 +5,21 @@ from urllib.parse import urljoin
 
 import requests
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from rest_framework import status
 
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
+from calibration.run_util.messaging import publish_job_message
 from calibration.util.calibration_validators import GenericMessageResponseSerializer
-from calibration.util.messaging import publish_job_message
-from calibration.views.common import generate_custom_token, TOKEN_SLURM_SCOPE, get_job_description, validate_response_data
+from calibration.views.common import get_job_description, validate_response_data
 from cerfServer.settings import RABBITMQ_JOBS_QUEUE
 
 logger = logging.getLogger(__name__)
 
-User = get_user_model()  # Dynamically fetch the custom user model
-
 
 def publish_job_request(
         run: BaseRun,
-        owner: User,
         arguments: dict[str, str],
         stdout_file: str,
 ) -> None:
@@ -38,14 +34,12 @@ def publish_job_request(
     For DOCKER, no slurm_job_id is expected.
 
     :param run: The CalibrationRun, ValidationRun, ColdStartRun, ForecastRun, or VerificationRun object.
-    :param owner: The owner (user instance) of the job, used to generate the auth token.
     :param arguments: Dictionary containing command-line arguments for the job (e.g., 'input_file').
     :param stdout_file: The path to the file where job output will be written.
     :raises ValueError: If the run type is unsupported.
-    :raises SlurmJobException: If there is an HTTP error during the job submission.
     """
     job_description = get_job_description(run)
-    message = build_job_submit_message(run, owner, arguments, stdout_file)
+    message = build_job_submit_message(run, arguments, stdout_file)
 
     # Probably too much information to publish
     logger.info(
@@ -89,7 +83,6 @@ def validate_job_submit_message(message: dict[str, object]) -> None:
         "version": 1,                         # REQUIRED: schema version for future changes
         "job_type": str,                      # REQUIRED: routing key for consumer logic
         "run_id": int,                        # REQUIRED: primary identifier for DB lookup
-        "auth_token": str,                    # REQUIRED: token used by downstream system for auth
         "submitted_at": str,                  # REQUIRED: ISO8601 UTC timestamp (for tracing/debugging)
         "payload": dict                       # REQUIRED: job-specific parameters
     }
@@ -103,7 +96,6 @@ def validate_job_submit_message(message: dict[str, object]) -> None:
         "version",
         "job_type",
         "run_id",
-        "auth_token",  # Only needed for callbacks.  Might get rid of this
         "submitted_at",
         "payload",
     ]
@@ -146,14 +138,6 @@ def validate_job_submit_message(message: dict[str, object]) -> None:
         raise ValueError("run_id must be an integer")
 
     # ------------------------------------------------------------
-    # auth_token
-    # ------------------------------------------------------------
-    # Token passed through to downstream system (Slurm service).
-    # No validation here beyond type; actual validation happens downstream.
-    if not isinstance(message["auth_token"], str):
-        raise ValueError("auth_token must be a string")
-
-    # ------------------------------------------------------------
     # submitted_at
     # ------------------------------------------------------------
     # ISO8601 UTC timestamp string.
@@ -173,7 +157,6 @@ def validate_job_submit_message(message: dict[str, object]) -> None:
 
 def build_job_submit_message(
         run: BaseRun,
-        owner: User,
         arguments: dict[str, str],
         stdout_file: str,
 ) -> dict[str, Any]:
@@ -194,7 +177,6 @@ def build_job_submit_message(
         "version": 1,
         "job_type": None,  # set below
         "run_id": run.id,
-        "auth_token": generate_custom_token(owner, TOKEN_SLURM_SCOPE),
         "submitted_at": datetime.now(timezone.utc).isoformat(),
         "payload": {},
     }

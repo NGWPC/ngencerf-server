@@ -254,6 +254,16 @@ class LogCategory(AbstractEnum):
     VERIFICATION = 'verification'
 
 
+class JobType(AbstractEnum):
+    CALIBRATION = 'calibration'
+    VALIDATION = 'validation'
+    COLD_START = 'cold_start'
+    FORECAST = 'forecast'
+    HINDCAST = 'hindcast'
+    VERIFICATION = 'verification'
+    COMPARISON = 'comparison'  # This doesn't belong here
+
+
 # Used for both ValidationMetrics and NWMRetrospectiveMetrics
 class ValidationMetricPeriod(AbstractEnum):
     calib = 'calib'

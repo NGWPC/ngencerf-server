@@ -6,7 +6,6 @@ from job_consumer.config import (
     JOB_EXECUTION_MODE,
     RABBITMQ_URL,
     RABBITMQ_JOBS_QUEUE,
-    CERF_SERVER_URL,
 )
 
 logger = logging.getLogger(__name__)
@@ -18,7 +17,6 @@ def main() -> None:
     logger.info("Starting job consumer with configuration:")
     logger.info("  JOB_EXECUTION_MODE = %s", JOB_EXECUTION_MODE.name)
     logger.info("  RABBITMQ_QUEUE     = %s", RABBITMQ_JOBS_QUEUE)
-    logger.info("  CERF_SERVER_URL    = %s", CERF_SERVER_URL)
 
     # Avoid dumping credentials from the URL
     if RABBITMQ_URL:

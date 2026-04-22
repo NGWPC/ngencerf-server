@@ -103,12 +103,6 @@ urlpatterns = [
     path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
     path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
     path('calibration/cancel_job/', calibration_run_views.cancel_job, name="cancelJob"),
-    path('calibration/calibration_job_slurm_callback/', calibration_run_views.calibration_job_slurm_callback, name="calibrationJobSlurmCallback"),
-    path('calibration/validation_job_slurm_callback/', calibration_run_views.validation_job_slurm_callback, name="validationJobSlurmCallback"),
-    path('calibration/cold_start_job_slurm_callback/', calibration_run_views.cold_start_job_slurm_callback, name="coldStartJobSlurmCallback"),
-    path('calibration/forecast_job_slurm_callback/', calibration_run_views.forecast_job_slurm_callback, name="forecastJobSlurmCallback"),
-    path('calibration/hindcast_job_slurm_callback/', calibration_run_views.hindcast_job_slurm_callback, name="hindcastJobSlurmCallback"),
-    path('calibration/verification_job_slurm_callback/', calibration_run_views.verification_job_slurm_callback, name="verificationJobSlurmCallback"),
 
     ##################################
     # Evaluation
@@ -183,7 +177,6 @@ urlpatterns = [
     ##################################
     # Testing
     ##################################
-    path('calibration/get_slurm_token/', calibration_run_views.get_slurm_token, name="getSlurmToken"),
     path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
     path('calibration/process_swe_timeseries/', calibration_run_views.process_swe_timeseries, name="processSweTimeseries"),
 

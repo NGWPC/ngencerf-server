@@ -6,9 +6,8 @@ from django.core.management.base import BaseCommand
 from kombu import Connection, Consumer, Queue
 from kombu.exceptions import KombuError
 
-from calibration.enums import SlurmCallbackStatusEnum, StatusEnum
+from calibration.enums import SlurmCallbackStatusEnum, StatusEnum, JobType
 from calibration.enums_vanilla import JobExecutionMode
-from calibration.enums_vanilla import JobType
 from calibration.run_util.run_common import run_job_callback_pw
 from calibration.util.calibration_validators import JobEventSerializer
 from calibration.views.calibration_run_views import acknowledge_slurm_submission
@@ -153,9 +152,9 @@ class Command(BaseCommand):
         # ------------------------------------------------------------
         # Validate slurm_job_id requirement for PW
         # ------------------------------------------------------------
-        if settings.NGEN_ENVIRONMENT == JobExecutionMode.PARALLEL_WORKS and slurm_job_id is None:
+        if settings.JOB_EXECUTION_MODE == JobExecutionMode.PARALLEL_WORKS and slurm_job_id is None:
             raise ValueError(
-                "slurm_job_id is required for callbacks when NGEN_ENVIRONMENT is PARALLEL_WORKS"
+                "slurm_job_id is required for callbacks when JOB_EXECUTION_MODE is PARALLEL_WORKS"
             )
 
         # ------------------------------------------------------------

@@ -36,7 +36,7 @@ DATABASES = {
             'connect_timeout': 10,
             'options': '-c statement_timeout=10000ms',
             'sslmode': 'require',
-            # 'sslrootcert': /ngencerf/aws_cert/global-bundle.pem',
+            # 'sslrootcert': '/ngencerf/aws_cert/global-bundle.pem',
         }
     }
 }

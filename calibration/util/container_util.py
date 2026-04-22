@@ -239,7 +239,7 @@ def copy_file_from_image(image_name: str, container_name: str, container_file_na
         return cached  # Return cached success status
 
     # Perform the copy operation based on the environment.
-    if settings.NGEN_ENVIRONMENT == JobExecutionMode.PARALLEL_WORKS:
+    if settings.JOB_EXECUTION_MODE == JobExecutionMode.PARALLEL_WORKS:
         success = copy_file_from_singularity_image(
             os.path.join(settings.SINGULARITY_DIR, f'{image_name}.sif'),
             container_file_name,

@@ -28,7 +28,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_cold_start_realization_file, \
     get_cold_start_stdout_file, get_cold_start_dir, \
     get_cold_start_git_info_file, get_hindcast_stdout_file, get_hindcast_git_info_file, get_hindcast_dir, get_cold_start_state, \
-    get_verification_stdout_file
+    get_verification_stdout_file, get_verification_yaml_config_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, write_ngen_logging_file
 from calibration.views.data_services import should_use_bmi_forcing
@@ -153,7 +153,7 @@ def queue_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str) -> 
     validate_cmd_args(cmd_line_args, stdout_file)
 
     owner = get_run_owner(run)
-    publish_job_request(run, owner, cmd_line_args, stdout_file)
+    publish_job_request(run, cmd_line_args, stdout_file)
 
     run.sent_date = datetime.now(timezone.utc)
     run.save(update_fields=["sent_date"])

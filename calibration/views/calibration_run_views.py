@@ -6,33 +6,30 @@ import requests
 from django.conf import settings
 from django.db import transaction
 from django.forms import model_to_dict
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType
-from calibration.enums_vanilla import JobType, SecondaryDataEnum
+from calibration.enums import StatusEnum, ValidationType, JobType
+from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
 from calibration.run_util.run_common import cancel_job_common, submit_job
-from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
+from calibration.util.calibration_validators import GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
-    CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
     GetStatusForCalibrationResponseSerializer, GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
-    CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunIdSerializer, ForecastJobSlurmCallbackRequestSerializer, \
     CancelJobResponseSerializer, \
-    ValidationRunIdSerializer, GenericResponseSerializerWithValidator, RunCalibrationJob, ColdStartJobSlurmCallbackRequestSerializer, \
-    VerificationJobSlurmCallbackRequestSerializer, GetStatusForValidationResponseSerializer, \
-    GetStatusForForecastResponseSerializer, GetStatusForVerificationResponseSerializer, GetStatusRequestSerializer, \
-    HindcastJobSlurmCallbackRequestSerializer, GetStatusForHindcastResponseSerializer
+    GenericResponseSerializerWithValidator, RunCalibrationJob, \
+    GetStatusForValidationResponseSerializer, GetStatusForForecastResponseSerializer, GetStatusForVerificationResponseSerializer, \
+    GetStatusRequestSerializer, GetStatusForHindcastResponseSerializer, CalibrationRunIdSerializer, \
+    CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunIdSerializer, ValidationRunIdSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_secondary_data_views import generate_secondary_ts_data
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
-    generate_custom_token, TOKEN_SLURM_SCOPE, get_validation_run, get_forecast_run, get_user_email, \
+    get_validation_run, get_forecast_run, get_user_email, \
     get_job_description, get_elapsed_str, readonly_transaction, get_verification_run, \
     join_with_or, get_calibration_runs_bulk, get_hindcast_run
 from calibration.views.end_of_job_processing import read_calibration_output
@@ -1371,49 +1368,6 @@ def acknowledge_slurm_submission(run: BaseRun, slurm_job_id: int) -> None:
         f"{job_description} already has slurm_job_id={run.slurm_job_id}, "
         f"but callback reported slurm_job_id={slurm_job_id}"
     )
-
-
-@extend_schema(
-    request=EmptySerializer,
-    responses={
-        200: OpenApiResponse(
-            response=OpenApiTypes.OBJECT,  # Indicates the response is an object
-            description="Success",
-            examples=[
-                OpenApiExample(
-                    'Example response',
-                    value={'access': 'your_access_token_here'}
-                )
-            ],  # Defines the example using OpenApiExample
-        ),
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Return a token for use by Slurm"
-)
-@api_view(['GET'])
-@handle_exceptions
-def get_slurm_token(request: Request) -> Response:
-    """
-    Generates and returns a token for use by Slurm.
-
-    :param request: HTTP request.
-    :return: JSON response containing the generated token.
-    """
-    data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(EmptySerializer, data)
-    if error_return:
-        return error_return
-
-    return Response({'access': generate_custom_token(request.user, TOKEN_SLURM_SCOPE)})
 
 
 def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:

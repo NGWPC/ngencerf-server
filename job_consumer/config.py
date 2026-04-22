@@ -91,9 +91,3 @@ os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
 JOB_CONSUMER_LOG_FILE = NGEN_LOGGING_DIR / "job_consumer.log"
 JOB_CONSUMER_LOG_LEVEL = os.getenv("JOB_CONSUMER_LOG_LEVEL", "INFO")
-
-# ------------------------------------------------------------
-# Callback target
-# ------------------------------------------------------------
-# Used by the consumer to notify Django when jobs are submitted/starting/finished.
-CERF_SERVER_URL = os.getenv("CERF_SERVER_URL", 'http://localhost:8000')

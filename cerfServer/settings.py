@@ -16,7 +16,7 @@ from enum import StrEnum, auto
 from datetimerange import DateTimeRange
 from dotenv import load_dotenv
 
-from calibration.enums_vanilla import JobExecutionMode, ScriptEnum, JobType
+from calibration.enums_vanilla import JobExecutionMode
 
 DJANGO_START_TIME = datetime.now(tz=timezone.utc)
 

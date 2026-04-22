@@ -735,7 +735,7 @@ def create_verification_run_internal(run: ForecastRun | HindcastRun) -> Verifica
     return verification_run
 
 
-TOKEN_SLURM_SCOPE = 'slurm_callback'
+# TOKEN_SLURM_SCOPE = 'slurm_callback'
 TOKEN_NGEN_SCOPE = 'ngen'
 
 
