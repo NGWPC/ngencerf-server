@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
+    """
+    Execute with python -m job_runner.main
+    """
+
     configure_logging()
 
     logger.info("Starting job consumer with configuration:")

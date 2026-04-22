@@ -26,6 +26,29 @@ _connection = Connection(RABBITMQ_URL)
 
 
 def validate_message(message: dict[str, Any]) -> None:
+    """
+    Validate the top-level structure of an incoming job-runner message.
+
+    Supported message types:
+    - submit_job
+    - cancel_job
+
+    All messages must include the common envelope fields:
+    - message_type
+    - version
+    - job_type
+    - run_id
+    - submitted_at
+
+    submit_job messages must also include:
+    - payload
+
+    This function validates only the shared message envelope and basic types.
+    Job-specific payload validation is handled later by the execution logic.
+
+    :param message: Incoming message body deserialized from RabbitMQ
+    :raises ValueError: If the message is missing required fields or has invalid types
+    """
     required_top_level = [
         "message_type",
         "version",
@@ -38,7 +61,7 @@ def validate_message(message: dict[str, Any]) -> None:
         if key not in message:
             raise ValueError(f"Missing required key: {key}")
 
-    if message["message_type"] not in {"submit_slurm_job", "cancel_job"}:
+    if message["message_type"] not in {"submit_job", "cancel_job"}:
         raise ValueError(f"Invalid message_type: {message['message_type']}")
 
     if not isinstance(message["version"], int):
@@ -53,7 +76,7 @@ def validate_message(message: dict[str, Any]) -> None:
     if not isinstance(message["submitted_at"], str):
         raise ValueError("submitted_at must be a string")
 
-    if message["message_type"] == "submit_slurm_job":
+    if message["message_type"] == "submit_job":
         if "payload" not in message:
             raise ValueError("Missing required key: payload")
         if not isinstance(message["payload"], dict):
@@ -61,14 +84,39 @@ def validate_message(message: dict[str, Any]) -> None:
 
 
 def get_registry_key(job_type: str, run_id: int) -> str:
+    """
+    Return the internal registry key used to track a running job process.
+
+    This value is also used as the Docker container name when running in
+    DOCKER mode.
+
+    NOTE:
+    This key is specific to the Docker execution path and is not used for
+    Slurm / Parallel Works jobs, which are tracked by slurm_job_id instead.
+
+    :param job_type: Normalized job type string
+    :param run_id: Run identifier
+    :return: Registry key / Docker container name
+    """
     return f"{job_type}_{run_id}"
 
 
 def get_script_name(job_type: str, payload: dict[str, Any]) -> str:
     """
-    Match the old script selection logic.
+    Return the runtime script name for the given job.
 
-    Validation iteration uses a different script name than other validation jobs.
+    Most jobs map directly from job_type to script name.
+    Validation iteration jobs are a special case and use the
+    'validation_iteration' script instead of the generic validation script.
+
+    NOTE:
+    This logic is only applicable to the Docker execution path. Slurm /
+    Parallel Works execution does not rely on these script names and instead
+    uses its own submission configuration.
+
+    :param job_type: Normalized job type string
+    :param payload: Job-specific execution payload
+    :return: Script name to pass into the runtime container
     """
     if job_type == "validation" and payload.get("worker_name") and payload.get("iteration") is not None:
         return "validation_iteration"
@@ -77,10 +125,17 @@ def get_script_name(job_type: str, payload: dict[str, Any]) -> str:
 
 def build_docker_command(job_type: str, run_id: int, payload: dict[str, Any]) -> list[str]:
     """
-    Build the docker command for the given job.
+    Build the full Docker command used to launch a job.
 
-    This mirrors the spirit of your current Django-side DOCKER path, where
-    the command is chosen by run type and uses a generated container name.
+    This selects the configured runtime command template, derives the script
+    name from the job type, assigns a deterministic container name, and appends
+    the job-specific arguments expected by the container entrypoint.
+
+    :param job_type: Normalized job type string
+    :param run_id: Run identifier
+    :param payload: Job-specific execution payload
+    :return: Full command as a list suitable for subprocess.Popen
+    :raises ValueError: If job_type is unsupported
     """
     script_name = get_script_name(job_type, payload)
     template = RUNTIME_INFO[script_name]
@@ -153,7 +208,15 @@ def publish_job_event(
     """
     Publish a job lifecycle event to the Django-side job events queue.
 
-    Expected payload shape matches JobEventSerializer on the server side.
+    These events are consumed by the Django server and are used to represent
+    submission acknowledgement, start notification, and terminal job state.
+
+    Expected payload shape matches the server-side JobEventSerializer.
+
+    :param job_type: Normalized job type string
+    :param run_id: Run identifier
+    :param job_status: Job lifecycle status to publish
+    :param slurm_job_id: Slurm job identifier, when applicable
     """
     payload = {
         "job_type": job_type,
@@ -202,44 +265,74 @@ def publish_job_event(
         )
 
 
+def publish_terminal_job_event(
+        job_type: str,
+        run_id: int,
+        status: SlurmCallbackStatusEnum,
+        slurm_job_id: int | None = None,
+) -> None:
+    """
+    Publish a terminal job event with consistent error handling.
+
+    :param job_type: Normalized job type string
+    :param run_id: Run identifier
+    :param status: Terminal job status
+    :param slurm_job_id: Slurm job identifier, if applicable
+    """
+    try:
+        publish_job_event(
+            job_type=job_type,
+            run_id=run_id,
+            job_status=status,
+            slurm_job_id=slurm_job_id,
+        )
+    except Exception:
+        logger.exception(
+            "Failed publishing terminal event for job_type=%s run_id=%s",
+            job_type,
+            run_id,
+        )
+
+
 def docker_job_done_callback(
         job_type: str,
         run_id: int,
 ) -> Callable[[Future], None]:
+    """
+    Return the completion callback for a running Docker job.
+
+    The returned callback:
+    - removes the job from the in-memory registry
+    - inspects the process exit code
+    - publishes the corresponding terminal job event
+
+    Exit-code handling:
+    - 0      -> DONE
+    - < 0    -> CANCELED
+    - > 0    -> FAILED
+
+    If callback processing itself fails, a best-effort FAILED event is published.
+
+    :param job_type: Normalized job type string
+    :param run_id: Run identifier
+    :return: Completion callback for the submitted Future
+    """
+
     def _callback(future: Future) -> None:
         registry_key = get_registry_key(job_type, run_id)
         job_registry.pop(registry_key, None)
 
         try:
             exit_code = future.result()
-            logger.info(
-                "DOCKER job finished for job_type=%s run_id=%s exit_code=%s",
-                job_type,
-                run_id,
-                exit_code,
-            )
 
             if exit_code == 0:
-                publish_job_event(
-                    job_type=job_type,
-                    run_id=run_id,
-                    job_status=SlurmCallbackStatusEnum.DONE,
-                    slurm_job_id=None,
-                )
+                status = SlurmCallbackStatusEnum.DONE
             elif exit_code < 0:
-                publish_job_event(
-                    job_type=job_type,
-                    run_id=run_id,
-                    job_status=SlurmCallbackStatusEnum.CANCELED,
-                    slurm_job_id=None,
-                )
+                status = SlurmCallbackStatusEnum.CANCELED
             else:
-                publish_job_event(
-                    job_type=job_type,
-                    run_id=run_id,
-                    job_status=SlurmCallbackStatusEnum.FAILED,
-                    slurm_job_id=None,
-                )
+                status = SlurmCallbackStatusEnum.FAILED
+
+            publish_terminal_job_event(job_type, run_id, status)
 
         except Exception:
             logger.exception(
@@ -247,33 +340,33 @@ def docker_job_done_callback(
                 job_type,
                 run_id,
             )
-            try:
-                publish_job_event(
-                    job_type=job_type,
-                    run_id=run_id,
-                    job_status=SlurmCallbackStatusEnum.FAILED,
-                    slurm_job_id=None,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed publishing terminal FAILED event for job_type=%s run_id=%s",
-                    job_type,
-                    run_id,
-                )
+            publish_terminal_job_event(
+                job_type,
+                run_id,
+                SlurmCallbackStatusEnum.FAILED,
+            )
 
     return _callback
 
 
 def run_docker_job(job_type: str, run_id: int, payload: dict[str, Any]) -> None:
     """
-    Launch the Docker job using the same general pattern as the old spawn_job():
-    - Popen
-    - pool.submit(process.wait)
-    - registry entry
-    - done callback
+    Launch a job in Docker and register lifecycle handling.
 
-    Job lifecycle updates are now published to RabbitMQ instead of being sent
-    to Django callback endpoints over HTTP.
+    This function:
+    - builds the Docker command
+    - starts the subprocess
+    - stores the process in the in-memory registry
+    - publishes a STARTING job event
+    - waits for completion in a background thread
+    - attaches a completion callback that publishes the terminal event
+
+    Lifecycle events are published back to Django through RabbitMQ rather than
+    through HTTP callback endpoints.
+
+    :param job_type: Normalized job type string
+    :param run_id: Run identifier
+    :param payload: Job-specific execution payload
     """
     command = build_docker_command(job_type, run_id, payload)
 
@@ -307,10 +400,15 @@ def run_docker_job(job_type: str, run_id: int, payload: dict[str, Any]) -> None:
 
 def cancel_docker_job(job_type: str, run_id: int) -> bool:
     """
-    Cancel a running Docker job.
+    Attempt to cancel a running Docker job.
 
-    use `docker kill <container_name>` where the container name matches the
-    registry key, and remove the registry entry on success.
+    Cancellation is performed with `docker kill <container_name>`, where the
+    container name matches the internal registry key. On successful kill, the
+    job is removed from the in-memory registry.
+
+    :param job_type: Normalized job type string
+    :param run_id: Run identifier
+    :return: True if the container was killed successfully, otherwise False
     """
     registry_key = get_registry_key(job_type, run_id)
     container_name = registry_key
@@ -349,16 +447,69 @@ def cancel_docker_job(job_type: str, run_id: int) -> bool:
     return False
 
 
-def submit_parallel_works_job(job_type: str, run_id: int, payload: dict[str, Any]) -> None:
+def submit_slurm_job(job_type: str, run_id: int, payload: dict[str, Any]) -> None:
     """
-    PARALLEL_WORKS path:
-    stub only for now.
+    Submit a job through the Parallel Works / Slurm execution path.
 
-    Later this should:
-      1. submit to Slurm
-      2. obtain slurm_job_id
-      3. publish SUBMITTED with slurm_job_id to job_events_queue
-      4. later publish STARTING / terminal status updates
+    This path is responsible for both submitting the job and publishing the
+    lifecycle callbacks back to Django through the job events queue.
+
+    Required callback sequence:
+
+    1. SUBMITTED
+       - Publish immediately after successful Slurm submission
+       - Must include the returned slurm_job_id
+       - Allows Django to persist the Slurm job identifier
+
+    2. STARTING
+       - Publish when the job actually begins execution
+       - Should include slurm_job_id
+       - Allows Django to mark the run as RUNNING and set run_start
+
+    3. Terminal callback (exactly one)
+       - Status must be one of:
+         DONE | FAILED | CANCELED
+       - Must include slurm_job_id
+       - Triggers final status updates and post-processing in Django
+
+    Example sequence:
+
+        # After submission
+        publish_job_event(
+            job_type,
+            run_id,
+            SlurmCallbackStatusEnum.SUBMITTED,
+            slurm_job_id=slurm_job_id
+        )
+
+        # When execution begins
+        publish_job_event(
+            job_type,
+            run_id,
+            SlurmCallbackStatusEnum.STARTING,
+            slurm_job_id=slurm_job_id
+        )
+
+        # When job completes
+        publish_terminal_job_event(
+            job_type,
+            run_id,
+            SlurmCallbackStatusEnum.DONE,
+            slurm_job_id=slurm_job_id
+        )
+
+    Planned behavior:
+    1. submit the job to Slurm
+    2. obtain the slurm_job_id
+    3. publish SUBMITTED
+    4. publish STARTING when execution begins
+    5. publish one terminal event
+
+    This is not fully implemented yet.
+
+    :param job_type: Normalized job type string
+    :param run_id: Run identifier
+    :param payload: Job-specific execution payload
     """
     logger.info(
         "PARALLEL_WORKS stub for job_type=%s run_id=%s payload=%s",
@@ -370,9 +521,68 @@ def submit_parallel_works_job(job_type: str, run_id: int, payload: dict[str, Any
     # TODO: submit to Slurm
     # TODO: get slurm_job_id
     # TODO: publish SUBMITTED event with slurm_job_id
+    # TODO: publish STARTING event with slurm_job_id when execution begins
+    # TODO: publish terminal DONE / FAILED / CANCELED event with slurm_job_id
+
+
+def cancel_slurm_job(
+        job_type: str,
+        run_id: int,
+        slurm_job_id: int,
+) -> bool:
+    """
+    Cancel a job through the Parallel Works / Slurm execution path.
+
+    This function requires a valid slurm_job_id. The external consumer does
+    not perform any lookup against Django or other storage, so the identifier
+    must be provided in the incoming message.
+
+    Planned behavior:
+    1. call Slurm cancellation command using slurm_job_id
+    2. publish a CANCELED event (or FAILED if cancellation fails)
+
+    NOTE:
+    This function is currently a stub. The actual Slurm cancellation command
+    (e.g., `scancel`) is not yet implemented.
+
+    :param job_type: Normalized job type string
+    :param run_id: Run identifier
+    :param slurm_job_id: Slurm job identifier (required)
+    :return: True if cancellation was successful (stubbed as True)
+    :raises ValueError: If slurm_job_id is None
+    """
+    if slurm_job_id is None:
+        raise ValueError(
+            f"slurm_job_id is required for Slurm cancellation "
+            f"(job_type={job_type}, run_id={run_id})"
+        )
+
+    logger.info(
+        "PARALLEL_WORKS cancel request for job_type=%s run_id=%s slurm_job_id=%s",
+        job_type,
+        run_id,
+        slurm_job_id,
+    )
+
+    # TODO:
+    # subprocess.run(["scancel", str(slurm_job_id)], check=True)
+    # publish_job_event(...)
+
+    return True
 
 
 def dispatch_message(body: dict[str, Any]) -> None:
+    """
+    Dispatch a validated inbound message to the appropriate execution handler.
+
+    Supported message types:
+    - submit_job
+    - cancel_job
+
+    Routing is based on both message_type and the configured execution mode.
+
+    :param body: Incoming message body deserialized from RabbitMQ
+    """
     validate_message(body)
 
     message_type = body["message_type"]
@@ -387,7 +597,7 @@ def dispatch_message(body: dict[str, Any]) -> None:
         JOB_EXECUTION_MODE,
     )
 
-    if message_type == "submit_slurm_job":
+    if message_type == "submit_job":
         payload = body["payload"]
 
         if JOB_EXECUTION_MODE == JobExecutionMode.DOCKER:
@@ -395,7 +605,7 @@ def dispatch_message(body: dict[str, Any]) -> None:
             return
 
         if JOB_EXECUTION_MODE == JobExecutionMode.PARALLEL_WORKS:
-            submit_parallel_works_job(job_type, run_id, payload)
+            submit_slurm_job(job_type, run_id, payload)
             return
 
         raise ValueError(f"Unsupported consumer environment: {JOB_EXECUTION_MODE}")
@@ -409,7 +619,23 @@ def dispatch_message(body: dict[str, Any]) -> None:
             return
 
         if JOB_EXECUTION_MODE == JobExecutionMode.PARALLEL_WORKS:
-            raise NotImplementedError("cancel_job is not yet implemented for PARALLEL_WORKS")
+            slurm_job_id_raw = body.get("slurm_job_id")
+            if slurm_job_id_raw is None:
+                raise ValueError(
+                    f"Missing slurm_job_id for PARALLEL_WORKS cancel "
+                    f"(job_type={job_type}, run_id={run_id})"
+                )
+            if not isinstance(slurm_job_id_raw, int):
+                raise ValueError(
+                    f"slurm_job_id must be an integer for PARALLEL_WORKS cancel "
+                    f"(job_type={job_type}, run_id={run_id})"
+                )
+
+            if not cancel_slurm_job(job_type, run_id, slurm_job_id_raw):
+                raise ValueError(
+                    f"Unable to cancel PARALLEL_WORKS job for job_type={job_type} run_id={run_id}"
+                )
+            return
 
         raise ValueError(f"Unsupported consumer environment: {JOB_EXECUTION_MODE}")
 

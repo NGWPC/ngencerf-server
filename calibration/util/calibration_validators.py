@@ -1432,6 +1432,34 @@ class JobEventSerializer(BaseSerializer):
     slurm_job_id = serializers.IntegerField(required=False, allow_null=True)
 
 
+class JobSubmitMessageSerializer(BaseSerializer):
+    message_type = serializers.CharField(required=True)
+    version = serializers.IntegerField(required=True)
+    job_type = serializers.CharField(required=True, validators=[enum_validator(JobType, allow_blank=False)])
+    run_id = serializers.IntegerField(required=True)
+    submitted_at = serializers.CharField(required=True)
+    payload = serializers.DictField(required=True)
+
+    def validate_message_type(self, value: str) -> str:
+        if value != "submit_job":
+            raise serializers.ValidationError("Invalid message_type")
+        return value
+
+
+class CancelJobMessageSerializer(BaseSerializer):
+    message_type = serializers.CharField(required=True)
+    version = serializers.IntegerField(required=True)
+    job_type = serializers.CharField(required=True, validators=[enum_validator(JobType, allow_blank=False)])
+    run_id = serializers.IntegerField(required=True)
+    submitted_at = serializers.CharField(required=True)
+    slurm_job_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate_message_type(self, value: str) -> str:
+        if value != "cancel_job":
+            raise serializers.ValidationError("Invalid message_type")
+        return value
+
+
 class RunCalibrationJob(CalibrationRunIdSerializer):
     logging_config = LoggingConfigSerializer(required=False)
 

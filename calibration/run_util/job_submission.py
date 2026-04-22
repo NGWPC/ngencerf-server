@@ -1,13 +1,33 @@
+"""
+RabbitMQ job submission interface for Django.
+
+This module is responsible for:
+- Building normalized job submission and cancellation messages
+- Validating message structure using DRF serializers
+- Publishing messages to the job request queue
+
+The external job_runner service consumes these messages and:
+- Executes jobs in Docker or Slurm / Parallel Works, depending on configuration
+- Publishes lifecycle events back to Django
+
+This module does NOT:
+- Execute jobs
+- Track job lifecycle state beyond initial submission
+"""
+
 import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from calibration.enums import JobType
+from calibration.enums_vanilla import JobExecutionMode
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
 from calibration.run_util.messaging import publish_job_message
-from calibration.views.common import get_job_description
-from cerfServer.settings import RABBITMQ_JOBS_QUEUE
+from calibration.util.calibration_validators import JobSubmitMessageSerializer, CancelJobMessageSerializer
+from calibration.views.common import get_job_description, validate_request
+from cerfServer.settings import RABBITMQ_JOBS_QUEUE, JOB_EXECUTION_MODE
 
 logger = logging.getLogger(__name__)
 
@@ -18,19 +38,19 @@ def publish_job_request(
         stdout_file: str,
 ) -> None:
     """
-    Publish a job request to RabbitMQ.
+    Publish a job submission request to RabbitMQ.
 
-    This is the shared queue submission path for all execution environments.
-    The consumer decides whether to run the job in DOCKER or PARALLEL_WORKS.
+    The message is consumed asynchronously by the external job_runner service,
+    which is responsible for executing the job in the configured execution
+    environment (for example Docker or Slurm / Parallel Works).
 
-    Unlike the old direct-submit flow, this does not receive an immediate execution response.
-    For PARALLEL_WORKS, run.slurm_job_id must be updated later by the consumer/callback path.
-    For DOCKER, no slurm_job_id is expected.
+    This function does not receive an execution response. Job status updates
+    are returned later through separate job event messages.
 
-    :param run: The CalibrationRun, ValidationRun, ColdStartRun, ForecastRun, or VerificationRun object.
-    :param arguments: Dictionary containing command-line arguments for the job (e.g., 'input_file').
-    :param stdout_file: The path to the file where job output will be written.
-    :raises ValueError: If the run type is unsupported.
+    :param run: Run instance (CalibrationRun, ValidationRun, etc.)
+    :param arguments: Job-specific CLI arguments
+    :param stdout_file: Path for job stdout output
+    :raises JobSubmissionException: If publishing fails
     """
     job_description = get_job_description(run)
     message = build_job_submit_message(run, arguments, stdout_file)
@@ -65,11 +85,14 @@ def publish_job_request(
 
 def publish_cancel_job_request(run: BaseRun) -> bool:
     """
-    Publish a cancel-job request to RabbitMQ.
+    Publish a job cancellation request to RabbitMQ.
 
-    :param run: The run object to cancel.
-    :return: True if the cancel request was successfully published.
-    :raises JobSubmissionException: If publishing fails.
+    The external consumer is responsible for handling cancellation logic for
+    the configured execution environment.
+
+    :param run: Run instance to cancel
+    :return: True if message was successfully published
+    :raises JobSubmissionException: If publishing fails
     """
     job_description = get_job_description(run)
     message = build_cancel_job_message(run)
@@ -92,187 +115,104 @@ def publish_cancel_job_request(run: BaseRun) -> bool:
     return True
 
 
-def validate_job_submit_message(message: dict[str, object]) -> None:
-    """
-    Validate the structure of a job submission message before publishing.
-
-    This enforces a stable contract between the Django producer and the job consumer.
-    It only validates the envelope (top-level structure), not the job-specific payload.
-
-    Expected message format:
-
-    {
-        "message_type": "submit_slurm_job",   # REQUIRED: identifies intent of message
-        "version": 1,                         # REQUIRED: schema version for future changes
-        "job_type": str,                      # REQUIRED: routing key for consumer logic
-        "run_id": int,                        # REQUIRED: primary identifier for DB lookup
-        "submitted_at": str,                  # REQUIRED: ISO8601 UTC timestamp (for tracing/debugging)
-        "payload": dict                       # REQUIRED: job-specific parameters
-    }
-    """
-
-    # ------------------------------------------------------------
-    # Required top-level fields
-    # ------------------------------------------------------------
-    required_top_level = [
-        "message_type",
-        "version",
-        "job_type",
-        "run_id",
-        "submitted_at",
-        "payload",
-    ]
-
-    for key in required_top_level:
-        if key not in message:
-            raise ValueError(f"Missing required key: {key}")
-
-    # ------------------------------------------------------------
-    # message_type
-    # ------------------------------------------------------------
-    # Defines what kind of message this is.
-    # This allows future expansion (e.g., cancel, status update, etc.)
-    if message["message_type"] != "submit_slurm_job":
-        raise ValueError(f"Invalid message_type: {message['message_type']}")
-
-    # ------------------------------------------------------------
-    # version
-    # ------------------------------------------------------------
-    # Allows backward-compatible schema evolution.
-    # Keep this fixed unless you intentionally introduce a breaking change.
-    if not isinstance(message["version"], int):
-        raise ValueError("version must be an integer")
-
-    # ------------------------------------------------------------
-    # job_type
-    # ------------------------------------------------------------
-    # Used by the consumer to route handling logic.
-    # Expected values match your run types:
-    #   calibration, validation, forecast, hindcast, cold_start, verification
-    if not isinstance(message["job_type"], str):
-        raise ValueError("job_type must be a string")
-
-    # ------------------------------------------------------------
-    # run_id
-    # ------------------------------------------------------------
-    # Must map directly to a DB record in your system.
-    # Consumer will typically use this to fetch/update the run.
-    if not isinstance(message["run_id"], int):
-        raise ValueError("run_id must be an integer")
-
-    # ------------------------------------------------------------
-    # submitted_at
-    # ------------------------------------------------------------
-    # ISO8601 UTC timestamp string.
-    # Used for logging, tracing, and debugging.
-    # Example: "2026-04-20T09:00:00+00:00"
-    if not isinstance(message["submitted_at"], str):
-        raise ValueError("submitted_at must be a string")
-
-    # ------------------------------------------------------------
-    # payload
-    # ------------------------------------------------------------
-    # Contains job-specific parameters.
-    # Structure depends on job_type and is validated by the consumer.
-    if not isinstance(message["payload"], dict):
-        raise ValueError("payload must be a dictionary")
-
-
-def validate_cancel_job_message(message: dict[str, object]) -> None:
-    required_top_level = [
-        "message_type",
-        "version",
-        "job_type",
-        "run_id",
-        "submitted_at",
-    ]
-
-    for key in required_top_level:
-        if key not in message:
-            raise ValueError(f"Missing required key: {key}")
-
-    if message["message_type"] != "cancel_job":
-        raise ValueError(f"Invalid message_type: {message['message_type']}")
-
-    if not isinstance(message["version"], int):
-        raise ValueError("version must be an integer")
-
-    if not isinstance(message["job_type"], str):
-        raise ValueError("job_type must be a string")
-
-    if not isinstance(message["run_id"], int):
-        raise ValueError("run_id must be an integer")
-
-    if not isinstance(message["submitted_at"], str):
-        raise ValueError("submitted_at must be a string")
-
-
 def build_job_submit_message(
         run: BaseRun,
         arguments: dict[str, str],
         stdout_file: str,
 ) -> dict[str, Any]:
     """
-    Build a normalized RabbitMQ message for submitting a job request.
+    Build and validate a job submission message.
 
-    The consumer will inspect job_type and decide whether to execute in
-    DOCKER or PARALLEL_WORKS.
+    Produces a normalized message format with:
+    - a stable envelope (message_type, version, job_type, run_id, timestamp)
+    - a job-specific payload
 
-    This replaces the old REST multipart payload with a structured JSON message.
+    The payload structure varies by job type, but the full message is validated
+    before publishing.
 
-    Top-level fields are stable across all job types.
-    Job-specific data lives under "payload".
+    :param run: Run instance
+    :param arguments: Job-specific arguments
+    :param stdout_file: Output file path
+    :return: Validated message dict
+    :raises ValueError: If validation fails
     """
+    job_type = get_job_type(run)
 
-    base_message: dict[str, Any] = {
-        "message_type": "submit_slurm_job",
+    message: dict[str, Any] = {
+        "message_type": "submit_job",
         "version": 1,
-        "job_type": None,  # set below
+        "job_type": job_type.value,
         "run_id": run.id,
         "submitted_at": datetime.now(timezone.utc).isoformat(),
-        "payload": {},
+        "payload": build_job_submit_payload(run, arguments, stdout_file, job_type),
     }
 
-    if isinstance(run, CalibrationRun):
-        base_message["job_type"] = "calibration"
-        base_message["payload"] = {
+    validated, error = validate_request(JobSubmitMessageSerializer, message)
+    if error:
+        raise ValueError(str(error))
+    return validated
+
+
+def build_job_submit_payload(
+        run: BaseRun,
+        arguments: dict[str, str],
+        stdout_file: str,
+        job_type: JobType | None = None,
+) -> dict[str, Any]:
+    """
+    Build the job-specific payload portion of a submission message.
+
+    This helper only builds the payload dictionary. The caller is responsible
+    for constructing and validating the full message envelope.
+
+    :param run: Run instance
+    :param arguments: Job-specific arguments
+    :param stdout_file: Output file path
+    :param job_type: Optional precomputed JobType
+    :return: Payload dict
+    :raises ValueError: If run type is unsupported
+    """
+    job_type = job_type or get_job_type(run)
+
+    if job_type == JobType.CALIBRATION:
+        calibration_run = run
+        assert isinstance(calibration_run, CalibrationRun)
+        return {
             "input_file": arguments["input_file"],
             "output_file": stdout_file,
             "nprocs": arguments["nprocs"],
-            "node_type": run.node_type,
+            "node_type": calibration_run.node_type,
         }
 
-    elif isinstance(run, ValidationRun):
-        base_message["job_type"] = "validation"
-        base_message["payload"] = {
-            "validation_type": run.validation_type,
+    if job_type == JobType.VALIDATION:
+        validation_run = run
+        assert isinstance(validation_run, ValidationRun)
+        return {
+            "validation_type": validation_run.validation_type,
             "input_file": arguments["input_file"],
             "output_file": stdout_file,
             "nprocs": arguments["nprocs"],
-            "node_type": run.calibration_run.node_type,
+            "node_type": validation_run.calibration_run.node_type,
             "worker_name": arguments.get("worker_name"),
             "iteration": arguments.get("iteration_num"),
         }
 
-    elif isinstance(run, ColdStartRun):
-        base_message["job_type"] = "cold_start"
-        base_message["payload"] = {
+    if job_type == JobType.COLD_START:
+        return {
             "validation_yaml": arguments["validation_yaml"],
             "realization_file": arguments["realization_file"],
             "stdout_file": stdout_file,
         }
 
-    elif isinstance(run, ForecastRun):
-        base_message["job_type"] = "forecast"
-        base_message["payload"] = {
+    if job_type == JobType.FORECAST:
+        return {
             "validation_yaml": arguments["validation_yaml"],
             "realization_file": arguments["realization_file"],
             "stdout_file": stdout_file,
         }
 
-    elif isinstance(run, HindcastRun):
-        base_message["job_type"] = "hindcast"
-        base_message["payload"] = {
+    if job_type == JobType.HINDCAST:
+        return {
             "validation_yaml": arguments["validation_yaml"],
             "config_file": arguments["config_file"],
             "run_name": arguments["run_name"],
@@ -282,56 +222,92 @@ def build_job_submit_message(
             "stdout_file": stdout_file,
         }
 
-    elif isinstance(run, VerificationRun):
-        base_message["job_type"] = "verification"
-        base_message["payload"] = {
+    if job_type == JobType.VERIFICATION:
+        return {
             "verification_config": arguments["verification_config"],
             "stdout_file": stdout_file,
         }
 
-    else:
-        raise ValueError(
-            f"Unsupported run type: {type(run).__name__}"
-        )
-
-    # Enforce structure before returning
-    validate_job_submit_message(base_message)
-
-    return base_message
+    raise ValueError(f"Unsupported job type: {job_type}")
 
 
 def build_cancel_job_message(run: BaseRun) -> dict[str, Any]:
     """
-    Build a normalized RabbitMQ message for cancelling a job.
+    Build and validate a job cancellation message.
+
+    This message instructs the external consumer to cancel the job in the
+    configured execution environment.
+
+    If running in Slurm / Parallel Works mode, a slurm_job_id is required
+    and must already be present on the run. This function will raise an
+    error if it is missing.
+
+    :param run: Run instance
+    :return: Validated message dict
+    :raises ValueError: If validation fails or required slurm_job_id is missing
     """
-    if isinstance(run, CalibrationRun):
-        job_type = "calibration"
-    elif isinstance(run, ValidationRun):
-        job_type = "validation"
-    elif isinstance(run, ColdStartRun):
-        job_type = "cold_start"
-    elif isinstance(run, ForecastRun):
-        job_type = "forecast"
-    elif isinstance(run, HindcastRun):
-        job_type = "hindcast"
-    elif isinstance(run, VerificationRun):
-        job_type = "verification"
-    else:
-        raise ValueError(f"Unsupported run type: {type(run).__name__}")
+    job_type = get_job_type(run)
+
+    slurm_job_id = run.slurm_job_id
+
+    # Enforce contract for Slurm execution
+    if JOB_EXECUTION_MODE == JobExecutionMode.PARALLEL_WORKS:
+        if slurm_job_id is None:
+            raise ValueError(
+                f"Cannot cancel Slurm job without slurm_job_id "
+                f"(job_type={job_type.value}, run_id={run.id})"
+            )
 
     message: dict[str, Any] = {
         "message_type": "cancel_job",
         "version": 1,
-        "job_type": job_type,
+        "job_type": job_type.value,
         "run_id": run.id,
         "submitted_at": datetime.now(timezone.utc).isoformat(),
+        "slurm_job_id": slurm_job_id,
     }
 
-    validate_cancel_job_message(message)
-    return message
+    validated, error = validate_request(CancelJobMessageSerializer, message)
+    if error:
+        raise ValueError(str(error))
+
+    return validated
+
+
+def get_job_type(run: BaseRun) -> JobType:
+    """
+    Map a run instance to its corresponding JobType enum.
+
+    This ensures consistent job_type values across:
+    - message publishing
+    - consumer routing logic
+    - validation layers
+
+    :param run: Run instance
+    :return: JobType enum
+    :raises ValueError: If run type is unsupported
+    """
+    if isinstance(run, CalibrationRun):
+        return JobType.CALIBRATION
+    if isinstance(run, ValidationRun):
+        return JobType.VALIDATION
+    if isinstance(run, ColdStartRun):
+        return JobType.COLD_START
+    if isinstance(run, ForecastRun):
+        return JobType.FORECAST
+    if isinstance(run, HindcastRun):
+        return JobType.HINDCAST
+    if isinstance(run, VerificationRun):
+        return JobType.VERIFICATION
+
+    raise ValueError(f"Unsupported run type: {type(run).__name__}")
 
 
 class JobSubmissionException(Exception):
+    """
+    Raised when a job submission or cancellation message fails to publish.
+    """
+
     def __init__(self, message: str, status_code: int | None = None):
         super().__init__(message)
         self.status_code = status_code
