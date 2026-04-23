@@ -175,6 +175,14 @@ RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-ewts \
     cmake --install cmake_build --prefix ${EWTS_PREFIX} && \
     rm -rf /tmp/nwm-ewts
 
+RUN set -eux && \
+    ewts_dir="$(mktemp -d)" && \
+    git clone "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" && \
+    cd "${ewts_dir}" && \
+    git checkout "${EWTS_REF}" && \
+    pip install "${ewts_dir}/runtime/python/ewts" && \
+    rm -rf "${ewts_dir}"
+
 # Build partitionGenerator
 
 WORKDIR /ngencerf/ngen-sparse
