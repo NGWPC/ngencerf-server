@@ -12,7 +12,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, JobType
-from calibration.run_util.run_common import submit_job
+from calibration.models import ForecastRun
+from calibration.run_util.job_lifecycle import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, \
     CreateAndRunVerificationRequestSerializer, CreateAndRunVerificationResponseSerializer, \
     GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, \

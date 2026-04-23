@@ -11,7 +11,7 @@ from rest_framework.response import Response
 
 from calibration.enums import ForecastConfigEnum, StatusEnum, HindcastConfigEnum
 from calibration.models import ColdStartRun
-from calibration.run_util.run_common import submit_job
+from calibration.run_util.job_lifecycle import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, LoadForecastTabResponseSerializer, \
     ForecastRunIdSerializer, CreateAndRunForecastResponseSerializer, DeleteForecastRunResponseSerializer, ForecastRunDataResponseSerializer, \
     LoadForecastTabRequestSerializer, HindcastRunIdSerializer, CreateAndRunHindcastResponseSerializer, \

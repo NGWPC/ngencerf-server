@@ -3,13 +3,13 @@ import logging
 from kombu import Connection, Consumer, Queue
 from kombu.exceptions import KombuError
 
-from job_consumer.config import RABBITMQ_URL, RABBITMQ_JOBS_QUEUE
-from job_consumer.handlers import dispatch_message
+from job_runner.config import RABBITMQ_URL, RABBITMQ_JOBS_QUEUE
+from job_runner.job_executor_common import dispatch_message
 
 logger = logging.getLogger(__name__)
 
 
-class JobConsumer:
+class JobListener:
     def __init__(self) -> None:
         self.jobs_queue = Queue(
             name=RABBITMQ_JOBS_QUEUE,

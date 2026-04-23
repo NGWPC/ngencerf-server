@@ -16,7 +16,7 @@ from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
-from calibration.run_util.run_common import cancel_job_common, submit_job
+from calibration.run_util.job_lifecycle import submit_job, cancel_job_common
 from calibration.util.calibration_validators import GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     GetStatusForCalibrationResponseSerializer, GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from job_consumer.job_consumer_enums import JobExecutionMode
+from job_runner.job_runner_enums import JobExecutionMode
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -89,5 +89,5 @@ RUNTIME_INFO = {
 NGEN_LOGGING_DIR = BASE_DIR / "logs"
 os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
-JOB_CONSUMER_LOG_FILE = NGEN_LOGGING_DIR / "job_consumer.log"
-JOB_CONSUMER_LOG_LEVEL = os.getenv("JOB_CONSUMER_LOG_LEVEL", "INFO")
+JOB_RUNNER_LOG_FILE = NGEN_LOGGING_DIR / "job_runner.log"
+JOB_RUNNER_LOG_LEVEL = os.getenv("JOB_RUNNER_LOG_LEVEL", "INFO")

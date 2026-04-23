@@ -6,13 +6,13 @@ from typing import Any, Callable
 
 from kombu import Connection, Exchange, Producer, Queue
 
-from job_consumer.config import (
+from job_runner.config import (
     JOB_EXECUTION_MODE,
     RABBITMQ_URL,
     RABBITMQ_JOB_EVENTS_QUEUE,
     RUNTIME_INFO,
 )
-from job_consumer.job_consumer_enums import JobExecutionMode, SlurmCallbackStatusEnum
+from job_runner.job_runner_enums import SlurmCallbackStatusEnum, JobExecutionMode
 
 logger = logging.getLogger(__name__)
 

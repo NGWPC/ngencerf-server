@@ -1,12 +1,12 @@
 import logging
 
-from job_consumer.consumer import JobConsumer
-from job_consumer.logging_config import configure_logging
-from job_consumer.config import (
+from job_runner.config import (
     JOB_EXECUTION_MODE,
     RABBITMQ_URL,
     RABBITMQ_JOBS_QUEUE,
 )
+from job_runner.job_listener import JobListener
+from job_runner.logging_config import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def main() -> None:
     else:
         logger.warning("  RABBITMQ_URL is not set")
 
-    consumer = JobConsumer()
+    consumer = JobListener()
     consumer.run()
 
 
