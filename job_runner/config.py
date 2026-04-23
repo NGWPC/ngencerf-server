@@ -1,9 +1,25 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from job_runner.job_runner_enums import JobExecutionMode
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+MODULE_DIR = Path(__file__).resolve().parent
+BASE_DIR = MODULE_DIR
+
+env_file = MODULE_DIR / ".env"
+env_override_file = MODULE_DIR / ".env-override"
+
+if not env_file.exists():
+    raise SystemExit(f"Required environment file not found: {env_file}")
+
+print(f"Loaded base env from {env_file}", flush=True)
+load_dotenv(env_file, override=False)
+
+if env_override_file.exists():
+    print(f"Loaded override env from {env_override_file}", flush=True)
+    load_dotenv(env_override_file, override=True)
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 RABBITMQ_JOBS_QUEUE = os.getenv("RABBITMQ_JOBS_QUEUE", "jobs_queue")
