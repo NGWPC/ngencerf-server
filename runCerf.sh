@@ -43,8 +43,7 @@ IN_DOCKER=false
 if [ "${CERF_VENV}" = "Docker" ]; then
     IN_DOCKER=true
 fi
-readonly IN_DOCKER
-echo "IN_DOCKER=$IN_DOCKER"
+
 
 #=======================================================================
 # Function: ensure_virtualenv
