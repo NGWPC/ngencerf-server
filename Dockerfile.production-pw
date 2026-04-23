@@ -2,7 +2,9 @@
 # Change/Verify these values when adopting this Dockerfile into another org:
 #   GH_ORG, IMAGE_NAMESPACE,
 #   DATA_ASSIMILATION_ORG, DATA_ASSIMILATION_REF,
+#   EWTS_ORG, EWTS_REF,
 #   MSW_MGR_ORG, MSW_MGR_REF,
+#   NGEN_ORG, NGEN_REF
 #   NGEN_FORCING_ORG, NGEN_FORCING_REF
 ############################################################################
 
@@ -13,8 +15,12 @@ ARG IMAGE_NAMESPACE=ngwpc
 # External repository sources (org and ref/branch overrides)
 ARG DATA_ASSIMILATION_ORG=${GH_ORG}
 ARG DATA_ASSIMILATION_REF=development
+ARG EWTS_ORG=${GH_ORG}
+ARG EWTS_REF=development
 ARG MSW_MGR_ORG=${GH_ORG}
 ARG MSW_MGR_REF=development
+ARG NGEN_ORG=${GH_ORG}
+ARG NGEN_REF=development
 ARG NGEN_FORCING_ORG=${GH_ORG}
 ARG NGEN_FORCING_REF=development
 ############################################################################
@@ -31,8 +37,12 @@ ARG GH_ORG
 ARG IMAGE_NAMESPACE
 ARG DATA_ASSIMILATION_ORG
 ARG DATA_ASSIMILATION_REF
+ARG EWTS_ORG
+ARG EWTS_REF
 ARG MSW_MGR_ORG
 ARG MSW_MGR_REF
+ARG NGEN_ORG
+ARG NGEN_REF
 ARG NGEN_FORCING_ORG
 ARG NGEN_FORCING_REF
 
@@ -51,7 +61,7 @@ ARG IMAGE_CREATED="unknown"
 # OCI Standard Labels
 LABEL org.opencontainers.image.base.name="${BASE_NAME}" \
     org.opencontainers.image.base.digest="${BASE_DIGEST}" \
-    io.ngwpc.image.base.revision="${BASE_REVISION}" \
+    io.${IMAGE_NAMESPACE}.image.base.revision="${BASE_REVISION}" \
     org.opencontainers.image.source="${IMAGE_SOURCE}" \
     org.opencontainers.image.vendor="${IMAGE_VENDOR}" \
     org.opencontainers.image.version="${IMAGE_VERSION}" \
@@ -143,8 +153,6 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     rm -f requirements.txt
 
 # Build and install EWTS (required by ngen's CMakeLists.txt: find_package(ewts CONFIG REQUIRED))
-ARG EWTS_ORG=NGWPC
-ARG EWTS_REF=development
 ENV EWTS_PREFIX=/opt/ewts
 
 ENV CPLUS_INCLUDE_PATH=/opt/boost/include
@@ -168,8 +176,6 @@ RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-ewts \
     rm -rf /tmp/nwm-ewts
 
 # Build partitionGenerator
-ARG NGEN_ORG=NGWPC
-ARG NGEN_REF=development
 
 WORKDIR /ngencerf/ngen-sparse
 RUN --mount=type=cache,target=/ngencerf/partitionGenerator_build,id=partition-generator-build \

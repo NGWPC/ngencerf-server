@@ -13,6 +13,8 @@ ARG IMAGE_NAMESPACE=ngwpc
 # External repository sources (org and ref/branch overrides)
 ARG DATA_ASSIMILATION_ORG=${GH_ORG}
 ARG DATA_ASSIMILATION_REF=development
+ARG EWTS_ORG=${GH_ORG}
+ARG EWTS_REF=development
 ARG MSW_MGR_ORG=${GH_ORG}
 ARG MSW_MGR_REF=development
 ARG NGEN_FORCING_ORG=${GH_ORG}
@@ -30,6 +32,8 @@ ARG GH_ORG
 ARG IMAGE_NAMESPACE
 ARG DATA_ASSIMILATION_ORG
 ARG DATA_ASSIMILATION_REF
+ARG EWTS_ORG
+ARG EWTS_REF
 ARG MSW_MGR_ORG
 ARG MSW_MGR_REF
 ARG NGEN_FORCING_ORG
@@ -94,6 +98,18 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     pip3 install --upgrade pip && \
     pip3 install -r requirements.txt && \
     rm -f requirements.txt
+
+# ── EWTS (Error and Warning Trapping System)
+ARG EWTS_CACHE_BUST=1
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+    echo "EWTS cache bust: ${EWTS_CACHE_BUST}" && \
+    set -eux && \
+    ewts_dir="$(mktemp -d)" && \
+    git clone "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" && \
+    cd "${ewts_dir}" && \
+    git checkout "${EWTS_REF}" && \
+    pip install "${ewts_dir}/runtime/python/ewts" && \
+    rm -rf "${ewts_dir}"
 
 ARG CACHE_BUST=1
 RUN set -eux && \
