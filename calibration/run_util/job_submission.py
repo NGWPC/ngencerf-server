@@ -1,18 +1,12 @@
 import logging
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urljoin
-
-import requests
-from django.conf import settings
-from rest_framework import status
 
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
 from calibration.run_util.messaging import publish_job_message
-from calibration.util.calibration_validators import GenericMessageResponseSerializer
-from calibration.views.common import get_job_description, validate_response_data
+from calibration.views.common import get_job_description
 from cerfServer.settings import RABBITMQ_JOBS_QUEUE
 
 logger = logging.getLogger(__name__)
@@ -67,6 +61,35 @@ def publish_job_request(
         "Waiting for downstream consumer callbacks.",
         job_description,
     )
+
+
+def publish_cancel_job_request(run: BaseRun) -> bool:
+    """
+    Publish a cancel-job request to RabbitMQ.
+
+    :param run: The run object to cancel.
+    :return: True if the cancel request was successfully published.
+    :raises JobSubmissionException: If publishing fails.
+    """
+    job_description = get_job_description(run)
+    message = build_cancel_job_message(run)
+
+    logger.info(
+        "Publishing cancel job request for %s to queue %s: %s",
+        job_description,
+        RABBITMQ_JOBS_QUEUE,
+        message,
+    )
+
+    try:
+        publish_job_message(message)
+    except Exception as e:
+        message_text = f"Failed to publish cancel job request for {job_description}: {e}"
+        logger.error(message_text)
+        raise JobSubmissionException(message_text) from e
+
+    logger.info("%s cancel job request published successfully.", job_description)
+    return True
 
 
 def validate_job_submit_message(message: dict[str, object]) -> None:
@@ -153,6 +176,35 @@ def validate_job_submit_message(message: dict[str, object]) -> None:
     # Structure depends on job_type and is validated by the consumer.
     if not isinstance(message["payload"], dict):
         raise ValueError("payload must be a dictionary")
+
+
+def validate_cancel_job_message(message: dict[str, object]) -> None:
+    required_top_level = [
+        "message_type",
+        "version",
+        "job_type",
+        "run_id",
+        "submitted_at",
+    ]
+
+    for key in required_top_level:
+        if key not in message:
+            raise ValueError(f"Missing required key: {key}")
+
+    if message["message_type"] != "cancel_job":
+        raise ValueError(f"Invalid message_type: {message['message_type']}")
+
+    if not isinstance(message["version"], int):
+        raise ValueError("version must be an integer")
+
+    if not isinstance(message["job_type"], str):
+        raise ValueError("job_type must be a string")
+
+    if not isinstance(message["run_id"], int):
+        raise ValueError("run_id must be an integer")
+
+    if not isinstance(message["submitted_at"], str):
+        raise ValueError("submitted_at must be a string")
 
 
 def build_job_submit_message(
@@ -248,45 +300,35 @@ def build_job_submit_message(
     return base_message
 
 
-def cancel_slurm_job(run: BaseRun) -> bool:
+def build_cancel_job_message(run: BaseRun) -> dict[str, Any]:
     """
-    Cancel a running Slurm job by sending a cancellation request.
-
-    This function constructs the payload with the Slurm job ID, sends an HTTP POST
-    request to the Slurm cancellation endpoint, and validates the response.
-
-    :param run: The CalibrationRun, ValidationRun, ColdStartRun, ForecastRun, etc. object to terminate.
-    :return: True if the job was successfully canceled, False otherwise.
-    :raises requests.exceptions.HTTPError: If the cancellation request fails with an HTTP error.
+    Build a normalized RabbitMQ message for cancelling a job.
     """
-    job_description = get_job_description(run)
-    logger.info(f"Cancelling slurm job {run.slurm_job_id} for {job_description}")
+    if isinstance(run, CalibrationRun):
+        job_type = "calibration"
+    elif isinstance(run, ValidationRun):
+        job_type = "validation"
+    elif isinstance(run, ColdStartRun):
+        job_type = "cold_start"
+    elif isinstance(run, ForecastRun):
+        job_type = "forecast"
+    elif isinstance(run, HindcastRun):
+        job_type = "hindcast"
+    elif isinstance(run, VerificationRun):
+        job_type = "verification"
+    else:
+        raise ValueError(f"Unsupported run type: {type(run).__name__}")
 
-    url = urljoin(settings.SLURM_URL, settings.SLURM_CANCEL_JOB_ENDPOINT)
-    payload = {"slurm_job_id": (None, str(run.slurm_job_id))}
+    message: dict[str, Any] = {
+        "message_type": "cancel_job",
+        "version": 1,
+        "job_type": job_type,
+        "run_id": run.id,
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+    }
 
-    logger.info(f"Slurm cancel-job payload to {url}: {payload}")
-    response = requests.post(url, files=payload)
-
-    try:
-        response.raise_for_status()
-    except requests.exceptions.HTTPError as e:
-        logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
-        logger.error(f"Failed to cancel job: {response.json().get('error')}, {str(e)}")
-        if response.status_code == status.HTTP_404_NOT_FOUND:
-            return False
-        raise
-
-    logger.info(f"Response from cancel slurm: {response.json()}")
-
-    validate_response_data(
-        GenericMessageResponseSerializer,
-        response.json(),
-        "Cancel job response data from Slurm is not in the expected format",
-    )
-
-    logger.info(f"{job_description} - {payload['slurm_job_id']} cancelled successfully")
-    return True
+    validate_cancel_job_message(message)
+    return message
 
 
 class JobSubmissionException(Exception):

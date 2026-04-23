@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 import fsspec
 import pandas as pd
 from datetimerange import DateTimeRange
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from mswm.manager import build_fcst, build_calib
@@ -20,6 +19,7 @@ from calibration.enums import StatusEnum, ValidationType, SlurmCallbackStatusEnu
 from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
+from calibration.run_util.job_submission import publish_cancel_job_request
 from calibration.util.git_util import get_git_info_internal
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
@@ -39,6 +39,7 @@ from calibration.views.ngen_cal_input import ready_to_run
 
 logger = logging.getLogger(__name__)
 
+User = get_user_model()
 
 def set_job_status(run: BaseRun, status: StatusEnum | None, failure_messages: dict = None) -> None:
     """
@@ -152,7 +153,6 @@ def queue_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str) -> 
 
     validate_cmd_args(cmd_line_args, stdout_file)
 
-    owner = get_run_owner(run)
     publish_job_request(run, cmd_line_args, stdout_file)
 
     run.sent_date = datetime.now(timezone.utc)
@@ -161,18 +161,17 @@ def queue_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str) -> 
 
 def cancel_job_common(run: BaseRun) -> bool:
     """
-    Cancel a running job.
+    Publish a cancel-job request to RabbitMQ.
 
-    Django still owns cancellation requests against Slurm. Docker cancellation
-    should eventually be routed through the consumer, but that is separate from
-    submission and is not handled here.
+    The job runner decides how to handle the cancellation based on the
+    execution environment. For now, the external consumer only implements
+    cancel handling for DOCKER jobs.
 
-    :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
-    :return: True if the job was successfully canceled; False otherwise.
+    :param run: The CalibrationRun, ValidationRun, ForecastRun, HindcastRun,
+        ColdStartRun, or VerificationRun object.
+    :return: True if the cancel request was successfully published.
     """
-    # TODO Need to handle Docker jobs as well
-    from calibration.run_util.job_submission import cancel_slurm_job
-    return cancel_slurm_job(run)
+    return publish_cancel_job_request(run)
 
 
 def run_calibration_job(calibration_run: CalibrationRun) -> None:
