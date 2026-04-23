@@ -9,7 +9,6 @@ MSWM_BRANCH='development'
 DATA_ASSIMILATION_BRANCH='development'
 NGEN_FORCING_TAG='development'
 
-
 #=======================================================================
 # Script must be sourced for 'activate' mode
 #=======================================================================
@@ -31,33 +30,56 @@ SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 cerfServer="$SCRIPT_DIR"
 
 #=======================================================================
-# Load environment variables
-#   Ordering prerequisites:
-#     - Must happen before:
-#         * IN_DOCKER detection (uses CERF_VENV)
-#         * ensure_virtualenv (uses CERF_VENV + IN_DOCKER)
-#         * ensure_superuser (reads DJANGO_SUPERUSER_* vars)
-#         * RUN_CERF_FLAG_DIRECTORY validation (comes from env)
+# Early env bootstrap
+#   - Needed by ensure_virtualenv and Docker detection
+#   - Kept near the top so the 'activate' fast path can exit early
 #=======================================================================
-set -a  # auto-export
-
-# Always load cerfserver.env
-# Prerequisite: must exist at $SCRIPT_DIR/cerfserver.env
+set -a
 # shellcheck source=./cerfserver.env
 source "$SCRIPT_DIR/cerfserver.env"
+set +a
 
-# Detect Docker (AFTER cerfserver.env is loaded)
-# Prerequisite: CERF_VENV is defined (or empty) by cerfserver.env
 IN_DOCKER=false
 if [ "${CERF_VENV}" = "Docker" ]; then
     IN_DOCKER=true
 fi
 readonly IN_DOCKER
-
 echo "IN_DOCKER=$IN_DOCKER"
 
+#=======================================================================
+# Function: ensure_virtualenv
+#   - If CERF_VENV is empty or “Docker”, do nothing
+#   - If the directory "$cerfServer/$CERF_VENV" does not exist, create it
+#   - Activate that venv so “python3” and “pip” later refer to the venv
+#=======================================================================
+ensure_virtualenv() {
+    # Requires: CERF_VENV loaded, IN_DOCKER set, cerfServer set
+    if [ -n "${CERF_VENV}" ] && [ "$IN_DOCKER" = false ]; then
+        VENV_PATH="$cerfServer/${CERF_VENV}"
+
+        if [ ! -d "$VENV_PATH" ]; then
+            echo "Virtual environment not found at $VENV_PATH. Creating it..."
+            python3.11 -m venv "$VENV_PATH"
+        fi
+
+        source "$VENV_PATH/bin/activate"
+        echo "Activated virtual environment at $VENV_PATH"
+    fi
+}
+
+#=======================================================================
+# Special case: if the first argument is "activate", just activate the
+# venv and return immediately before any other startup work.
+#=======================================================================
+if [ "$1" == "activate" ]; then
+    ensure_virtualenv
+    return 0
+fi
+
+#=======================================================================
 # Load optional local-only env files (non-Docker only)
-# Prerequisite: optional; missing files are not fatal
+#   Prerequisite: optional; missing files are not fatal
+#=======================================================================
 if [ "$IN_DOCKER" = false ]; then
     echo "Non-Docker environment: checking for local env files"
 
@@ -81,8 +103,6 @@ else
     echo "Docker environment detected: skipping local env files (.env, .env-override)"
 fi
 
-set +a
-
 #=======================================================================
 # Validate RUN_CERF_FLAG_DIRECTORY
 #   Ordering prerequisite:
@@ -99,7 +119,7 @@ RUN_CERF_FLAG_DIRECTORY="${RUN_CERF_FLAG_DIRECTORY%/}"
 #=======================================================================
 # Bootstrap logging (MUST happen before any run_manage_command calls)
 #   Ordering prerequisite:
-#     - Must happen before the "manage" fast-path, migrations, init_sql, etc.
+#     - Must happen before any run_manage_command calls, migrations, init_sql, etc.
 #     - Defines LOGFILE_DEV and saves FD 3/4 used by run_manage_command.
 #=======================================================================
 mkdir -p "$cerfServer/logs"
@@ -119,28 +139,6 @@ exec > >(tee -a "$LOGFILE_DEV") 2>&1
 CERF_GAGES_FPRINT="${RUN_CERF_FLAG_DIRECTORY}/.gages_fingerprint"
 echo "Gages fingerprint $CERF_GAGES_FPRINT"
 [ -e "$CERF_GAGES_FPRINT" ] && ls -al "$CERF_GAGES_FPRINT"
-
-#=======================================================================
-# Function: ensure_virtualenv
-#   - If CERF_VENV is empty or “Docker”, do nothing
-#   - If the directory "$cerfServer/$CERF_VENV" does not exist, create it
-#   - Activate that venv so “python3” and “pip” later refer to the venv
-#=======================================================================
-ensure_virtualenv() {
-    # Requires: CERF_VENV loaded, IN_DOCKER set, cerfServer set
-    if [ -n "${CERF_VENV}" ] && [ "$IN_DOCKER" = false ]; then
-        VENV_PATH="$cerfServer/${CERF_VENV}"
-
-        if [ ! -d "$VENV_PATH" ]; then
-            echo "Virtual environment not found at $VENV_PATH. Creating it..."
-            python3.11 -m venv "$VENV_PATH"
-        fi
-
-        source "$VENV_PATH/bin/activate"
-        echo "Activated virtual environment at $VENV_PATH"
-    fi
-}
-
 
 #=======================================================================
 # Function: check_aws_credentials_early
@@ -466,15 +464,7 @@ if [ "$1" == "manage" ]; then
     exit $?
 fi
 
-#=======================================================================
-# Special case: if the first argument is "activate", just activate the venv and return
-#=======================================================================
-if [ "$1" == "activate" ]; then
-    ensure_virtualenv  # Activates and creates virtualenv if needed
-    echo "Virtual environment activated. You can now run Python commands in this environment."
-    # Return to stop further execution but not exit the terminal
-    return 0
-fi
+
 
 check_aws_credentials_early
 echo
