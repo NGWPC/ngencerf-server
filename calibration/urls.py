@@ -174,6 +174,11 @@ urlpatterns = [
          name="getRegionalizationFilesZip"),
 
     ##################################
+    # MFA
+    ##################################
+    path("auth/mfa/setup/", calibration_mfa_views.setup_mfa, name="setupMfa"),
+
+    ##################################
     # Swagger - drf_spectacular
     ##################################
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
