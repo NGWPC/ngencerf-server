@@ -1726,6 +1726,8 @@ class ErrorDetailListField(serializers.ListField):
 class ErrorResponseSerializer(BaseSerializer):
     response_type = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     message = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    error_code = serializers.CharField(required=False, allow_blank=False, allow_null=False)
+    ui_action = serializers.CharField(required=False, allow_blank=False, allow_null=False)
     validation_errors = serializers.JSONField(required=False, allow_null=False)
     errors = serializers.JSONField(required=False, allow_null=False)
 
@@ -1895,3 +1897,37 @@ class SlurmSubmitResponseSerializer(BaseSerializer):
 ##################################
 class MFASetupResponseSerializer(BaseSerializer):
     otpauth_url = serializers.CharField()
+
+
+class MFASetupRequestSerializer(BaseSerializer):
+    mfa_token = serializers.CharField(required=True, allow_blank=False)
+
+
+class MFAConfirmSetupSerializer(BaseSerializer):
+    mfa_token = serializers.CharField(required=True, allow_blank=False)
+    code = serializers.CharField(required=True, allow_blank=False, min_length=6, max_length=6)
+
+
+class LoginRequestSerializer(BaseSerializer):
+    email = serializers.EmailField()
+    password = serializers.CharField()
+
+
+class MFAVerifySerializer(BaseSerializer):
+    mfa_token = serializers.CharField(required=True, allow_blank=False)
+    code = serializers.CharField(required=True, allow_blank=False, min_length=6, max_length=6)
+
+
+class TokenPairResponseSerializer(BaseSerializer):
+    access = serializers.CharField(required=True)
+    refresh = serializers.CharField(required=True)
+
+
+class MFASetupRequiredResponseSerializer(GenericMessageResponseSerializer):
+    mfa_setup_required = serializers.BooleanField(required=True)
+    mfa_token = serializers.CharField(required=True)
+
+
+class MFARequiredResponseSerializer(GenericMessageResponseSerializer):
+    mfa_required = serializers.BooleanField(required=True)
+    mfa_token = serializers.CharField(required=True)
