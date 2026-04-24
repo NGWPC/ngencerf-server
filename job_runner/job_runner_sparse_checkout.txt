@@ -1,0 +1,18 @@
+# clean start
+rm -rf ngencerf-server
+
+# clone without checking out files
+git clone --filter=blob:none --no-checkout https://github.com/NGWPC/ngencerf-server
+cd ngencerf-server
+
+# checkout the target branch-----------------
+git checkout peter_rabbitmq_rebase_on_hindcasting
+
+# enable sparse checkout in non-cone mode
+git sparse-checkout init --no-cone
+
+# restrict to only the desired directory
+echo "/job_runner/**" > .git/info/sparse-checkout
+
+# apply it
+git read-tree -mu HEAD
