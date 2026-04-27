@@ -159,21 +159,25 @@ ENV CPLUS_INCLUDE_PATH=/opt/boost/include
 # MPI binaries live in /usr/lib64/openmpi/bin/ on Rocky 8
 ENV PATH="${PATH}:/usr/lib64/openmpi/bin/"
 
+ARG EWTS_CACHE_BUST=1
 RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-ewts \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     set -eux && \
-    (git clone --depth 1 -b "${EWTS_REF}" \
-        "https://github.com/${EWTS_ORG}/nwm-ewts.git" /tmp/nwm-ewts \
-     || (git clone "https://github.com/${EWTS_ORG}/nwm-ewts.git" /tmp/nwm-ewts && \
-         cd /tmp/nwm-ewts && git checkout "${EWTS_REF}")) && \
-    cd /tmp/nwm-ewts && \
+    ewts_dir="$(mktemp -d)" && \
+    git clone --depth 1 -b "${EWTS_REF}" \
+        "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" \
+     || (git clone "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" && \
+         cd "${ewts_dir}" && git checkout "${EWTS_REF}") && \
+    cd "${ewts_dir}" && \
     cmake -S . -B cmake_build \
       -DCMAKE_BUILD_TYPE=Release \
       -DEWTS_WITH_NGEN=ON \
       -DEWTS_BUILD_SHARED=ON \
       -DBOOST_ROOT=/opt/boost && \
     cmake --build cmake_build -j "$(nproc)" && \
-    cmake --install cmake_build --prefix ${EWTS_PREFIX} && \
-    rm -rf /tmp/nwm-ewts
+    cmake --install cmake_build --prefix "${EWTS_PREFIX}" && \
+    pip install "${ewts_dir}/runtime/python/ewts" && \
+    rm -rf "${ewts_dir}"
 
 # Build partitionGenerator
 
