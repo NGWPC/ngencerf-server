@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
+
 def set_job_status(run: BaseRun, status: StatusEnum | None, failure_messages: dict = None) -> None:
     """
     Update the persisted run status and optional failure messages.

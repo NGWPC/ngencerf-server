@@ -196,6 +196,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 RABBITMQ_URL = os.getenv('RABBITMQ_URL')
 RABBITMQ_JOBS_QUEUE = os.getenv("RABBITMQ_JOBS_QUEUE", "jobs_queue")
 RABBITMQ_JOB_EVENTS_QUEUE = os.getenv("RABBITMQ_JOB_EVENTS_QUEUE", "job_events_queue")
+RABBITMQ_ITERATION_EVENTS_QUEUE = os.getenv("RABBITMQ_ITERATION_EVENTS_QUEUE", "iteration_events_queue")
 
 # -----------------------------
 # Enterprise Data

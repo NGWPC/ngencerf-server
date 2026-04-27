@@ -100,7 +100,6 @@ urlpatterns = [
     path('calibration/get_status/', calibration_run_views.get_status, name="getStatus"),
     path('calibration/get_status_for_comparison/', calibration_run_views.get_status_for_comparison, name="getStatusForComparison"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
-    path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
     path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
     path('calibration/cancel_job/', calibration_run_views.cancel_job, name="cancelJob"),
 

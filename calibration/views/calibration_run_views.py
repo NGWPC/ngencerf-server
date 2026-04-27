@@ -18,7 +18,7 @@ from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
 from calibration.run_util.job_lifecycle import submit_job, cancel_job_common
 from calibration.util.calibration_validators import GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
+    ErrorResponseSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     GetStatusForCalibrationResponseSerializer, GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
     CancelJobResponseSerializer, \
     GenericResponseSerializerWithValidator, RunCalibrationJob, \
@@ -937,115 +937,6 @@ def process_swe_timeseries(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializerWithValidator, response)
     if error_response:
         return error_response
-    logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
-
-    return Response(response_validator.data)
-
-
-@extend_schema(
-    request=ReportIterationSerializer,
-    responses={
-        200: GenericResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Report iteration of a running calibration"
-)
-# Called by cal-mgr
-@api_view(['POST'])
-@handle_exceptions
-def report_iteration(request):
-    """
-    Reports an iteration for a running calibration job. This endpoint updates or creates an
-    iteration record for a specific worker in the calibration job.
-
-    Concurrency considerations:
-    - Each CalibrationRun has a `next_worker_number` counter that is incremented atomically
-      under `select_for_update()`. This guarantees that two new workers starting at the same
-      time are serialized and each receives a unique worker number.
-    - Once assigned, a worker number is reused for all iterations of that worker in the run.
-    - The (iteration_num, worker_name, calibration_run) uniqueness constraint ensures that
-      a worker cannot report the same iteration twice.
-
-    Transaction strategy:
-    - For new workers, the row lock on CalibrationRun ensures safe allocation of a worker number.
-    - For existing workers, we only look up their latest iteration to reuse the same worker number.
-    - The actual insert (via get_or_create) is inside the same atomic block to prevent duplicates.
-
-    :param request: HTTP request containing iteration details.
-    :return: JSON response indicating the success of the operation.
-    """
-    data = request.data
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(ReportIterationSerializer, data)
-    if error_return:
-        return error_return
-
-    calibration_run_id = validator.get('calibration_run_id')
-    iteration_number = validator.get('iteration')
-    worker_name = validator.get('worker_name')
-    first_iteration_for_worker = validator.get('first_iteration_for_worker')
-
-    logger.debug(
-        f"Report Iteration for calibration_run_id {calibration_run_id}, iteration number: {iteration_number}, "
-        f"worker: {worker_name}, first_iteration: {first_iteration_for_worker}"
-    )
-
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
-    assert run is not None
-
-    with transaction.atomic():
-        if first_iteration_for_worker:
-            # Atomically grab the next available worker number
-            run = CalibrationRun.objects.select_for_update().get(id=run.id)
-            worker_number = run.next_worker_number
-            run.next_worker_number += 1
-            run.save(update_fields=['next_worker_number'])
-            logger.debug(f"Assigned new worker: '{worker_name}' #{worker_number}")
-        else:
-            # Use get() to fetch the latest iteration for the given worker_name and run
-            existing_iteration = (
-                Iteration.objects
-                .filter(calibration_run=run, worker_name=worker_name)
-                .only("worker_number")
-                .order_by('-iteration_num').first()
-            )
-            if existing_iteration:
-                worker_number = existing_iteration.worker_number
-            else:
-                return ResponseError(f"Worker '{worker_name}' not found for calibration run {run.id}.")
-
-        iteration_object, created = Iteration.objects.get_or_create(
-            calibration_run=run,
-            iteration_num=iteration_number,
-            worker_name=worker_name,
-            defaults={'worker_number': worker_number}
-        )
-        if not created:
-            return ResponseError(
-                f'Iteration object already exists for calibration run {run.id}, worker {worker_name}, iteration {iteration_number}'
-            )
-
-    response = {
-        'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Job {run.id}",
-        'calibration_run_id': run.id,
-        'status': run.status.name
-    }
-
-    response_validator, error_response = validate_response(GenericResponseSerializer, response)
-    if error_response:
-        return error_response
-
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 

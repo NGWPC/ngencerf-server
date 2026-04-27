@@ -256,40 +256,41 @@ run_manage_command_background() {
 }
 
 #=======================================================================
-# Background management consumer helpers
-#   - Starts the Django management consumer in the background
+# RabbitMQ event consumer helpers
+#   - Starts the Django RabbitMQ event consumer in the background
+#   - Consumes both job lifecycle events and iteration events
 #   - Tracks its PID so it can be stopped on exit
 #=======================================================================
-start_job_event_consumer() {
+start_rabbitmq_event_consumer() {
     echo
     echo --------------------------------------------------------
-    echo "Starting Django job event consumer in background"
+    echo "Starting Django RabbitMQ event consumer in background"
 
-    JOB_EVENT_CONSUMER_LOG="$cerfServer/logs/job_event_consumer.log"
-    run_manage_command_background "$JOB_EVENT_CONSUMER_LOG" consume_job_events
-    JOB_EVENT_CONSUMER_PID="$RUN_MANAGE_COMMAND_BG_PID"
+    RABBITMQ_EVENT_CONSUMER_LOG="$cerfServer/logs/rabbitmq_event_consumer.log"
+    run_manage_command_background "$RABBITMQ_EVENT_CONSUMER_LOG" consume_rabbitmq_events
+    RABBITMQ_EVENT_CONSUMER_PID="$RUN_MANAGE_COMMAND_BG_PID"
 
     # Give the process a moment to fail fast if the command is invalid
     sleep 2
 
-    if ! kill -0 "$JOB_EVENT_CONSUMER_PID" 2>/dev/null; then
-        echo "WARNING: consume_job_events failed to start. Check $JOB_EVENT_CONSUMER_LOG"
-        echo "Last lines from $JOB_EVENT_CONSUMER_LOG:"
-        tail -n 20 "$JOB_EVENT_CONSUMER_LOG" || true
-        unset JOB_EVENT_CONSUMER_PID
+    if ! kill -0 "$RABBITMQ_EVENT_CONSUMER_PID" 2>/dev/null; then
+        echo "WARNING: consume_rabbitmq_events failed to start. Check $RABBITMQ_EVENT_CONSUMER_LOG"
+        echo "Last lines from $RABBITMQ_EVENT_CONSUMER_LOG:"
+        tail -n 20 "$RABBITMQ_EVENT_CONSUMER_LOG" || true
+        unset RABBITMQ_EVENT_CONSUMER_PID
         return 1
     fi
 
-    echo "consume_job_events is running with PID $JOB_EVENT_CONSUMER_PID"
+    echo "consume_rabbitmq_events is running with PID $RABBITMQ_EVENT_CONSUMER_PID"
     return 0
 }
 
-stop_job_event_consumer() {
-    if [ -n "${JOB_EVENT_CONSUMER_PID:-}" ]; then
-        echo "Stopping consume_job_events (PID $JOB_EVENT_CONSUMER_PID)"
-        kill "$JOB_EVENT_CONSUMER_PID" 2>/dev/null || true
-        wait "$JOB_EVENT_CONSUMER_PID" 2>/dev/null || true
-        unset JOB_EVENT_CONSUMER_PID
+stop_rabbitmq_event_consumer() {
+    if [ -n "${RABBITMQ_EVENT_CONSUMER_PID:-}" ]; then
+        echo "Stopping consume_rabbitmq_events (PID $RABBITMQ_EVENT_CONSUMER_PID)"
+        kill "$RABBITMQ_EVENT_CONSUMER_PID" 2>/dev/null || true
+        wait "$RABBITMQ_EVENT_CONSUMER_PID" 2>/dev/null || true
+        unset RABBITMQ_EVENT_CONSUMER_PID
     fi
 }
 
@@ -910,11 +911,11 @@ fi
 
 # Restore original stdout/stderr so startup messages go to the terminal
 exec 1>&3 2>&4
-if ! start_job_event_consumer; then
-    echo "WARNING: Continuing startup without consume_job_events"
+if ! start_rabbitmq_event_consumer; then
+    echo "WARNING: Continuing startup without consume_rabbitmq_events"
     # exit 1 # if we don't want to start on error
 else
-    trap stop_job_event_consumer EXIT INT TERM
+    trap stop_rabbitmq_event_consumer EXIT INT TERM
 fi
 
 echo

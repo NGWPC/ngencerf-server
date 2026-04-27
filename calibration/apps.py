@@ -88,6 +88,7 @@ class CalibrationConfig(AppConfig):
         logger.info(f'NGENCERF_ZIPS_S3_PATH: {settings.NGENCERF_ZIPS_S3_PATH}')
         logger.info(f'DJANGO DEBUG: {settings.DEBUG}')
         logger.info(f'USE_BMI_FORCING: {settings.USE_BMI_FORCING}')
+        logger.info(f'RABBITMQ_URL: {settings.RABBITMQ_URL}')
         log_mpi_rules()
 
         from calibration.util.ngen_locations import check_files

@@ -1714,9 +1714,16 @@ class ImportSerializer(BaseSerializer):
 # Misc
 ##################################
 class ReportIterationSerializer(CalibrationRunIdSerializer):
+    message_type = serializers.CharField(required=True)
+    version = serializers.IntegerField(required=True)
     iteration = serializers.IntegerField(required=True, min_value=0)
     worker_name = serializers.CharField(required=True)
     first_iteration_for_worker = serializers.BooleanField(required=True)
+
+    def validate_message_type(self, value):
+        if value != "report_iteration":
+            raise serializers.ValidationError("message_type must be 'report_iteration'")
+        return value
 
 
 class ErrorDetailListField(serializers.ListField):
