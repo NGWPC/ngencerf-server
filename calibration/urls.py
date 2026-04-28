@@ -138,7 +138,7 @@ urlpatterns = [
     path('calibration/get_forecast_timeseries_data/', calibration_forecast_views.get_forecast_timeseries_data, name="getForecastTimeseriesData"),
     path('calibration/get_hindcast_timeseries_data/', calibration_forecast_views.get_hindcast_timeseries_data, name="getHindcastTimeseriesData"),
     path('calibration/delete_forecast_job/', calibration_forecast_views.delete_forecast_job, name="deleteForecastJob"),
-    path('calibration/delete_hindcast_job/', calibration_forecast_views.delete_forecast_job, name="deleteHindcastJob"),
+    path('calibration/delete_hindcast_job/', calibration_forecast_views.delete_hindcast_job, name="deleteHindcastJob"),
     path('calibration/get_cold_start_jobs_for_configuration/', calibration_forecast_views.get_cold_start_jobs_for_configuration,
          name="getColdStartJobsForConfiguration"),
 
