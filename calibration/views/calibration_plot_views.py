@@ -21,7 +21,7 @@ from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import EmptySerializer, GetPlotNamesResponseSerializer, \
     GetPlotNamesForComparisonResponseSerializer, ErrorResponseSerializer, GetPlotRequestSerializer, \
     GetPlotResponseSerializer, GetPlotsForComparisonRequestSerializer, GetPlotsForComparisonResponseSerializer, \
-    CalibrationOrValidationRunSerializer
+    CalibrationOrValidationRunIdSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir, get_output_iteration_file, \
     get_output_last_iteration_file, get_output_best_iteration_file, get_observational_file_for_job, get_cost_hist_file, \
     NWM_RETROSPECTIVE_DIR, get_output_valid_control_file, get_output_valid_best_file, get_output_validation_iteration_plot_dir, \
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=CalibrationOrValidationRunSerializer,
+    request=CalibrationOrValidationRunIdSerializer,
     responses={
         200: GetPlotNamesResponseSerializer,
         400: OpenApiResponse(
@@ -63,7 +63,7 @@ def get_plot_names(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationOrValidationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationOrValidationRunIdSerializer, data)
     if error_return:
         return error_return
 
@@ -324,8 +324,6 @@ def get_plot(request: Request) -> Response:
 
     if validation_run_id:
         response['validation_run_id'] = validation_run_id
-    # if forecast_run_id:
-    #     response['forecast_run_id'] = forecast_run_id
     if include_data:
         response['plot_data'] = plot_data
         if pagination_metadata:
@@ -614,7 +612,8 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
 
         case PlotDefinitionsEnum.HYDROGRAPH_EVOLUTION | PlotDefinitionsEnum.SCATTERPLOT_STREAMFLOW:
             # Merge multiple hydrograph-related files and paginate the result
-            worker_dir = worker_dir or find_worker_with_non_empty_plot_iteration(calibration_run)
+            worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+
             file_paths = [
                 get_observational_file_for_job(calibration_run),  # Observation
                 get_output_iteration_file(calibration_run, 0, worker_dir),  # Iteration
@@ -622,9 +621,17 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
                 get_output_best_iteration_file(calibration_run, worker_dir),  # Best Iteration
                 get_precipitation_timeseries_data_filepath(calibration_run),
             ]
+
             column_names = ["Observation", "Control Run", "Last Run", "Best Run", "Precipitation"]
             # Get paginated data and total count
-            data, total_count = load_and_merge_hydrograph_files_with_pagination_and_count(file_paths, column_names, start, limit)
+            data, total_count = load_and_merge_hydrograph_files_with_pagination_and_count(
+                file_paths,
+                column_names,
+                start,
+                limit,
+                time_start=calibration_run.calibration_start_period,
+                time_end=calibration_run.calibration_end_period,
+            )
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.METRIC_EVOLUTION:
@@ -727,7 +734,14 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
                 column_names.append(run.worker_name)  # Append corresponding column name
 
             # Combine and paginate data from the hydrograph files
-            data, total_count = load_and_merge_hydrograph_files_with_pagination_and_count(file_paths, column_names, start, limit)
+            data, total_count = load_and_merge_hydrograph_files_with_pagination_and_count(
+                file_paths,
+                column_names,
+                start,
+                limit,
+                time_start=calibration_run.validation_start_period,
+                time_end=calibration_run.validation_end_period
+            )
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.STREAMFLOW_VALIDATION_PRECIPITATION:
@@ -740,39 +754,69 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
 
 
 def load_and_merge_hydrograph_files_with_pagination_and_count(
-        file_paths: list[str], column_names: list[str], start: int, limit: int, key_col: str = "time"
+        file_paths: list[str],
+        column_names: list[str],
+        start: int,
+        limit: int,
+        key_col: str = "time",
+        time_start: Any | None = None,
+        time_end: Any | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """
-    Loads multiple hydrograph-related CSV files, merges them, and returns paginated results.
+    Loads multiple hydrograph-related CSV files, merges them, optionally filters by a time range,
+    and returns paginated results.
 
     :param file_paths: List of file paths to the hydrograph-related data files.
     :param column_names: Column names to rename the value columns for clarity.
     :param start: Starting index for pagination (0-based).
     :param limit: Maximum number of rows to return.
     :param key_col: The key column to merge on (default: "time").
+    :param time_start: Optional inclusive lower bound for the time column.
+    :param time_end: Optional inclusive upper bound for the time column.
     :return: A tuple containing paginated data and the total row count.
     """
     logger.info(f'Merging files: {file_paths}')
     try:
-        # Step 1: Merge all the provided files into a single DataFrame
+        # Step 1: Merge all input files into a single DataFrame
         merged_df = load_files_and_merge(file_paths, column_names, key_col=key_col)
 
-        # Step 2: Calculate the total number of rows in the merged DataFrame
+        # Step 2: Validate expected key column exists
+        if key_col not in merged_df.columns:
+            raise CerfException(f"Expected key column '{key_col}' not found in merged hydrograph data.")
+
+        # Step 3: Apply optional time range filtering
+        if time_start is not None:
+            start_ts = pd.to_datetime(time_start, errors="coerce", utc=True)
+            if pd.isna(start_ts):
+                raise CerfException(f"Invalid time_start value: {time_start}")
+            merged_df = merged_df[merged_df[key_col] >= start_ts]
+
+        if time_end is not None:
+            end_ts = pd.to_datetime(time_end, errors="coerce", utc=True)
+            if pd.isna(end_ts):
+                raise CerfException(f"Invalid time_end value: {time_end}")
+            merged_df = merged_df[merged_df[key_col] <= end_ts]
+
+        # Step 4: Reset index after filtering to maintain consistent pagination
+        merged_df = merged_df.reset_index(drop=True)
+
+        # Step 5: Compute total row count after filtering
         total_count = len(merged_df)
 
-        # Step 3: Extract a paginated subset of the merged DataFrame
+        # Step 6: Slice the DataFrame for pagination
         paginated_data = cast(
             list[dict[str, Any]],
             merged_df.iloc[start:start + limit].to_dict(orient="records")
         )
 
-        # Step 4: Convert all Timestamp objects in the key column to ISO 8601 strings
+        # Step 7: Convert timestamps to ISO 8601 strings for JSON compatibility
         for row in paginated_data:
             if key_col in row and isinstance(row[key_col], pd.Timestamp):
                 row[key_col] = row[key_col].isoformat()
 
         # Return the paginated data and total row count
         return paginated_data, total_count
+
     except Exception as e:
         # Log the error and raise a custom exception if any issues occur during processing
         logger.error(f"Error processing hydrograph files: {e}")
@@ -880,8 +924,9 @@ def read_and_prepare_hydrograph_files(file_path: str, column_mapping: dict[str, 
     # Step 3: Rename the detected timestamp column to a standard name
     df = df.rename(columns={timestamp_col: "time"})
 
-    # Step 4: Convert the "time" column to datetime format and drop invalid rows
-    df["time"] = pd.to_datetime(df["time"], errors="coerce")
+    # Step 4: Convert the "time" column to datetime format
+    df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)
+
     invalid_rows = df[df["time"].isna()]
     if not invalid_rows.empty:
         logger.warning(f"Invalid timestamps found in file {file_path}:\n{invalid_rows}")
@@ -918,12 +963,17 @@ def count_and_read_file_in_chunks(
     :raises CerfException: If the file cannot be read due to an error.
     """
     try:
-        # Read only the header to get column names
+        # Read header columns
         with open(file_path, 'r') as file:
-            header = next(file).strip().split(",")
-        # Count total rows efficiently (excluding header)
+            first_line = next(file, None)
+            if first_line is None:
+                return [], 0
+            header_cols = first_line.strip().split(",")
+
+        # Count total raw data rows
         with open(file_path, 'r') as file:
-            total_count = sum(1 for _ in file) - 1  # Subtract 1 for header
+            next(file, None)  # skip header
+            total_count = sum(1 for _ in file)
         # If no pagination, read entire file
         if start is None and limit is None:
             df = pd.read_csv(file_path)
@@ -938,16 +988,20 @@ def count_and_read_file_in_chunks(
                 file_path,
                 skiprows=list(range(1, start_i + 1)),
                 nrows=limit,
-                names=header,
+                names=header_cols,
                 header=0
             )
         # Convert "time" column to datetime format if present
         if "time" in df.columns:
-            df["time"] = pd.to_datetime(df["time"], errors="coerce")
-            df = df.dropna(subset=["time"])  # Drop rows with invalid timestamps
+            df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)
+            invalid_time_count = df["time"].isna().sum()
+            if invalid_time_count:
+                logger.warning(f"Dropping {invalid_time_count} rows with invalid time values from {file_path}")
+                df = df.dropna(subset=["time"])
         # Convert DataFrame to a list of dictionaries
         data = cast(list[dict[str, Any]], df.to_dict(orient="records"))
         return data, total_count
+
     except Exception as e:
         logger.error(f"Error reading file: {e}")
         raise CerfException(f"Failed to read file: {file_path}")

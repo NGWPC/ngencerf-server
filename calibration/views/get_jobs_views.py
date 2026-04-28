@@ -1,39 +1,9 @@
-import json
-import logging
-from typing import Any, Type, cast, Literal
-
-from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case, Sum, IntegerField, QuerySet, Min, Max
-from django.db.models.functions import Lower
-from drf_spectacular.utils import extend_schema, OpenApiResponse, PolymorphicProxySerializer
-from rest_framework.decorators import api_view
-from rest_framework.request import Request
-from rest_framework.response import Response
-
-from calibration.enums import GetValidationJobsScope, StatusEnum, ValidationType
-from calibration.enums_vanilla import CalibrationSortField, ForecastSortField, VerificationSortField
-from calibration.models import CalibrationFormulation, CalibrationRun, ValidationRun, VerificationRun, CustomUser, IterationParameter, ForecastRun, \
-    CalibrationStopCriteria
-from calibration.models.base_run import BaseRun
-from calibration.util.caching import get_cached_modules_by_id
-from calibration.util.calibration_validators import ErrorResponseSerializer, \
-    GetCalibrationJobsResponseSerializer, CalibrationPaginationSerializer, \
-    GetCalibrationJobIDsResponseSerializer, EmptySerializer, \
-    GetGagesResponseSerializer, GetGagesRequestSerializer, GetCalibrationJobsSummaryResponseSerializer, GetValidationJobsResponseSerializer, \
-    CalibrationRunSerializer, ForecastPaginationSerializer, GetForecastJobsResponseSerializer, GetVerificationJobsResponseSerializer, \
-    VerificationPaginationSerializer
-from calibration.views.calibration_download_views import downloadable_statuses
-from calibration.views.called_from import get_caller_name
-from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_user_email, get_elapsed_str, \
-    readonly_transaction, get_calibration_run
-
-logger = logging.getLogger(__name__)
-
 """
-Job Retrieval Endpoints for Calibration, Forecast, and Verification
-===================================================================
+Job Retrieval Endpoints for Calibration, Forecast, Hindcast, and Verification
+=============================================================================
 
-This module provides a unified interface for retrieving job records across the CERF workflow,
-including Calibration, Forecast, and Verification runs.
+This module provides a unified interface for retrieving job records across the
+CERF workflow, including Calibration, Forecast, Hindcast, and Verification runs.
 
 All endpoints support:
   • Server-side filtering
@@ -43,8 +13,12 @@ All endpoints support:
   • Read-only execution to reduce database contention
 
 Calibration retrieval is implemented by `get_jobs()`.
-Forecast and Verification retrieval are implemented by `get_forecast_jobs_internal()` and
+Forecast, Hindcast, and Verification retrieval are implemented by
+`get_forecast_jobs_internal()`, `get_hindcast_jobs_internal()`, and
 `get_verification_jobs_internal()`.
+
+Verification-specific query path resolution is centralized in
+`get_verification_parent_paths()`.
 
 Request payload shape
 ---------------------
@@ -63,7 +37,6 @@ Use this general shape for every request (omit keys you are not using):
             create_date: ISO-8601 datetime (e.g., "2025-01-01T12:34:56Z")
             start_date: ISO-8601 datetime (e.g., "2025-01-01T00:00:00-05:00")
             end_date: ISO-8601 datetime (e.g., "2025-02-01T23:59:59Z")
-
         id_filter:
             operator: "before" | "after" | "between"
             id: integer                 # before/after
@@ -77,6 +50,10 @@ Use this general shape for every request (omit keys you are not using):
 Calibration-only request keys
 -----------------------------
     ids_only: boolean
+
+Verification-only request keys
+------------------------------
+    verification_job_type: "forecast" | "hindcast"
 
 Do not send empty/default filters or sort objects.
 
@@ -127,6 +104,14 @@ Minimal example:
 
     { "limit": 25, "offset": 0 }
 
+Verification example:
+
+    {
+        "limit": 25,
+        "offset": 0,
+        "verification_job_type": "forecast"
+    }
+
 Key concepts
 ------------
 
@@ -143,7 +128,7 @@ Filtering
 
 Sorting
     Sorting uses server-approved fields defined in Enum classes
-    (CalibrationSortField, ForecastSortField, VerificationSortField).
+    (CalibrationSortField, ForecastSortField, HindcastSortField, VerificationSortField).
     Multi-field sorts are supported.
 
 Pagination
@@ -156,13 +141,43 @@ Range metadata
         • id_range   = [min_id, max_id]
 
     These ranges are computed before user-supplied filters and are restricted
-    only by the base ownership constraint (and any endpoint-level run_status
-    restriction, where applicable).
+    only by the base ownership constraint, and any endpoint-level run_status
+    restriction where applicable.
 
 Read-only execution
     All retrieval runs inside a read-only transaction wrapper to reduce
     lock contention.
 """
+
+import json
+import logging
+from typing import Any, Type, cast, Literal
+
+from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case, Sum, IntegerField, QuerySet, Min, Max
+from django.db.models.functions import Lower
+from drf_spectacular.utils import extend_schema, OpenApiResponse, PolymorphicProxySerializer
+from rest_framework.decorators import api_view
+from rest_framework.request import Request
+from rest_framework.response import Response
+
+from calibration.enums import GetValidationJobsScope, StatusEnum, ValidationType
+from calibration.enums_vanilla import CalibrationSortField, ForecastSortField, VerificationSortField, HindcastSortField
+from calibration.models import CalibrationFormulation, CalibrationRun, ValidationRun, VerificationRun, CustomUser, IterationParameter, ForecastRun, \
+    CalibrationStopCriteria, HindcastRun
+from calibration.models.base_run import BaseRun
+from calibration.util.caching import get_cached_modules_by_id
+from calibration.util.calibration_validators import ErrorResponseSerializer, \
+    GetCalibrationJobsResponseSerializer, CalibrationPaginationSerializer, \
+    GetCalibrationJobIDsResponseSerializer, EmptySerializer, \
+    GetGagesResponseSerializer, GetGagesRequestSerializer, GetCalibrationJobsSummaryResponseSerializer, GetValidationJobsResponseSerializer, \
+    CalibrationRunIdSerializer, ForecastPaginationSerializer, GetForecastJobsResponseSerializer, GetVerificationJobsResponseSerializer, \
+    VerificationPaginationSerializer, GetHindcastJobsResponseSerializer, HindcastPaginationSerializer, GetVerificationGagesRequestSerializer
+from calibration.views.calibration_download_views import downloadable_statuses
+from calibration.views.called_from import get_caller_name
+from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_user_email, get_elapsed_str, \
+    readonly_transaction, get_calibration_run
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema(
@@ -269,13 +284,13 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Get all Calibration jobs for Forecast"
+    description="Get all Calibration jobs for Forecast/Hindcast"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def get_calibration_jobs_for_forecast(request: Request) -> Response:
     """
-    Returns calibration jobs eligible for forecasting purposes.
+    Returns calibration jobs eligible for forecasting/hindcasting purposes.
 
     Only DONE calibration jobs are returned, and VALID_CONTROL and VALID_BEST must both exist and be DONE.
 
@@ -426,60 +441,64 @@ def _normalize_filters_and_sort(filters: dict | None, sort: dict | None) -> tupl
     :param sort: Optional dictionary specifying sorting field and direction.
     :return: Tuple of (normalized_filters, normalized_sort) with blanks stripped out.
     """
-    if filters:
+    if filters is not None:
+        filters_dict: dict[str, Any] = filters
+
         # Remove top-level keys that are "empty" so they don't accidentally enable logic paths.
         # Examples of values we treat as empty: "", [], {}, None
-        filters = {k: v for k, v in filters.items() if v not in ("", [], {}, None)}
+        filters_dict = {k: v for k, v in filters_dict.items() if v not in ("", [], {}, None)}
 
         # status is a list of strings; drop blank/whitespace entries. If it becomes empty, remove it.
-        if isinstance(filters.get("status"), list):
-            filters["status"] = [s for s in filters["status"] if isinstance(s, str) and s.strip() != ""]
-            if not filters["status"]:
-                filters.pop("status", None)
+        if isinstance(filters_dict.get("status"), list):
+            filters_dict["status"] = [s for s in filters_dict["status"] if isinstance(s, str) and s.strip() != ""]
+            if not filters_dict["status"]:
+                filters_dict.pop("status", None)
 
         # module_filter is a nested object; normalize modules list by dropping blanks.
         # If modules becomes empty, the module filter is effectively not provided.
-        if "module_filter" in filters and filters["module_filter"]:
-            mf = filters["module_filter"]
+        if "module_filter" in filters_dict and filters_dict["module_filter"]:
+            mf = filters_dict["module_filter"]
             modules = mf.get("modules") or []
             modules = [m for m in modules if isinstance(m, str) and m.strip() != ""]
             mf["modules"] = modules
             if not modules:
-                filters.pop("module_filter", None)
+                filters_dict.pop("module_filter", None)
 
         # date_filter: only keep it if it has the required fields for the chosen operator.
         # - between: must have BOTH start_date and end_date
         # - before/after: must have operator and create_date
-        if "date_filter" in filters and filters["date_filter"]:
-            date_filter = filters["date_filter"]
+        if "date_filter" in filters_dict and filters_dict["date_filter"]:
+            date_filter = filters_dict["date_filter"]
             op = (date_filter.get("operator") or "").lower()
 
             if op == "between":
                 # Require both start and end
                 if not date_filter.get("start_date") or not date_filter.get("end_date"):
-                    filters.pop("date_filter", None)
+                    filters_dict.pop("date_filter", None)
             elif not date_filter.get("operator") or not date_filter.get("create_date"):
                 # for 'before' / 'after', require a single value
-                filters.pop("date_filter", None)
+                filters_dict.pop("date_filter", None)
 
         # id_filter: only keep it if it has the required fields for the chosen operator.
         # - between: must have BOTH start_id and end_id (and they can be 0, so check is None)
         # - before/after: must have operator and id (id can be 0, so check is None)
-        if "id_filter" in filters and filters["id_filter"]:
-            id_filter = filters["id_filter"]
+        if "id_filter" in filters_dict and filters_dict["id_filter"]:
+            id_filter = filters_dict["id_filter"]
             op = (id_filter.get("operator") or "").lower()
 
             if op == "between":
                 # Require both start and end
                 if id_filter.get("start_id") is None or id_filter.get("end_id") is None:
-                    filters.pop("id_filter", None)
+                    filters_dict.pop("id_filter", None)
             elif not id_filter.get("operator") or id_filter.get("id") is None:
                 # for 'before' / 'after', require a single id value
-                filters.pop("id_filter", None)
+                filters_dict.pop("id_filter", None)
 
         # If we stripped everything, treat as "no filters".
-        if not filters:
+        if not filters_dict:
             filters = None
+        else:
+            filters = filters_dict
 
     # sort: if field is blank/whitespace or sort is not a dict, treat as "no sort".
     if not isinstance(sort, dict):
@@ -501,7 +520,10 @@ def _apply_shared_filters(
         allow_module_and: bool = True
 ) -> Q:
     """
-    Apply shared filter logic for Calibration, Forecast, and Verification jobs.
+    Apply shared filter logic for Calibration, Forecast, Hindcast and Verification jobs.
+
+    For Verification queries, the caller must first resolve the correct ORM path
+    set based on verification_job_type.
 
     :param query: Base Q object to filter (e.g., ownership constraint).
     :param filters: Dictionary of filters passed by the client.
@@ -516,7 +538,8 @@ def _apply_shared_filters(
     Notes:
       - include_archived: if true, include archived jobs; otherwise (false or missing), exclude them.
       - module_filter.operator="and" is only supported when the outer queryset is CalibrationRun.
-        For ForecastRun/VerificationRun, "and" is treated as "or".
+        For ForecastRun, HindcastRun and VerificationRun, "and" is treated as "or".
+      - Verification-specific ORM prefixes are resolved upstream before calling this helper.
     """
     if not filters:
         return query
@@ -547,9 +570,9 @@ def _apply_shared_filters(
             if module_ids:
                 # NOTE: "and" module filtering is only correct when the outer queryset is CalibrationRun.
                 # This subquery uses OuterRef("id") as the calibration_run_id, which is true only for
-                # CalibrationRun (pk == calibration_run_id). For ForecastRun/VerificationRun the outer "id"
-                # is NOT the calibration_run_id, so "and" will not work correctly there.
-                # For Forecast/Verification, treat "and" as "or" (or reject it) at the endpoint layer.
+                # CalibrationRun (pk == calibration_run_id). For ForecastRun, HindcastRun, and VerificationRun,
+                # the outer "id" is NOT the calibration_run_id, so "and" will not work correctly there.
+                # For Forecast/Hindcast/Verification, treat "and" as "or" (or reject it) at the endpoint layer.
                 if operator == "and" and allow_module_and:
                     subquery = (
                         CalibrationFormulation.objects
@@ -615,7 +638,7 @@ def _apply_shared_filters(
     return query
 
 
-def apply_calibration_filters(query: Q, filters: dict) -> Q:
+def apply_calibration_filters(query: Q, filters: dict[str, Any]) -> Q:
     """
     Apply standard calibration filters to a CalibrationRun queryset,
     excluding 'status' because it's handled later on the derived
@@ -626,7 +649,7 @@ def apply_calibration_filters(query: Q, filters: dict) -> Q:
     :return: Q object with calibration-specific filters applied.
     """
     # Make a shallow copy and remove 'status'
-    filters = {k: v for k, v in (filters or {}).items() if k != "status"}
+    filters = {k: v for k, v in filters.items() if k != "status"}
 
     return _apply_shared_filters(
         query, filters,
@@ -642,14 +665,15 @@ def apply_calibration_filters(query: Q, filters: dict) -> Q:
 
 def apply_forecast_filters(query: Q, filters: dict) -> Q:
     """
-    Apply standard forecast filters to a ForecastRun queryset.
+    Apply standard Forecast/Hindcast filters to a ForecastRun or HindcastRun queryset.
 
     Notes:
-      - module_filter.operator="and" is not supported for Forecast/Verification (treated as "or" or ignored).
+      - module_filter.operator="and" is not supported for Forecast/Hindcast/Verification
+        and is treated as "or" by the shared filter logic.
 
     :param query: Base Q object (e.g., Q(calibration_run__owner=user)).
     :param filters: Dictionary of filter parameters (gage_id, domain_name, status, modules, date_filter, id_filter, etc.).
-    :return: Q object with forecast-specific filters applied.
+    :return: Q object with forecast/hindcast-specific filters applied.
     """
     return _apply_shared_filters(
         query, filters,
@@ -663,32 +687,46 @@ def apply_forecast_filters(query: Q, filters: dict) -> Q:
     )
 
 
-def apply_verification_filters(query: Q, filters: dict) -> Q:
+def apply_verification_filters(
+        query: Q,
+        filters: dict,
+        verification_job_type: Literal['forecast', 'hindcast'],
+) -> Q:
     """
     Apply standard verification filters to a VerificationRun queryset.
 
-    Notes:
-      - module_filter.operator="and" is not supported for Forecast/Verification (treated as "or" or ignored).
+    The ORM path used for gage, module, archive, and domain filtering depends on
+    whether the verification job belongs to a ForecastRun or a HindcastRun.
 
-    :param query: Base Q object (e.g., Q(forecast_run__calibration_run__owner=user)).
-    :param filters: Dictionary of filter parameters (gage_id, domain_name, status, modules, date_filter, id_filter, etc.).
+    Notes:
+      - module_filter.operator="and" is only supported for Calibration jobs.
+        For Forecast, Hindcast, and Verification jobs, it is treated as "or"
+        by the shared filter logic.
+
+    :param query: Base Q object constrained to the authenticated user's verification jobs.
+    :param filters: Dictionary of filter parameters (gage_id, domain_name, status,
+        modules, date_filter, id_filter, include_archived, etc.).
+    :param verification_job_type: Parent job type for the verification jobs being
+        queried. Must be either 'forecast' or 'hindcast'.
     :return: Q object with verification-specific filters applied.
     """
+    paths = get_verification_parent_paths(verification_job_type)
+
     return _apply_shared_filters(
         query, filters,
-        gage_prefix="forecast_run__calibration_run__gage__",
-        module_prefix="forecast_run__calibration_run__calibrationformulation__",
+        gage_prefix=paths["gage_prefix"],
+        module_prefix=paths["module_prefix"],
         status_field="status__in",
         created_field="created_at",
-        archived_field="forecast_run__calibration_run__is_archived",
-        domain_field="forecast_run__calibration_run__gage__domain__name",
+        archived_field=paths["archived_field"],
+        domain_field=paths["domain_field"],
         allow_module_and=False
     )
 
 
 def resolve_sort(
         sort: dict | None,
-        enum_class: Type[CalibrationSortField | ForecastSortField | VerificationSortField]
+        enum_class: Type[CalibrationSortField | ForecastSortField | HindcastSortField | VerificationSortField]
 ) -> list[str]:
     """
     Convert the validated client-provided sort object into a Django `order_by` argument list.
@@ -698,8 +736,9 @@ def resolve_sort(
     - Defaults to ['-id'] if no sort provided.
 
     This function translates the UI-provided sort configuration into the corresponding ORM field
-    name(s) used for ordering querysets. The mapping between user-facing fields and database columns
-    is defined by the respective Enum (e.g., CalibrationSortField, ForecastSortField, etc.).
+    name(s) used for ordering querysets.
+    The mapping between user-facing fields and database columns is defined by the respective Enum (e.g., CalibrationSortField,
+    ForecastSortField, HindcastSortField, VerificationSortField).
 
     Assumptions (enforced by upstream serializers and enum validators):
       - `sort["field"]` is a valid string representation of an existing enum member.
@@ -787,13 +826,13 @@ def get_calibration_gages(request: Request) -> Response:
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
         500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
     },
-    description="Get distinct gage_ids for DONE Calibration jobs eligible for Forecast (optional domain + include_archived)"
+    description="Get distinct gage_ids for DONE Calibration jobs eligible for Forecast/Hindcast (optional domain + include_archived)"
 )
 @api_view(["POST", "GET"])
 @handle_exceptions
 def get_calibration_gages_for_forecast(request: Request) -> Response:
     """
-    Get distinct gage_ids for Calibration jobs eligible for Forecast (optional domain + include_archived).
+    Get distinct gage_ids for Calibration jobs eligible for Forecast/Hindcast (optional domain + include_archived).
     """
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
@@ -1110,6 +1149,53 @@ def annotate_calibration_combined_status(
     return qs
 
 
+def get_forecast_base_gages(
+        model: type[ForecastRun] | type[HindcastRun],
+        user: CustomUser,
+        *,
+        run_status: list[StatusEnum] | None = None,
+        include_archived: bool = False,
+        domain_name: str | None = None,
+) -> list[str]:
+    """
+    Get distinct non-null gage_ids for the authenticated user's Forecast/Hindcast runs.
+
+    Runs in READ ONLY mode to reduce contention.
+
+    :param model: ForecastRun or HindcastRun model class.
+    :param user: Owner of the runs to inspect.
+    :param run_status: Optional list of StatusEnum values to restrict the base job set
+                       (matches endpoint-level restrictions).
+    :param include_archived: If True, include runs whose parent CalibrationRun is archived;
+                             otherwise exclude them. Default is False so endpoints exclude
+                             archived calibration runs by default.
+    :param domain_name: Optional domain name (validated by serializer as a DomainEnum value).
+                        If None, include gages across all domains.
+    :return: List of distinct gage_id strings.
+    """
+    with readonly_transaction():
+        query = Q(calibration_run__owner=user)
+
+        # Default behavior: exclude archived calibration runs unless include_archived is explicitly true.
+        if not include_archived:
+            query &= Q(calibration_run__is_archived=False)
+
+        # Domain is optional. If not provided, include gages across all domains.
+        if domain_name:
+            query &= Q(calibration_run__gage__domain__name__iexact=domain_name)
+
+        if run_status:
+            query &= Q(status__in=[s.db_instance for s in run_status])
+
+        return list(
+            model.objects
+            .filter(query)
+            .filter(calibration_run__gage__isnull=False)
+            .values_list("calibration_run__gage__gage_id", flat=True)
+            .distinct()
+        )
+
+
 @extend_schema(
     request=GetGagesRequestSerializer,
     responses={
@@ -1122,6 +1208,9 @@ def annotate_calibration_combined_status(
 @api_view(["POST", "GET"])
 @handle_exceptions
 def get_forecast_gages(request: Request) -> Response:
+    """
+    Get distinct gage_ids for Forecast jobs (optional domain + include_archived).
+    """
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
 
@@ -1132,24 +1221,60 @@ def get_forecast_gages(request: Request) -> Response:
     domain_name = validator.get("domain_name") or None
     include_archived = validator.get("include_archived")
 
-    with readonly_transaction():
-        query = Q(calibration_run__owner=auth_user(request))
+    gages = get_forecast_base_gages(
+        ForecastRun,
+        auth_user(request),
+        run_status=None,
+        include_archived=include_archived,
+        domain_name=domain_name,
+    )
 
-        # Default behavior: exclude archived calibration runs unless include_archived is explicitly true.
-        if not include_archived:
-            query &= Q(calibration_run__is_archived=False)
+    response = {"gages": gages}
+    response_validator, error_response = validate_response(
+        GetGagesResponseSerializer, response, fields_to_truncate=["gages"], max_length=10
+    )
+    if error_response:
+        return error_response
 
-        # Domain is optional. If not provided, include gages across all domains.
-        if domain_name:
-            query &= Q(calibration_run__gage__domain__name__iexact=domain_name)
+    logger.debug(
+        f"Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - "
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=10))}'
+    )
+    return Response(response_validator.data)
 
-        gages = list(
-            ForecastRun.objects
-            .filter(query)
-            .filter(calibration_run__gage__isnull=False)
-            .values_list("calibration_run__gage__gage_id", flat=True)
-            .distinct()
-        )
+
+@extend_schema(
+    request=GetGagesRequestSerializer,
+    responses={
+        200: GetGagesResponseSerializer,
+        400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
+        500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
+    },
+    description="Get distinct gage_ids for Hindcast jobs (optional domain + include_archived)"
+)
+@api_view(["POST", "GET"])
+@handle_exceptions
+def get_hindcast_gages(request: Request) -> Response:
+    """
+    Get distinct gage_ids for Hindcast jobs (optional domain + include_archived).
+    """
+    data = request.data if request.method == "POST" else request.query_params.dict()
+    logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
+
+    validator, error_return = validate_request(GetGagesRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    domain_name = validator.get("domain_name") or None
+    include_archived = validator.get("include_archived")
+
+    gages = get_forecast_base_gages(
+        HindcastRun,
+        auth_user(request),
+        run_status=None,
+        include_archived=include_archived,
+        domain_name=domain_name,
+    )
 
     response = {"gages": gages}
     response_validator, error_response = validate_response(
@@ -1177,6 +1302,9 @@ def get_forecast_gages(request: Request) -> Response:
 @api_view(["POST", "GET"])
 @handle_exceptions
 def get_forecast_gages_for_verification(request: Request) -> Response:
+    """
+    Get distinct gage_ids for DONE Forecast jobs eligible for Verification (optional domain + include_archived).
+    """
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
 
@@ -1187,26 +1315,13 @@ def get_forecast_gages_for_verification(request: Request) -> Response:
     domain_name = validator.get("domain_name") or None
     include_archived = validator.get("include_archived")
 
-    with readonly_transaction():
-        query = Q(calibration_run__owner=auth_user(request))
-
-        # Default behavior: exclude archived calibration runs unless include_archived is explicitly true.
-        if not include_archived:
-            query &= Q(calibration_run__is_archived=False)
-
-        # Domain is optional. If not provided, include gages across all domains.
-        if domain_name:
-            query &= Q(calibration_run__gage__domain__name__iexact=domain_name)
-
-        query &= Q(status__in=[StatusEnum.DONE.db_instance])
-
-        gages = list(
-            ForecastRun.objects
-            .filter(query)
-            .filter(calibration_run__gage__isnull=False)
-            .values_list("calibration_run__gage__gage_id", flat=True)
-            .distinct()
-        )
+    gages = get_forecast_base_gages(
+        ForecastRun,
+        auth_user(request),
+        run_status=[StatusEnum.DONE],
+        include_archived=include_archived,
+        domain_name=domain_name,
+    )
 
     response = {"gages": gages}
     response_validator, error_response = validate_response(
@@ -1229,11 +1344,15 @@ def get_forecast_gages_for_verification(request: Request) -> Response:
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
         500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
     },
-    description="Get distinct gage_ids for Verification jobs (optional domain + include_archived)"
+    description="Get distinct gage_ids for DONE Hindcast jobs eligible for Verification (optional domain + include_archived)"
 )
 @api_view(["POST", "GET"])
 @handle_exceptions
-def get_verification_gages(request: Request) -> Response:
+def get_hindcast_gages_for_verification(request: Request) -> Response:
+    """
+    Get distinct gage_ids for DONE Hindcast jobs eligible for Verification
+    (optional domain + include_archived).
+    """
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
 
@@ -1244,22 +1363,75 @@ def get_verification_gages(request: Request) -> Response:
     domain_name = validator.get("domain_name") or None
     include_archived = validator.get("include_archived")
 
+    gages = get_forecast_base_gages(
+        HindcastRun,
+        auth_user(request),
+        run_status=[StatusEnum.DONE],
+        include_archived=include_archived,
+        domain_name=domain_name,
+    )
+
+    response = {"gages": gages}
+    response_validator, error_response = validate_response(
+        GetGagesResponseSerializer, response, fields_to_truncate=["gages"], max_length=10
+    )
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f"Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - "
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=10))}'
+    )
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=GetVerificationGagesRequestSerializer,
+    responses={
+        200: GetGagesResponseSerializer,
+        400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
+        500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
+    },
+    description="Get distinct gage_ids for forecast-based or hindcast-based Verification jobs (optional domain + include_archived)"
+)
+@api_view(["POST", "GET"])
+@handle_exceptions
+def get_verification_gages(request: Request) -> Response:
+    """
+    Get distinct gage_ids for verification jobs for either forecast-based or
+    hindcast-based verification runs.
+
+    The request must include verification_job_type so the endpoint can use the
+    correct parent ORM path.
+    """
+    data = request.data if request.method == "POST" else request.query_params.dict()
+    logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
+
+    validator, error_return = validate_request(GetVerificationGagesRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    domain_name = validator.get("domain_name") or None
+    include_archived = validator.get("include_archived")
+    verification_job_type = validator.get("verification_job_type")
+    paths = get_verification_parent_paths(verification_job_type)
+
     with readonly_transaction():
-        query = Q(forecast_run__calibration_run__owner=auth_user(request))
+        query = Q(**{f'{paths["calibration_prefix"]}owner': auth_user(request)})
 
         # Default behavior: exclude archived calibration runs unless include_archived is explicitly true.
         if not include_archived:
-            query &= Q(forecast_run__calibration_run__is_archived=False)
+            query &= Q(**{paths["archived_field"]: False})
 
         # Domain is optional. If not provided, include gages across all domains.
         if domain_name:
-            query &= Q(forecast_run__calibration_run__gage__domain__name__iexact=domain_name)
+            query &= Q(**{f'{paths["domain_field"]}__iexact': domain_name})
 
         gages = list(
             VerificationRun.objects
             .filter(query)
-            .filter(forecast_run__calibration_run__gage__isnull=False)
-            .values_list("forecast_run__calibration_run__gage__gage_id", flat=True)
+            .filter(**{paths["gage_isnull_field"]: False})
+            .values_list(paths["gage_value_field"], flat=True)
             .distinct()
         )
 
@@ -1385,7 +1557,7 @@ def get_jobs(
         - date_range reflects the possible range of created_at dates for this job set BEFORE user filtering (after run_status restriction).
         - id_range reflects the possible range of job IDs for this job set BEFORE user filtering (after run_status restriction).
     """
-    filters = filters or {}
+    filters_dict: dict[str, Any] = filters or {}
     order_by = resolve_sort(sort, CalibrationSortField)
 
     # These are Status model instances (not IDs)
@@ -1409,7 +1581,7 @@ def get_jobs(
         # to the base query. The 'status' filter is applied later
         # after annotation of the derived combined_status field.
         # ------------------------------------------------------------------
-        query = apply_calibration_filters(query, filters)
+        query = apply_calibration_filters(query, filters_dict)
 
         # ───── Build base queryset ─────
         # Build base queryset; validation-status annotations will be applied next.
@@ -1419,7 +1591,7 @@ def get_jobs(
         # Also annotate _status_lower only if we will use it (status filter present).
         base_qs = annotate_calibration_combined_status(
             base_qs,
-            include_status_lower=bool(filters.get("status")),
+            include_status_lower=bool(filters_dict.get("status")),
         )
 
         if not ids_only:
@@ -1476,9 +1648,9 @@ def get_jobs(
         # derived combined_status value, not the raw calibration status.
         # This ensures ids_only and full-detail return the same job set.
         # ─────────────────────────────────────────────────────────────
-        if "status" in filters and filters["status"]:
+        if "status" in filters_dict and filters_dict["status"]:
             # Normalize to lowercase for case-insensitive matching
-            normalized_statuses = [s.strip().lower() for s in filters["status"]]
+            normalized_statuses = [s.strip().lower() for s in filters_dict["status"]]
 
             # _status_lower already exists (include_status_lower=True above) when a status filter is present.
             base_qs = base_qs.filter(_status_lower__in=normalized_statuses)
@@ -1691,7 +1863,7 @@ def get_validation_jobs_internal(
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=CalibrationRunIdSerializer,
     responses={
         200: GetValidationJobsResponseSerializer,
         400: OpenApiResponse(
@@ -1723,7 +1895,7 @@ def get_validation_jobs(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunIdSerializer, data)
     if error_return:
         return error_return
 
@@ -1746,6 +1918,130 @@ def get_validation_jobs(request: Request) -> Response:
     return Response(response_validator.data)
 
 
+def _get_forecast_or_hindcast_base_jobs_internal(
+        model: type[ForecastRun] | type[HindcastRun],
+        user: CustomUser,
+        *,
+        run_status: list[StatusEnum] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+        filters: dict[str, Any] | None = None,
+        sort: dict[str, str] | None = None,
+        response_id_key: str,
+        response_status_key: str,
+        sort_enum: Type[ForecastSortField | HindcastSortField],
+        include_hindcast_fields: bool = False,
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
+    """
+    Shared internal helper to retrieve ForecastRun or HindcastRun rows for a user
+    with optional filtering, sorting, and pagination.
+
+    Runs in READ ONLY mode to reduce contention.
+
+    :param model: ForecastRun or HindcastRun model class.
+    :param user: Owner of the jobs to fetch.
+    :param run_status: Optional list of StatusEnum values to restrict the base job set.
+                       This restriction is applied before computing date/id ranges and
+                       before user filters.
+    :param limit: Optional maximum number of rows to return. If None, return all rows.
+    :param offset: Optional number of rows to skip before returning results.
+    :param filters: Optional dict of filter criteria (e.g. gage_id, status, modules).
+    :param sort: Optional dict { "field": one of ForecastSortField or HindcastSortField values,
+                             "direction": "asc" or "desc" }.
+    :param response_id_key: Output key to use for the run id
+                            (e.g. "forecast_run_id" or "hindcast_run_id").
+    :param response_status_key: Output key to use for the status field
+                                (e.g. "forecast_status" or "hindcast_status").
+    :param include_hindcast_fields: Whether to include hindcast-only fields such as
+                                    interval_cycle and num_iterations, and enforce
+                                    that all cold start fields are present.
+    :return: Tuple (results, total_count, date_range, id_range).
+    """
+    filters_dict: dict[str, Any] = filters or {}
+    order_by = resolve_sort(sort, sort_enum)
+
+    with readonly_transaction():
+        # Base query (ownership constraint)
+        query = Q(calibration_run__owner=user)
+
+        # Apply status restriction early so ranges reflect run_status restriction
+        if run_status:
+            query &= Q(status__in=[s.db_instance for s in run_status])
+
+        # Compute ranges BEFORE user filters (but after run_status restriction)
+        date_range, id_range = compute_range(model, query)
+
+        # Now apply user filters
+        query = apply_forecast_filters(query, filters_dict)
+
+        base_qs = model.objects.filter(query)
+
+        # total_count must be BEFORE pagination
+        total_count = base_qs.count()
+
+        # ──────────────────────────────────────────
+        # Apply ordering + pagination at the DB level
+        # ──────────────────────────────────────────
+        paged_qs = base_qs.order_by(*order_by)
+        if limit:
+            paged_qs = paged_qs[offset: offset + limit]
+
+        value_fields = [
+            'id',
+            'calibration_run_id',
+            'configuration__name',
+            'calibration_run__gage__domain__name',
+            'cycle_date',
+            'submit_date',
+            'calibration_run__gage__gage_id',
+            'status__name',
+            'cold_start_run_id',
+            'cold_start_run__cold_start_date',
+            'cold_start_run__cycle_date',
+            'cold_start_run__status__name',
+            'cold_start_run__submit_date',
+        ]
+
+        if include_hindcast_fields:
+            value_fields.extend([
+                'interval_cycle',
+                'num_iterations',
+            ])
+
+        rows = list(paged_qs.values(*value_fields))
+
+    # Normalize keys expected by the API response/serializer
+    for row in rows:
+        row[response_id_key] = row.pop('id')
+        row['configuration'] = row.pop('configuration__name')
+        row['domain_name'] = row.pop('calibration_run__gage__domain__name')
+        row['gage_id'] = row.pop('calibration_run__gage__gage_id')
+        row[response_status_key] = row.pop('status__name')
+
+        cold_start_run_id = row.pop('cold_start_run_id')
+        cold_date = row.pop('cold_start_run__cold_start_date')
+        cold_cycle_date = row.pop('cold_start_run__cycle_date')
+        cold_status = row.pop('cold_start_run__status__name')
+        cold_submit = row.pop('cold_start_run__submit_date')
+
+        # Hindcast always requires a cold start, so all cold start fields must be present.
+        if include_hindcast_fields and cold_start_run_id is None:
+            raise ValueError(
+                f"{response_id_key}={row[response_id_key]} is missing required cold_start data."
+            )
+
+        if cold_start_run_id is not None:
+            row['cold_start'] = {
+                'cold_start_run_id': cold_start_run_id,
+                'cold_start_date': cold_date,
+                'cold_start_cycle_date': cold_cycle_date,
+                'cold_start_status': cold_status,
+                'cold_start_submit_date': cold_submit,
+            }
+
+    return rows, total_count, date_range, id_range
+
+
 def get_forecast_jobs_internal(
         user: CustomUser,
         run_status: list[StatusEnum] | None = None,
@@ -1758,10 +2054,6 @@ def get_forecast_jobs_internal(
     Internal helper to retrieve forecast jobs for a user (READ ONLY), with optional filtering,
     sorting, and pagination.
 
-    Notes:
-      - module_filter operator "and" is only supported for Calibration jobs. Forecast/Verification
-        will treat operator "and" as "or" (or ignore it), depending on shared filter behavior.
-
     :param user: Owner of the jobs to fetch.
     :param run_status: Optional list of StatusEnum values to filter on (e.g., DONE).
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
@@ -1769,80 +2061,55 @@ def get_forecast_jobs_internal(
     :param filters: Optional dict of filter criteria (e.g. gage_id, status, modules).
     :param sort: Optional dict { "field": one of ForecastSortField values, "direction": "asc" or "desc" }.
     :return: Tuple (results, total_count, date_range, id_range).
-        - total_count reflects the total number of matching rows BEFORE pagination is applied.
-        - date_range reflects the possible range of created_at dates for this job type
-          BEFORE user filtering (after run_status restriction).
-        - id_range reflects the possible range of job IDs for this job type
-          BEFORE user filtering (after run_status restriction).
-        - gage_list is returned only when get_gages is true.
     """
-    filters = filters or {}
-    order_by = resolve_sort(sort, ForecastSortField)
+    return _get_forecast_or_hindcast_base_jobs_internal(
+        ForecastRun,
+        user,
+        run_status=run_status,
+        limit=limit,
+        offset=offset,
+        filters=filters,
+        sort=sort,
+        response_id_key="forecast_run_id",
+        response_status_key="forecast_status",
+        sort_enum=ForecastSortField,
+        include_hindcast_fields=False,
+    )
 
-    with readonly_transaction():
-        # Base query (ownership constraint)
-        query = Q(calibration_run__owner=user)
 
-        # Apply status restriction early so ranges reflect run_status restriction
-        if run_status:
-            query &= Q(status__in=[s.db_instance for s in run_status])
+def get_hindcast_jobs_internal(
+        user: CustomUser,
+        run_status: list[StatusEnum] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+        filters: dict[str, Any] | None = None,
+        sort: dict[str, str] | None = None
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
+    """
+    Internal helper to retrieve hindcast jobs for a user (READ ONLY), with optional filtering,
+    sorting, and pagination.
 
-        # Compute ranges BEFORE user filters (but after run_status restriction)
-        date_range, id_range = compute_range(ForecastRun, query)
-
-        # Now apply user filters
-        query = apply_forecast_filters(query, filters)
-
-        base_qs = ForecastRun.objects.filter(query)
-
-        # total_count must be BEFORE pagination
-        total_count = base_qs.count()
-
-        # ──────────────────────────────────────────
-        # Apply ordering + pagination at the DB level
-        # ──────────────────────────────────────────
-        paged_qs = base_qs.order_by(*order_by)
-        if limit:
-            paged_qs = paged_qs[offset: offset + limit]
-
-        rows = list(
-            paged_qs.values(
-                'id',
-                'calibration_run_id',
-                'configuration__name',
-                'calibration_run__gage__domain__name',
-                'cycle_date',
-                'submit_date',
-                'calibration_run__gage__gage_id',
-                'status__name',
-                'cold_start_run__cold_start_date',
-                'cold_start_run__status__name',
-                'cold_start_run__submit_date',
-            )
-        )
-
-    # Normalize keys expected by the API response/serializer
-    for f in rows:
-        f['forecast_run_id'] = f.pop('id')
-        f['configuration'] = f.pop('configuration__name')
-        f['domain_name'] = f.pop('calibration_run__gage__domain__name')
-        f['gage_id'] = f.pop('calibration_run__gage__gage_id')
-        f['forecast_status'] = f.pop('status__name')
-
-        cold_date = f.pop('cold_start_run__cold_start_date')
-        cold_status = f.pop('cold_start_run__status__name')
-        cold_submit = f.pop('cold_start_run__submit_date')
-
-        # Only include nested cold_start object if data exists
-        if cold_date or cold_status:
-            f['cold_start'] = {
-                'cold_start_date': cold_date,
-                'cold_start_status': cold_status,
-                'cold_start_submit_date': cold_submit
-            }
-        # else: omit cold_start entirely
-
-    return rows, total_count, date_range, id_range
+    :param user: Owner of the jobs to fetch.
+    :param run_status: Optional list of StatusEnum values to filter on (e.g., DONE).
+    :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
+    :param offset: Optional number of rows to skip before returning results (for pagination).
+    :param filters: Optional dict of filter criteria (e.g. gage_id, status, modules).
+    :param sort: Optional dict { "field": one of HindcastSortField values, "direction": "asc" or "desc" }.
+    :return: Tuple (results, total_count, date_range, id_range).
+    """
+    return _get_forecast_or_hindcast_base_jobs_internal(
+        HindcastRun,
+        user,
+        run_status=run_status,
+        limit=limit,
+        offset=offset,
+        filters=filters,
+        sort=sort,
+        response_id_key="hindcast_run_id",
+        response_status_key="hindcast_status",
+        sort_enum=HindcastSortField,
+        include_hindcast_fields=True,
+    )
 
 
 @extend_schema(
@@ -1864,10 +2131,11 @@ def get_forecast_jobs_internal(
 @handle_exceptions
 def get_forecast_jobs(request: Request) -> Response:
     """
-    Retrieves all forecast jobs for a user
+    Retrieve all forecast jobs for the authenticated user.
+
     Runs in READ ONLY mode to reduce contention.
 
-    :param request: The HTTP request object containing calibration run data.
+    :param request: The HTTP request object containing forecast pagination data.
     :return: JSON response with forecast jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
@@ -1915,6 +2183,76 @@ def get_forecast_jobs(request: Request) -> Response:
 
 
 @extend_schema(
+    request=HindcastPaginationSerializer,
+    responses={
+        200: GetHindcastJobsResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Get hindcast jobs"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def get_hindcast_jobs(request: Request) -> Response:
+    """
+    Retrieve all hindcast jobs for the authenticated user.
+
+    Runs in READ ONLY mode to reduce contention.
+
+    :param request: The HTTP request object containing hindcast pagination data.
+    :return: JSON response with hindcast jobs or error information.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(HindcastPaginationSerializer, data)
+    if error_return:
+        return error_return
+
+    limit = validator.get("limit")
+    offset = validator.get("offset", 0)
+    filters = validator.get("filters") or {}
+    sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
+
+    hindcast_jobs, total_count, date_range, id_range = get_hindcast_jobs_internal(
+        auth_user(request),
+        run_status=None,
+        limit=limit,
+        offset=offset,
+        filters=filters,
+        sort=sort
+    )
+
+    response = {
+        "hindcast_jobs": hindcast_jobs,
+        "total_count": total_count,
+    }
+    if total_count > 0:
+        response['date_range'] = date_range
+        response['id_range'] = id_range
+
+    response_validator, error_response = validate_response(
+        GetHindcastJobsResponseSerializer, response,
+        fields_to_truncate=['hindcast_jobs'], max_length=10
+    )
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["hindcast_jobs"], max_length=10))}'
+    )
+    return Response(response_validator.data)
+
+
+@extend_schema(
     request=ForecastPaginationSerializer,
     responses={
         200: GetForecastJobsResponseSerializer,
@@ -1933,9 +2271,11 @@ def get_forecast_jobs(request: Request) -> Response:
 @handle_exceptions
 def get_forecast_jobs_for_verification(request: Request) -> Response:
     """
-    Retrieves only DONE forecast jobs for the authenticated user (READ ONLY).
+    Retrieve only DONE forecast jobs for the authenticated user.
 
-    :param request: The HTTP request object containing calibration run data.
+    Runs in READ ONLY mode to reduce contention.
+
+    :param request: The HTTP request object containing forecast pagination data.
     :return: JSON response with forecast jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
@@ -1970,7 +2310,8 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
 
     response_validator, error_response = validate_response(
         GetForecastJobsResponseSerializer, response,
-        fields_to_truncate=['forecast_jobs'], max_length=10
+        fields_to_truncate=['forecast_jobs'],
+        max_length=10
     )
     if error_response:
         return error_response
@@ -1982,8 +2323,81 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
     return Response(response_validator.data)
 
 
+@extend_schema(
+    request=HindcastPaginationSerializer,
+    responses={
+        200: GetHindcastJobsResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Get DONE hindcast jobs"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def get_hindcast_jobs_for_verification(request: Request) -> Response:
+    """
+    Retrieve only DONE hindcast jobs for the authenticated user.
+
+    Runs in READ ONLY mode to reduce contention.
+
+    :param request: The HTTP request object containing hindcast pagination data.
+    :return: JSON response with hindcast jobs or error information.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(HindcastPaginationSerializer, data)
+    if error_return:
+        return error_return
+
+    limit = validator.get("limit")
+    offset = validator.get("offset", 0)
+    filters = validator.get("filters") or {}
+    sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
+
+    hindcast_jobs, total_count, date_range, id_range = get_hindcast_jobs_internal(
+        auth_user(request),
+        run_status=[StatusEnum.DONE],
+        limit=limit,
+        offset=offset,
+        filters=filters,
+        sort=sort
+    )
+
+    response = {
+        "hindcast_jobs": hindcast_jobs,
+        "total_count": total_count,
+    }
+    if total_count > 0:
+        response["date_range"] = date_range
+        response["id_range"] = id_range
+
+    response_validator, error_response = validate_response(
+        GetHindcastJobsResponseSerializer,
+        response,
+        fields_to_truncate=["hindcast_jobs"],
+        max_length=10
+    )
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["hindcast_jobs"], max_length=10))}'
+    )
+    return Response(response_validator.data)
+
+
 def get_verification_jobs_internal(
         user: CustomUser,
+        verification_job_type: Literal['forecast', 'hindcast'],
         run_status: list[StatusEnum] | None = None,
         limit: int | None = None,
         offset: int = 0,
@@ -1991,19 +2405,26 @@ def get_verification_jobs_internal(
         sort: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
     """
-    Internal helper to retrieve verification jobs (READ ONLY) with optional
-    filtering, sorting, and pagination.
+    Internal helper to retrieve verification jobs for either forecast-based or
+    hindcast-based verification runs, with optional filtering, sorting, and pagination.
+
+    Runs in READ ONLY mode to reduce contention.
 
     Notes:
-      - module_filter.operator="and" is only supported for Calibration jobs. For Forecast/Verification,
-        module_filter.operator="and" is treated as "or" by the shared filter logic.
+      - module_filter.operator="and" is only supported for Calibration jobs.
+        For Forecast, Hindcast, and Verification jobs, module_filter.operator="and"
+        is treated as "or" by the shared filter logic.
 
     :param user: Owner of the jobs to fetch.
+    :param verification_job_type: Parent job type for the verification jobs being
+        queried. Must be either 'forecast' or 'hindcast'.
     :param run_status: Optional list of StatusEnum values to restrict the base job set (e.g., DONE).
                        This restriction is applied before computing date/id ranges and before user filters.
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
     :param offset: Optional number of rows to skip before returning results (for pagination).
-    :param filters: Optional dict of filter criteria (reusing calibration filters, e.g. gage_id, status, modules).
+    :param filters: Optional dict of filter criteria using the shared retrieval
+        filter schema (e.g. gage_id, domain_name, status, modules, date_filter,
+        id_filter, include_archived).
     :param sort: Optional dict { "field": one of VerificationSortField values, "direction": "asc" or "desc" }.
     :return: Tuple (results, total_count, date_range, id_range).
         - total_count reflects the total number of matching rows BEFORE pagination is applied.
@@ -2011,13 +2432,13 @@ def get_verification_jobs_internal(
           (after run_status restriction).
         - id_range reflects the possible range of job IDs for this job set BEFORE user filtering
           (after run_status restriction).
-        - gage_list is returned only when get_gages is true.
     """
-    filters = filters or {}
+    filters_dict: dict[str, Any] = filters or {}
     order_by = resolve_sort(sort, VerificationSortField)
+    paths = get_verification_parent_paths(verification_job_type)
 
     with readonly_transaction():
-        query = Q(forecast_run__calibration_run__owner=user)
+        query = Q(**{f'{paths["calibration_prefix"]}owner': user})
 
         # Apply status restriction early so ranges reflect run_status restriction
         if run_status:
@@ -2027,7 +2448,7 @@ def get_verification_jobs_internal(
         date_range, id_range = compute_range(VerificationRun, query)
 
         # Now apply user filters
-        query = apply_verification_filters(query, filters)
+        query = apply_verification_filters(query, filters_dict, verification_job_type=verification_job_type)
 
         base_qs = VerificationRun.objects.filter(query)
 
@@ -2043,16 +2464,16 @@ def get_verification_jobs_internal(
         rows = list(
             paged_qs.values(
                 "id",
-                "forecast_run_id",
+                paths["parent_run_id_field"],
                 "status__name",
                 "submit_date"
             )
         )
 
     # Normalize keys expected by the API response/serializer
-    for r in rows:
-        r["verification_run_id"] = r.pop("id")
-        r["status"] = r.pop("status__name")
+    for row in rows:
+        row["verification_run_id"] = row.pop("id")
+        row["status"] = row.pop("status__name")
 
     return rows, total_count, date_range, id_range
 
@@ -2076,9 +2497,15 @@ def get_verification_jobs_internal(
 @handle_exceptions
 def get_verification_jobs(request: Request) -> Response:
     """
-    Retrieves all verification jobs for a user
+    Retrieve verification jobs for the authenticated user for either forecast-based
+    or hindcast-based verification runs.
 
-    :param request: The HTTP request object containing calibration run data.
+    The request must include verification_job_type so the endpoint can query the
+    correct parent run relationship and return the matching parent run id field.
+
+    Runs in READ ONLY mode to reduce contention.
+
+    :param request: The HTTP request object containing verification pagination data.
     :return: JSON response with verification jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
@@ -2092,10 +2519,12 @@ def get_verification_jobs(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    verification_job_type = validator.get("verification_job_type")
     filters, sort = _normalize_filters_and_sort(filters, sort)
 
     verification_jobs, total_count, date_range, id_range = get_verification_jobs_internal(
         auth_user(request),
+        verification_job_type=verification_job_type,
         run_status=None,
         limit=limit,
         offset=offset,
@@ -2123,6 +2552,51 @@ def get_verification_jobs(request: Request) -> Response:
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["verification_jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
+
+
+def get_verification_parent_paths(
+        verification_job_type: Literal['forecast', 'hindcast'],
+) -> dict[str, str]:
+    """
+    Return ORM path fragments for verification queries based on whether the
+    verification job belongs to a forecast run or a hindcast run.
+
+    The returned values are used to build:
+      - ownership constraints
+      - gage/domain filters
+      - archived filters
+      - module filters
+      - gage extraction for verification gage endpoints
+
+    :param verification_job_type: Parent job type for the verification jobs being
+        queried. Must be either 'forecast' or 'hindcast'.
+    :return: Dictionary containing the ORM prefixes/field paths needed for
+        verification queries.
+    """
+    if verification_job_type == 'forecast':
+        return {
+            "parent_prefix": "forecast_run__",
+            "calibration_prefix": "forecast_run__calibration_run__",
+            "gage_prefix": "forecast_run__calibration_run__gage__",
+            "module_prefix": "forecast_run__calibration_run__calibrationformulation__",
+            "archived_field": "forecast_run__calibration_run__is_archived",
+            "domain_field": "forecast_run__calibration_run__gage__domain__name",
+            "gage_value_field": "forecast_run__calibration_run__gage__gage_id",
+            "gage_isnull_field": "forecast_run__calibration_run__gage__isnull",
+            "parent_run_id_field": "forecast_run_id",
+        }
+
+    return {
+        "parent_prefix": "hindcast_run__",
+        "calibration_prefix": "hindcast_run__calibration_run__",
+        "gage_prefix": "hindcast_run__calibration_run__gage__",
+        "module_prefix": "hindcast_run__calibration_run__calibrationformulation__",
+        "archived_field": "hindcast_run__calibration_run__is_archived",
+        "domain_field": "hindcast_run__calibration_run__gage__domain__name",
+        "gage_value_field": "hindcast_run__calibration_run__gage__gage_id",
+        "gage_isnull_field": "hindcast_run__calibration_run__gage__isnull",
+        "parent_run_id_field": "hindcast_run_id",
+    }
 
 
 def compute_range(model: type[BaseRun], query: Q) -> tuple[

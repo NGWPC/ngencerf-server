@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+from typing import Callable, cast
 
 from data_assimilation_engine.precip.timeseries.timeseries import precip_ts
 from data_assimilation_engine.soil_moisture.mapping.mapper import map_soil_moisture_data
@@ -18,9 +19,9 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType
 from calibration.enums_vanilla import SecondaryDataEnum
-from calibration.models import ValidationRun, Module
+from calibration.models import ValidationRun, Module, CalibrationRun, ModuleGroup
 from calibration.util.calibration_validators import GetImagesByDateResponseSerializer, \
-    ErrorResponseSerializer, ValidationRunSerializer, GetTimeseriesDataResponseSerializer, GetSoilMoistureImagesByDateRequestSerializer, \
+    ErrorResponseSerializer, ValidationRunIdSerializer, GetTimeseriesDataResponseSerializer, GetSoilMoistureImagesByDateRequestSerializer, \
     GetSWEImagesByDateRequestSerializer
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_geopackage_dir_for_job, get_swe_netcdf_file, get_validation_output_valid, \
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-def derive_secondary_data_file_inputs(run: ValidationRun) -> dict[str, str]:
+def derive_secondary_data_file_inputs(run: ValidationRun) -> dict[str, str] | None:
     """
     Derives the common file inputs from the validation run for SWE and Soil Moisture
 
@@ -55,23 +56,28 @@ def derive_secondary_data_file_inputs(run: ValidationRun) -> dict[str, str]:
         # Retrieve paths to required files.
         ts_csv = get_validation_output_valid(run.calibration_run, worker_name)
         gpkg = get_single_file(get_geopackage_dir_for_job(run.calibration_run))
+
+        if ts_csv is None or gpkg is None:
+            logger.warning(f'Unable to get secondary data locations for {get_job_description(run)}')
+            return None
+
         return {'ts_csv_location': ts_csv, 'gpkg': gpkg}
     else:
         logger.warning(f'Unable to get secondary data locations for {get_job_description(run)}')
-        return {}
+        return None
 
 
 def get_or_create_secondary_plots(run: ValidationRun, date: str, data_type: SecondaryDataEnum) -> dict[str, str]:
     """
     Generic function to create or retrieve secondary data plots (SWE or Soil Moisture).
 
-    Automatically determines the appropriate output directory via get_secondary_plot_Dir().
+    Automatically determines the appropriate output directory via get_secondary_plot_dir().
 
     :param run: The ValidationRun object.
     :param date: Date or timestamp string identifying the plot time.
         - For SWE: format "YYYY-MM-DD"
-        - For Soil Moisture: format "YYYY-MM-DDThh:mm:ss" (data produced hourly;
-          minutes and seconds are ignored when caching).
+        - For Soil Moisture: format "YYYY-MM-DDThh:mm:ss" or "YYYY-MM-DD hh:mm:ss"
+          (data produced hourly; minutes and seconds are ignored when caching).
     :param data_type: The SecondaryDataEnum indicating which dataset to process.
     :return: A dict with keys 'plot_dir', 'sim_map', 'raw_map', and 'lumped_map' file paths.
     """
@@ -80,35 +86,38 @@ def get_or_create_secondary_plots(run: ValidationRun, date: str, data_type: Seco
     if not inputs:
         return {}
 
-    ts_csv_location = inputs['ts_csv_location']
-    gpkg = inputs['gpkg']
+    ts_csv_location = inputs["ts_csv_location"]
+    gpkg = inputs["gpkg"]
 
-    # Dispatch table for behavior by data type
-    data_config = {
-        SecondaryDataEnum.SWE: {
-            "netcdf_func": get_swe_netcdf_file,
-            "map_func": map_swe_data,
-            "prefix": "swe",
-        },
-        SecondaryDataEnum.SOIL_MOISTURE: {
-            "netcdf_func": get_soil_moisture_netcdf_file,
-            "map_func": map_soil_moisture_data,
-            "prefix": "soil_moisture",
-        },
+    netcdf_funcs: dict[SecondaryDataEnum, Callable[[CalibrationRun], str]] = {
+        SecondaryDataEnum.SWE: get_swe_netcdf_file,
+        SecondaryDataEnum.SOIL_MOISTURE: get_soil_moisture_netcdf_file,
     }
 
-    if data_type not in data_config:
+    map_funcs: dict[SecondaryDataEnum, Callable[[list[str]], object]] = {
+        SecondaryDataEnum.SWE: map_swe_data,
+        SecondaryDataEnum.SOIL_MOISTURE: map_soil_moisture_data,
+    }
+
+    prefixes: dict[SecondaryDataEnum, str] = {
+        SecondaryDataEnum.SWE: "swe",
+        SecondaryDataEnum.SOIL_MOISTURE: "soil_moisture",
+    }
+
+    if data_type not in netcdf_funcs or data_type not in map_funcs or data_type not in prefixes:
         logger.error(f"Unsupported data_type: {data_type}")
         return {}
 
-    cfg = data_config[data_type]
+    netcdf_func = netcdf_funcs[data_type]
+    map_func = map_funcs[data_type]
+    prefix = prefixes[data_type]
 
     plot_dir = get_secondary_plot_dir(run, data_type)
     os.makedirs(plot_dir, exist_ok=True)
 
     # Required input file
-    netcdf_file = cfg["netcdf_func"](run.calibration_run)
-    prefix = cfg["prefix"]
+    netcdf_file = netcdf_func(run.calibration_run)
+
     # Build a Memcached-safe cache key that uniquely identifies this run/date combination.
     # The original date may include minutes and seconds (e.g., "2015-12-02 12:12:12"), but:
     #   - Memcached keys cannot contain spaces or colons, so we replace the space with 'T'
@@ -138,13 +147,13 @@ def get_or_create_secondary_plots(run: ValidationRun, date: str, data_type: Seco
             sim_map_path,
             raw_map_path,
             lumped_map_path,
-            '--direct_s3'
+            "--direct_s3",
         ]
-        logger.info(f"Calling {cfg['map_func'].__name__} with arguments: {args}")
+        logger.info(f"Calling {map_func.__name__} with arguments: {args}")
         start_time = time.perf_counter()
-        cfg["map_func"](args)
+        map_func(args)
         elapsed_time = time.perf_counter() - start_time
-        logger.info(f"Finished running {cfg['map_func'].__name__} in {elapsed_time:.2f} seconds")
+        logger.info(f"Finished running {map_func.__name__} in {elapsed_time:.2f} seconds")
     else:
         logger.info(f"{prefix.upper()} files already exist in {plot_dir} for {get_job_description(run)}")
 
@@ -266,6 +275,7 @@ def _get_secondary_images_by_date_or_datetime(
     )
     if error_return:
         return error_return
+    assert run is not None
 
     validation_start_date = run.calibration_run.validation_start_period.strftime("%Y-%m-%d")
     validation_end_date = run.calibration_run.validation_end_period.strftime("%Y-%m-%d")
@@ -379,7 +389,7 @@ def _get_secondary_timeseries_data(
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
 
-    validator, error_return = validate_request(ValidationRunSerializer, data)
+    validator, error_return = validate_request(ValidationRunIdSerializer, data)
     if error_return:
         return error_return
 
@@ -392,6 +402,7 @@ def _get_secondary_timeseries_data(
     )
     if error_return:
         return error_return
+    assert run is not None
 
     # Map function dispatch by data_type
     data_config = {
@@ -446,7 +457,7 @@ def _get_secondary_timeseries_data(
 
 
 @extend_schema(
-    request=ValidationRunSerializer,
+    request=ValidationRunIdSerializer,
     responses={
         200: GetTimeseriesDataResponseSerializer,
         400: OpenApiResponse(
@@ -473,7 +484,7 @@ def get_swe_timeseries_data(request: Request) -> Response:
 
 
 @extend_schema(
-    request=ValidationRunSerializer,
+    request=ValidationRunIdSerializer,
     responses={
         200: GetTimeseriesDataResponseSerializer,
         400: OpenApiResponse(
@@ -535,7 +546,10 @@ def should_generate_swe(modules_by_name_for_job: dict[str, Module]) -> bool:
     """
     for module in modules_by_name_for_job.values():
         # Assumes group membership is already prefetched via get_cached_modules_with_groups
-        if any(group.name.lower() == "snowmelt" for group in module.groups.all()):
+        if any(
+                cast(ModuleGroup, group).name.lower() == "snowmelt"
+                for group in module.groups.all()
+        ):
             return True
     return False
 

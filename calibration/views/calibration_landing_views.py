@@ -21,11 +21,11 @@ from calibration.models import CalibrationRun, ValidationRun, ForecastRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunResponseSerializer, \
-    CalibrationRunSerializer, ImportResponseSerializer, \
+    CalibrationRunIdSerializer, ImportResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
     ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
-    LockJobRequestSerializer, CreateHindcastRequestSerializer, CreateAndRunHindcastResponseSerializer
+    LockJobRequestSerializer, CreateHindcastRequestSerializer, CreateAndRunHindcastResponseSerializer, CreateAndValidateHindcastResponseSerializer
 from calibration.util.cloud_util import join_url, copy_tree, s3_prefix_exists, S3CredentialsExpired, normalize_s3_prefix, S3ProfileError, \
     delete_all_s3_objects_under_prefix
 from calibration.util.git_util import get_git_info_internal
@@ -137,6 +137,7 @@ def create_and_run_validation(request: Request) -> Response:
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
+    assert calibration_run is not None
 
     # ─────────────────────────────────────────────
     # Require BOTH VALID_CONTROL and VALID_BEST to be DONE.
@@ -247,6 +248,7 @@ def create_and_run_forecast(request: Request) -> Response:
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
+    assert calibration_run is not None
 
     forecast_errors = []
 
@@ -284,12 +286,14 @@ def create_and_run_forecast(request: Request) -> Response:
     if forecast_errors:
         return ResponseError("Error submitting forecast", errors=forecast_errors)
 
-    cold_start_run = create_cold_start_run_internal(
-        calibration_run,
-        configuration,
-        cold_start_date=cold_start_date,
-        cycle_date=cycle_date
-    ) if cold_start_date else None
+    cold_start_run = None
+    if run_cold_start:
+        cold_start_run = create_cold_start_run_internal(
+            calibration_run,
+            configuration,
+            cold_start_date=cold_start_date,
+            cycle_date=cycle_date
+        )
 
     forecast_run = create_forecast_run_internal(
         calibration_run,
@@ -298,13 +302,13 @@ def create_and_run_forecast(request: Request) -> Response:
         cycle_date
     )
 
-    if run_cold_start:
+    if cold_start_run is not None:
         # The Forecast Job will be submitted automatically after the Cold Start Job finishes.
         submit_job(cold_start_run, logging_config=logging_config)
     else:
         submit_job(forecast_run, logging_config=logging_config)
 
-    if run_cold_start:
+    if cold_start_run is not None:
         msg = (
             f'{get_job_description(cold_start_run)} created and submitted, '
             f'followed by {get_job_description(forecast_run)}'
@@ -318,7 +322,7 @@ def create_and_run_forecast(request: Request) -> Response:
         'message': msg,
         'calibration_run_id': calibration_run.id,
         'forecast_run_id': forecast_run.id,
-        'cold_start_run_id': cold_start_run.id if run_cold_start else None,
+        'cold_start_run_id': cold_start_run.id if cold_start_run is not None else None,
         'submit_date': submit_date
     }
 
@@ -335,7 +339,15 @@ def create_and_run_forecast(request: Request) -> Response:
 @extend_schema(
     request=CreateHindcastRequestSerializer,
     responses={
-        201: CreateAndRunHindcastResponseSerializer,
+        201: OpenApiResponse(
+            response={
+                "oneOf": [
+                    CreateAndRunHindcastResponseSerializer,
+                    CreateAndValidateHindcastResponseSerializer,
+                ]
+            },
+            description="Created and submitted hindcast, or validation-only response"
+        ),
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -345,13 +357,14 @@ def create_and_run_forecast(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Create and run a new hindcast with optional cold start"
+    description="Create and run a new hindcast with optional cold start, or validate only"
 )
 @api_view(['POST'])
 @handle_exceptions
 def create_and_run_hindcast(request: Request) -> Response:
     """
-    Creates and runs a new hindcast run with an optional cold start for a specified calibration run and cycle_name name.
+    Creates and runs a new hindcast run using either an existing cold start run
+    or a newly created cold start for a specified calibration run.
 
     :param request: The HTTP request object containing calibration and iteration details.
     :return: JSON response with validation run details or error information.
@@ -371,15 +384,25 @@ def create_and_run_hindcast(request: Request) -> Response:
     cold_start_date = validator.get('cold_start_date')
     cold_start_run_id = validator.get('cold_start_run_id')
     logging_config = validator.get('logging_config')
+    validate_only = validator.get('validate_only')
 
-    if not cold_start_run_id and not cold_start_date:
-        return ResponseError("You must specify either a cold start date or an existing cold start id")
-    if cold_start_run_id and cold_start_date:
-        return ResponseError("You must specify either a cold start date or an existing cold start id but not both")
+    if cold_start_run_id:
+        if cold_start_date or cycle_date:
+            return ResponseError(
+                "You must specify either an existing cold start id, or both cycle_date "
+                "and cold_start_date, but not both"
+            )
+    else:
+        if not cold_start_date or not cycle_date:
+            return ResponseError(
+                "You must specify either an existing cold start id, or both cycle_date "
+                "and cold_start_date"
+            )
 
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
+    assert calibration_run is not None
 
     hindcast_errors = []
 
@@ -399,8 +422,15 @@ def create_and_run_hindcast(request: Request) -> Response:
         cold_start_run, error_return = get_cold_start_run(cold_start_run_id, request.user, run_status=[StatusEnum.DONE])
         if error_return:
             return error_return
+        assert cold_start_run is not None
+
+        if cold_start_run.calibration_run_id != calibration_run.id:
+            hindcast_errors.append(
+                f"Cold Start Job {cold_start_run.id} does not belong to Calibration Job {calibration_run.id}"
+            )
 
         cold_start_date = cold_start_run.cold_start_date
+        cycle_date = cold_start_run.cycle_date
 
     # Define the supported forecast window used to validate both the requested
     # hindcast cycle date and the furthest projected cycle date.
@@ -447,6 +477,21 @@ def create_and_run_hindcast(request: Request) -> Response:
     if hindcast_errors:
         return ResponseError("Error submitting hindcast", errors=hindcast_errors)
 
+    if validate_only:
+        response = {
+            'message': 'Hindcast request is valid',
+            'calibration_run_id': calibration_run.id,
+            'cold_start_run_id': cold_start_run.id if cold_start_run is not None else None,
+        }
+
+        response_validator, error_response = validate_response(CreateAndValidateHindcastResponseSerializer, response)
+        if error_response:
+            return error_response
+
+        logger.debug(
+            f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        return Response(response_validator.data)
+
     run_cold_start = False
 
     # Need to create a new cold start if we don't already have one
@@ -465,7 +510,8 @@ def create_and_run_hindcast(request: Request) -> Response:
         configuration,
         cycle_date,
         interval_cycle,
-        num_iterations
+        num_iterations,
+        created_new_cold_start=run_cold_start,
     )
 
     if run_cold_start:
@@ -645,7 +691,7 @@ def get_git_info(request: Request) -> Response:
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=CalibrationRunIdSerializer,
     responses={
         200: ImportResponseSerializer,
         400: OpenApiResponse(
@@ -674,7 +720,7 @@ def clone_job(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunIdSerializer, data)
     if error_return:
         return error_return
 
@@ -687,6 +733,7 @@ def clone_job(request: Request) -> Response:
         run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
         if error_return:
             return error_return
+        assert run is not None
 
         calibration_run_data, _ = load_calibration_run_data(run, export=True)
 
@@ -696,6 +743,7 @@ def clone_job(request: Request) -> Response:
     new_run, _, fatal_error = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
     if fatal_error:
         return fatal_error
+    assert new_run is not None
 
     # Set the new status to Saved and then we check it
     new_run.status = StatusEnum.SAVED.db_instance
@@ -703,10 +751,11 @@ def clone_job(request: Request) -> Response:
     errors = None
     if new_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
         error_object, _ = ngen_cal_input.ready_to_run(new_run)
-        if error_object.has_warnings():
-            warnings = error_object.warnings
-        if error_object.has_errors():
-            errors = error_object.errors
+        if error_object is not None:
+            if error_object.has_warnings():
+                warnings = error_object.warnings
+            if error_object.has_errors():
+                errors = error_object.errors
 
     # noinspection PyUnresolvedReferences
     response = {'message': f'Calibration Job {run.id} has been cloned to Calibration Job {new_run.id}',
@@ -1055,7 +1104,6 @@ def archive_jobs(request: Request) -> Response:
                         f"{quarantined_path}"
                     )
 
-
             # ===============================
             # UNARCHIVE (S3 → EFS)
             # ===============================
@@ -1304,31 +1352,44 @@ def import_job(request: Request) -> Response:
     run, messages, errors = import_calibration_run_data(request, data, JobGenesis.IMPORT, run=calibration_run, is_cli=is_cli)
     if errors:
         return errors
+    assert run is not None
 
     imported_and_submitted = 'updated' if calibration_run_id else 'imported'
 
     error_object, config_file = ngen_cal_input.ready_to_run(run)
 
-    if run_after_import and not error_object.warnings and not error_object.errors:
+    if run_after_import and (
+            error_object is not None and
+            not error_object.warnings and
+            not error_object.errors
+    ):
         error_response = submit_job(run)
         if error_response:
             return error_response
         imported_and_submitted = f"{imported_and_submitted} and submitted"
 
-    response = {'message': f'Calibration Job {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
+    response = {
+        'message': f'Calibration Job {run.id} {imported_and_submitted}',
+        'calibration_run_id': run.id,
+        'status': run.status.name
+    }
+
     if messages:
         response['messages'] = messages
-    if error_object.warnings:
-        response['warnings'] = error_object.warnings
-    if error_object.errors:
-        response['errors'] = error_object.errors
+
+    if error_object is not None:
+        if error_object.warnings:
+            response['warnings'] = error_object.warnings
+        if error_object.errors:
+            response['errors'] = error_object.errors
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
         return error_response
 
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}'
+    )
     return Response(response_validator.data)
 
 

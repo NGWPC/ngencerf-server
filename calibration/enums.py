@@ -80,7 +80,12 @@ class GeopackageSourceEnum(AbstractEnum):
 
 class ForecastConfigEnum(AbstractEnum):
     """
-    Enum for Forecast Cycles,
+    Enum representing all active forecast configurations.
+
+    Backed by the ForecastConfiguration table. This enum exposes the full
+    set of active configurations and serves as the base dataset.
+
+    See HindcastConfigEnum for the filtered subset that supports hindcast.
     """
 
     @classmethod
@@ -91,6 +96,27 @@ class ForecastConfigEnum(AbstractEnum):
     def get_filter(cls) -> dict[str, Any]:
         # Apply the filter to return only active elements
         return {'is_active': True}
+
+
+class HindcastConfigEnum(AbstractEnum):
+    """
+    Enum representing forecast configurations that support hindcast.
+
+    Backed by the ForecastConfiguration table, but filtered to include only
+    rows where supports_hindcast=True. This is a constrained view of
+    ForecastConfigEnum for hindcast-specific workflows.
+    """
+
+    @classmethod
+    def get_model(cls) -> Type[ForecastConfiguration]:
+        return ForecastConfiguration
+
+    @classmethod
+    def get_filter(cls) -> dict[str, Any]:
+        return {
+            "is_active": True,
+            "supports_hindcast": True,
+        }
 
 
 class DomainEnum(AbstractEnum):
@@ -222,6 +248,7 @@ class LogCategory(AbstractEnum):
     CALIBRATION = 'calibration'
     VALIDATION = 'validation'
     FORECAST = 'forecast'
+    HINDCAST = 'hindcast'
     COLD_START = 'cold start'
     VERIFICATION = 'verification'
 

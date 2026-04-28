@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -9,22 +10,23 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, LogCategory, ValidationType
 from calibration.models import CalibrationRun
-from calibration.util.calibration_validators import CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer, \
+from calibration.util.calibration_validators import CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunIdSerializer, \
     GetLogNamesResponseSerializer, ErrorResponseSerializer, GetLogRequestSerializer, GetLogsResponseSerializer, GetLogStatusRequestSerializer, \
     GetLogStatusResponseSerializer
-from calibration.util.ngen_locations import get_forecast_ngen_log_dir, get_cold_start_ngen_log_dir, get_calibration_ngen_logs, \
-    get_output_validation_run_dir, get_output_calibration_run_dir, get_validation_iteration_stdout_file, get_validation_best_stdout_file, \
-    get_validation_control_stdout_file, get_ngen_log_dir, get_gage_dir, get_forecast_dir, get_cold_start_dir, get_verification_run_dir
+from calibration.util.ngen_locations import get_validation_control_stdout_file, get_validation_best_stdout_file, get_validation_iteration_stdout_file, \
+    get_forecast_ngen_log_dir, get_ngen_log_dir, get_hindcast_ngen_log_dir, \
+    get_output_validation_run_dir, get_forecast_dir, get_cold_start_dir, get_calibration_ngen_logs, \
+    get_output_calibration_run_dir, get_gage_dir, get_verification_run_dir, get_hindcast_dir, get_cold_start_ngen_log_dir
 from calibration.views.calibration_evaluation_views import logger
 from calibration.views.calibration_run_views import map_path_to_host
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_validation_run, get_forecast_run, get_verification_run, get_calibration_run, handle_exceptions, \
-    get_user_email, validate_request, validate_response, get_elapsed_str, CerfException, truncate_large_fields, \
+    get_user_email, validate_request, validate_response, get_elapsed_str, CerfException, truncate_large_fields, get_hindcast_run, \
     find_validation_worker_with_matching_id, worker_directory_pattern
 
 
 @extend_schema(
-    request=CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer,
+    request=CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunIdSerializer,
     responses={
         200: GetLogNamesResponseSerializer,
         400: OpenApiResponse(
@@ -55,24 +57,27 @@ def get_log_names(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunIdSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
     forecast_run_id = validator.get('forecast_run_id')
+    hindcast_run_id = validator.get('hindcast_run_id')
     verification_run_id = validator.get('verification_run_id')
 
     logs_by_category, error_return = get_allowed_logs_for_request(
         calibration_run_id=calibration_run_id,
         validation_run_id=validation_run_id,
         forecast_run_id=forecast_run_id,
+        hindcast_run_id=hindcast_run_id,
         verification_run_id=verification_run_id,
         user=request.user,
     )
     if error_return:
         return error_return
+    assert logs_by_category is not None
 
     category_order = {
         LogCategory.GENERAL.value: 0,
@@ -80,7 +85,8 @@ def get_log_names(request: Request) -> Response:
         LogCategory.CALIBRATION.value: 2,
         LogCategory.COLD_START.value: 3,
         LogCategory.FORECAST.value: 4,
-        LogCategory.VERIFICATION.value: 5,
+        LogCategory.HINDCAST.value: 5,
+        LogCategory.VERIFICATION.value: 6
     }
 
     sorted_categories = sorted(
@@ -152,6 +158,7 @@ def get_log(request: Request) -> Response:
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
     forecast_run_id = validator.get('forecast_run_id')
+    hindcast_run_id = validator.get('hindcast_run_id')
     verification_run_id = validator.get('verification_run_id')
     log_name = validator.get('log_name')
     start = validator.get('start')
@@ -161,11 +168,13 @@ def get_log(request: Request) -> Response:
         calibration_run_id=calibration_run_id,
         validation_run_id=validation_run_id,
         forecast_run_id=forecast_run_id,
+        hindcast_run_id=hindcast_run_id,
         verification_run_id=verification_run_id,
         user=request.user,
     )
     if error_return:
         return error_return
+    assert logs is not None
 
     requested_log_name = normalize_log_path(log_name)
     allowed_logs = {
@@ -268,6 +277,7 @@ def get_log_status(request: Request) -> Response:
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
     forecast_run_id = validator.get('forecast_run_id')
+    hindcast_run_id = validator.get('hindcast_run_id')
     verification_run_id = validator.get('verification_run_id')
     # log_category = LogCategory(validator.get('log_category'))
     log_name = validator.get('log_name')
@@ -277,11 +287,13 @@ def get_log_status(request: Request) -> Response:
         calibration_run_id=calibration_run_id,
         validation_run_id=validation_run_id,
         forecast_run_id=forecast_run_id,
+        hindcast_run_id=hindcast_run_id,
         verification_run_id=verification_run_id,
-        user=request.user,
+        user=request.user
     )
     if error_return:
         return error_return
+    assert logs is not None
 
     requested_log_name = normalize_log_path(log_name)
     allowed_logs = {
@@ -318,6 +330,7 @@ def resolve_log_context(
         calibration_run_id: int | None,
         validation_run_id: int | None,
         forecast_run_id: int | None,
+        hindcast_run_id: int | None,
         verification_run_id: int | None,
         user,
 ):
@@ -329,6 +342,7 @@ def resolve_log_context(
         - calibration_run
         - validation_run
         - forecast_run
+        - hindcast_run
         - cold_start_run
         - verification_run
     """
@@ -343,6 +357,7 @@ def resolve_log_context(
 
     validation_run = None
     forecast_run = None
+    hindcast_run = None
     cold_start_run = None
     verification_run = None
 
@@ -368,8 +383,23 @@ def resolve_log_context(
         if error_return:
             return None, error_return
         assert forecast_run is not None
+
         calibration_run = forecast_run.calibration_run
         cold_start_run = forecast_run.cold_start_run
+
+    elif hindcast_run_id:
+        hindcast_run, error_return = get_hindcast_run(
+            hindcast_run_id,
+            user,
+            # Allow SAVED in case we are looking for cold start logs
+            run_status=[*ACTIVE_STATUSES, StatusEnum.SAVED],
+        )
+        if error_return:
+            return None, error_return
+        assert hindcast_run is not None
+
+        calibration_run = hindcast_run.calibration_run
+        cold_start_run = hindcast_run.cold_start_run
 
     elif verification_run_id:
         verification_run, error_return = get_verification_run(
@@ -381,9 +411,11 @@ def resolve_log_context(
             return None, error_return
         assert verification_run is not None
 
-        calibration_run = verification_run.forecast_run.calibration_run
+        calibration_run = verification_run.parent_run.calibration_run
 
     else:
+        # Must be a calibration
+        assert calibration_run_id is not None
         calibration_run, error_return = get_calibration_run(
             calibration_run_id,
             user,
@@ -396,6 +428,7 @@ def resolve_log_context(
         "calibration_run": calibration_run,
         "validation_run": validation_run,
         "forecast_run": forecast_run,
+        "hindcast_run": hindcast_run,
         "cold_start_run": cold_start_run,
         "verification_run": verification_run,
     }, None
@@ -406,6 +439,7 @@ def get_allowed_logs_for_request(
         calibration_run_id: int | None,
         validation_run_id: int | None,
         forecast_run_id: int | None,
+        hindcast_run_id: int | None,
         verification_run_id: int | None,
         user,
 ) -> tuple[dict[str, list[str]] | None, Response | None]:
@@ -425,6 +459,7 @@ def get_allowed_logs_for_request(
         calibration_run_id=calibration_run_id,
         validation_run_id=validation_run_id,
         forecast_run_id=forecast_run_id,
+        hindcast_run_id=hindcast_run_id,
         verification_run_id=verification_run_id,
         user=user,
     )
@@ -434,6 +469,7 @@ def get_allowed_logs_for_request(
     calibration_run = ctx["calibration_run"]
     validation_run = ctx["validation_run"]
     forecast_run = ctx["forecast_run"]
+    hindcast_run = ctx["hindcast_run"]
     cold_start_run = ctx["cold_start_run"]
     verification_run = ctx["verification_run"]
 
@@ -495,6 +531,18 @@ def get_allowed_logs_for_request(
         ngen_log_dir = get_forecast_ngen_log_dir(forecast_run)
         forecast_logs.extend(get_log_files_in_directory(ngen_log_dir))
         logs[LogCategory.FORECAST.value] = forecast_logs
+
+        if cold_start_run:
+            cold_start_dir = get_cold_start_dir(cold_start_run)
+            cold_start_logs = []
+            cold_start_logs.extend(get_log_files_in_directory(cold_start_dir))
+
+            ngen_log_dir = get_cold_start_ngen_log_dir(cold_start_run)
+            cold_start_logs.extend(get_log_files_in_directory(ngen_log_dir))
+            logs[LogCategory.COLD_START.value] = cold_start_logs
+
+    elif hindcast_run:
+        logs[LogCategory.HINDCAST.value] = get_hindcast_logs(hindcast_run)
 
         if cold_start_run:
             cold_start_dir = get_cold_start_dir(cold_start_run)
@@ -600,6 +648,58 @@ def get_all_validation_logs(calibration_run: CalibrationRun) -> list[str]:
                 logs.extend(get_log_files_in_directory(worker_logs_dir))
 
     return logs
+
+def get_hindcast_logs(hindcast_run) -> list[str]:
+    """
+    Collect hindcast-specific log files.
+
+    Includes:
+    - any *.log files found directly in the Hindcast run directory
+    - any *.log files found directly in each hindcast_<cycle> worker directory
+    - any *.log files found in the logs subdirectory of each hindcast_<cycle> worker
+    - any *.log files found in the hindcast ngen log directory
+
+    Worker directories are expected to follow the pattern hindcast_<n>,
+    where <n> is the cycle offset determined by interval_cycle and num_iterations.
+
+    :param hindcast_run: The hindcast run whose logs should be collected.
+    :return: A list of log file paths.
+    """
+    logs = []
+
+    hindcast_dir = get_hindcast_dir(hindcast_run)
+
+    # Top-level hindcast logs (for example hindcast_stdout.log)
+    logs.extend(get_log_files_in_directory(hindcast_dir))
+
+    # Worker-specific hindcast logs: hindcast_<cycle> and hindcast_<cycle>/logs
+    if hindcast_dir and os.path.exists(hindcast_dir):
+        for item in os.listdir(hindcast_dir):
+            worker_dir = os.path.join(hindcast_dir, item)
+            if os.path.isdir(worker_dir) and is_hindcast_iteration_directory(item):
+                # Log files directly in the worker directory
+                logs.extend(get_log_files_in_directory(worker_dir))
+
+                # Log files in the worker's logs subdirectory
+                worker_logs_dir = os.path.join(worker_dir, 'logs')
+                logs.extend(get_log_files_in_directory(worker_logs_dir))
+
+    # Top-level hindcast ngen logs directory, if present
+    ngen_log_dir = get_hindcast_ngen_log_dir(hindcast_run)
+    logs.extend(get_log_files_in_directory(ngen_log_dir))
+
+    return logs
+
+
+def is_hindcast_iteration_directory(directory_name: str) -> bool:
+    """
+    Return True when the directory name matches a hindcast iteration directory,
+    for example hindcast_0, hindcast_3, hindcast_6, etc.
+
+    :param directory_name: Directory name to evaluate.
+    :return: True if the directory is a hindcast worker directory.
+    """
+    return re.fullmatch(r"hindcast_\d+", directory_name) is not None
 
 
 def normalize_log_path(path: str) -> str:

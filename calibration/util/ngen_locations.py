@@ -100,8 +100,8 @@ def get_observational_filename(run: CalibrationRun) -> str:
 
 
 # Job-specific observation file
-def get_observational_file_for_job(run: CalibrationRun) -> str | None:
-    return os.path.join(get_observational_dir_for_job(run), get_observational_filename(run)) if run.gage else None
+def get_observational_file_for_job(run: CalibrationRun) -> str:
+    return os.path.join(get_observational_dir_for_job(run), get_observational_filename(run))
 
 
 def get_geopackage_dir_for_job(run: CalibrationRun) -> str:
@@ -296,18 +296,39 @@ def get_forecast_output_dir(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), 'Output')
 
 
+def get_hindcast_output_dir(hindcast_run: HindcastRun) -> str:
+    return os.path.join(get_hindcast_dir(hindcast_run), 'Output')
+
+
 def get_forecast_forcing_config_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_config.yaml')
 
 
-def get_cold_start_output_file(forecast_run: ForecastRun) -> str | None:
-    if not forecast_run.cold_start_run:
+def get_cold_start_output_file(run: ForecastRun | HindcastRun) -> str | None:
+    if isinstance(run, ForecastRun) and not run.cold_start_run:
         return None
-    return os.path.join(get_cold_start_output_dir(forecast_run.cold_start_run), f'{forecast_run.calibration_run.gage.gage_id}_output.csv')
+    return os.path.join(get_cold_start_output_dir(run.cold_start_run), f'{run.calibration_run.gage.gage_id}_output.csv')
 
 
-def get_forecast_output_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_output_dir(forecast_run), f'{forecast_run.calibration_run.gage.gage_id}_output.csv')
+def get_forecast_output_file_name(forecast_run: ForecastRun) -> str:
+    return f'{forecast_run.calibration_run.gage.gage_id}_output.csv'
+
+
+def get_hindcast_output_file_name(hindcast_run: HindcastRun) -> str:
+    return f'{hindcast_run.calibration_run.gage.gage_id}_output.csv'
+
+
+def get_forecast_output_file_path(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_output_dir(forecast_run), get_forecast_output_file_name(forecast_run))
+
+
+def get_hindcast_output_file_path(hindcast_run: HindcastRun) -> str:
+    return os.path.join(get_hindcast_output_dir(hindcast_run), get_hindcast_output_file_name(hindcast_run))
+
+
+def get_hindcast_output_file(hindcast_run: HindcastRun, iteration: int) -> str:
+    return os.path.join(get_hindcast_dir(hindcast_run), f'hindcast_{iteration}', 'Output',
+                        f'{hindcast_run.calibration_run.gage.gage_id}_output.csv')
 
 
 def get_cold_start_stdout_file(cold_start_run: ColdStartRun) -> str:
@@ -328,6 +349,10 @@ def get_cold_start_ngen_log_dir(cold_start_run: ColdStartRun) -> str:
 
 def get_forecast_ngen_log_dir(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), 'logs')
+
+
+def get_hindcast_ngen_log_dir(hindcast_run: HindcastRun) -> str:
+    return os.path.join(get_hindcast_dir(hindcast_run), 'logs')
 
 
 def get_cold_start_performance_file(cold_start_run: ColdStartRun) -> str:
@@ -351,7 +376,12 @@ def get_cold_start_realization_file(cold_start_run: ColdStartRun) -> str:
 
 
 def get_verification_run_dir(run: VerificationRun) -> str:
-    return os.path.join(get_forecast_dir(run.forecast_run), 'Verification_Run', f'verification_{run.id}')
+    if run.forecast_run_id is not None:
+        base_dir = get_forecast_dir(run.forecast_run)
+    else:
+        base_dir = get_hindcast_dir(run.hindcast_run)
+
+    return os.path.join(base_dir, 'Verification_Run', f'verification_{run.id}')
 
 
 def get_verification_yaml_config_file(run: VerificationRun) -> str:
@@ -436,7 +466,7 @@ def get_ngen_logging_basename() -> str:
     return "ngen_logging"
 
 
-def get_ngen_logging_file(run: CalibrationRun | ValidationRun | ForecastRun | ColdStartRun, import_flag: bool = False) -> str:
+def get_ngen_logging_file(run: CalibrationRun | ValidationRun | ForecastRun | HindcastRun | ColdStartRun, import_flag: bool = False) -> str:
     calibration_run = run if isinstance(run, CalibrationRun) else run.calibration_run
     job_type = run.__class__.__name__.removesuffix('Run').lower()
     file_name = f"{get_ngen_logging_basename()}_{job_type}_{run.id}{'_import' if import_flag else ''}.json"

@@ -12,7 +12,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationMetricPeriod
 from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, IterationParameter, IterationMetric
-from calibration.util.calibration_validators import CalibrationRunSerializer, \
+from calibration.util.calibration_validators import CalibrationRunIdSerializer, \
     ErrorResponseSerializer, GetCalibrationDataByIterationResponseSerializer
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
@@ -55,7 +55,7 @@ def normalize_float(value):
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=CalibrationRunIdSerializer,
     responses={
         200: GetCalibrationDataByIterationResponseSerializer,
         400: OpenApiResponse(
@@ -85,7 +85,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunIdSerializer, data)
     if error_return:
         return error_return
 
@@ -94,6 +94,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
+    assert run is not None
 
     # Fetch retrospective metrics data associated with the calibration run
     nwm_retrospective_data = list(

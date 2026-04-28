@@ -5,13 +5,14 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Callable, cast
 from urllib.parse import urlparse
 
 import fsspec
 import pandas as pd
 from datetimerange import DateTimeRange
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from mswm.manager import build_fcst, build_calib
 from rest_framework.response import Response
@@ -25,8 +26,8 @@ from calibration.util.git_util import get_git_info_internal
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
     get_forecast_stdout_file, get_forecast_dir, get_validation_iteration_git_info_file, get_validation_special_git_info_file, \
-    get_calibration_git_info_file, get_forecast_git_info_file, get_forcing_dir_for_job, get_verification_yaml_config_file, \
-    get_verification_git_info_file, get_forecast_realization_file, get_cold_start_realization_file, \
+    get_calibration_git_info_file, get_forecast_git_info_file, get_forcing_dir_for_job, get_verification_git_info_file, get_forecast_realization_file, \
+    get_cold_start_realization_file, \
     get_cold_start_stdout_file, get_cold_start_dir, \
     get_cold_start_git_info_file, get_hindcast_stdout_file, get_hindcast_git_info_file, get_hindcast_dir, get_cold_start_state, \
     get_verification_stdout_file
@@ -37,9 +38,12 @@ from calibration.views.end_of_job_processing import read_validation_output, read
     read_cold_start_output, read_verification_output, read_hindcast_output
 from calibration.views.forecast_input import create_forecast_input
 from calibration.views.ngen_cal_input import ready_to_run
+from calibration.views.verification_input import create_verification_input
 from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
+
+User = get_user_model()
 
 # Job registry to store subprocess objects keyed by a unique string (e.g., "calibration_123")
 job_registry: dict[str, subprocess.Popen] = {}
@@ -98,22 +102,27 @@ def set_job_status(run: BaseRun, status: StatusEnum | None, failure_messages: di
         run.save(update_fields=update_fields)
 
 
-def get_run_owner(run: BaseRun):
+def get_run_owner(run: BaseRun) -> User:
     """
-    Retrieve the owner of a BaseRun object.
+    Return the owner associated with a run.
 
-    Determines the owner of the job from its relationship to CalibrationRun
+    - CalibrationRun: owner is stored directly on the model.
+    - ValidationRun, ForecastRun, HindcastRun: owner is resolved via calibration_run.
+    - VerificationRun: owner is resolved via parent_run → calibration_run.
 
-    :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.).
-    :return: The owner of the associated CalibrationRun or the run itself.
-    :raises AttributeError: If the owner cannot be determined.
+    :param run: A BaseRun instance.
+    :return: The owner of the associated CalibrationRun.
+    :raises AttributeError: If the run type is unsupported or ownership cannot be resolved.
     """
-    if hasattr(run, 'owner'):  # CalibrationRun case
+    if isinstance(run, CalibrationRun):
         return run.owner
-    elif hasattr(run, 'calibration_run'):
+
+    if isinstance(run, (ValidationRun, ColdStartRun, ForecastRun, HindcastRun)):
         return run.calibration_run.owner
-    elif hasattr(run, 'forecast_run'):  # VerificationRun
-        return run.forecast_run.calibration_run.owner
+
+    if isinstance(run, VerificationRun):
+        return run.parent_run.calibration_run.owner
+
     raise AttributeError(f"Cannot determine owner for run of type {type(run).__name__}")
 
 
@@ -400,7 +409,7 @@ def run_verification_job(verification_run: VerificationRun) -> None:
     execute_job(
         verification_run,
         {
-            'verification_config': get_verification_yaml_config_file(verification_run),
+            'verification_config': create_verification_input(verification_run),
         },
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.VERIFICATION, False)
@@ -531,6 +540,7 @@ def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Resp
             validation_errors=error_object.warnings,
             errors=error_object.errors
         )
+    assert config_file is not None
 
     job_description = get_job_description(calibration_run)
     try:
@@ -580,7 +590,7 @@ def prepare_fcst_or_cold_start_job(run: ColdStartRun | ForecastRun | HindcastRun
             save_state = True
             saved_state = None
         else:  # ForecastRun
-            run_name = os.path.basename(get_forecast_dir(run))
+            run_name = os.path.basename(get_forecast_dir(cast(ForecastRun, run)))
             use_cold_start = False
             save_state = False
             saved_state = get_cold_start_state(run.cold_start_run) if run.cold_start_run else None
@@ -1028,8 +1038,12 @@ def subset_by_time_range(
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
     # Convert DateTimeRange boundaries to UTC Timestamps
-    start_dt = pd.to_datetime(date_time_range.start_datetime, utc=True)
-    end_dt = pd.to_datetime(date_time_range.end_datetime, utc=True)
+    start = date_time_range.start_datetime
+    end = date_time_range.end_datetime
+    assert start is not None and end is not None
+
+    start_dt = pd.to_datetime(start, utc=True)
+    end_dt = pd.to_datetime(end, utc=True)
 
     fs_in, _scheme = _get_fs_and_scheme(input_file)
 
