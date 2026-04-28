@@ -7,23 +7,24 @@ import calibration.views.get_jobs_views
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
     calibration_evaluation_views, calibration_forecast_views, calibration_regionalization_views, \
-    calibration_verification_views, calibration_secondary_data_views, calibration_download_views, calibration_log_files_views
+    calibration_verification_views, calibration_secondary_data_views, calibration_download_views, calibration_log_files_views, \
+    calibration_create_jobs_views
 
 urlpatterns = [
     ##################################
     # Landing page
     ##################################
-    path('calibration/create_calibration_run/', calibration_landing_views.create_calibration_run, name="createCalibrationRun"),
-    path('calibration/create_and_run_validation/', calibration_landing_views.create_and_run_validation, name="createAndRunValidation"),
-    path('calibration/create_and_run_forecast/', calibration_landing_views.create_and_run_forecast, name="createAndRunForecast"),
-    path('calibration/create_and_run_hindcast/', calibration_landing_views.create_and_run_hindcast, name="createAndRunHndcast"),
+    path('calibration/create_calibration_run/', calibration_create_jobs_views.create_calibration_run, name="createCalibrationRun"),
+    path('calibration/create_and_run_validation/', calibration_create_jobs_views.create_and_run_validation, name="createAndRunValidation"),
+    path('calibration/create_and_run_forecast/', calibration_create_jobs_views.create_and_run_forecast, name="createAndRunForecast"),
+    path('calibration/create_and_run_hindcast/', calibration_create_jobs_views.create_and_run_hindcast, name="createAndRunHndcast"),
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
     path('calibration/get_git_info/', calibration_landing_views.get_git_info, name="getGitInfo"),
     path('calibration/load_calibration_run/', calibration.views.calibration_import_export_views.load_calibration_run, name="loadCalibrationRun"),
     path('calibration/delete_jobs/', calibration_landing_views.delete_jobs, name="deleteJobs"),
     path('calibration/archive_jobs/', calibration_landing_views.archive_jobs, name="archiveJobs"),
     path('calibration/lock_jobs/', calibration_landing_views.lock_jobs, name="lockJobs"),
-    path('calibration/clone_job/', calibration_landing_views.clone_job, name="cloneJob"),
+    path('calibration/clone_job/', calibration_create_jobs_views.clone_job, name="cloneJob"),
 
     ##################################
     # Get Jobs
