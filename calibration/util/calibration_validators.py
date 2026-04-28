@@ -1897,6 +1897,7 @@ class SlurmSubmitResponseSerializer(BaseSerializer):
 ##################################
 class MFASetupResponseSerializer(BaseSerializer):
     otpauth_url = serializers.CharField()
+    authenticator_key = serializers.CharField()
 
 
 class MFASetupRequestSerializer(BaseSerializer):

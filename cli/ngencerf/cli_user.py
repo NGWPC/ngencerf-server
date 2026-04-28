@@ -224,8 +224,10 @@ def perform_full_login(_retry=False) -> bool:
 
         setup_json = setup_resp.json()
         otpauth_url = setup_json.get("otpauth_url")
+        authenticator_key = setup_json.get("authenticator_key")
 
         print("\nOpening QR code for MFA setup...")
+        print("\nScan the QR code or enter this secret key into your authenticator app.")
 
         try:
             img = qrcode.make(otpauth_url)
@@ -235,7 +237,9 @@ def perform_full_login(_retry=False) -> bool:
             print("\nFallback: paste this into a QR generator or enter manually:")
             print(otpauth_url)
 
-        code = input("Enter 6-digit code: ").strip()
+        print(f"Secret key: {authenticator_key}")
+
+        code = input("\nEnter the 6-digit code from your authenticator app: ").strip()
 
         confirm_resp = requests.post(
             MFA_CONFIRM_SETUP_ENDPOINT,
@@ -270,7 +274,7 @@ def perform_full_login(_retry=False) -> bool:
     if response_json.get("mfa_required"):
         mfa_token = response_json.get("mfa_token")
 
-        code = input("Enter MFA code or recovery code: ").strip()
+        code = input("Enter the 6-digit authenticator code or a recovery code: ").strip()
 
         verify_resp = requests.post(
             MFA_VERIFY_ENDPOINT,

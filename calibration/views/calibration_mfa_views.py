@@ -243,6 +243,7 @@ def setup_mfa(request: Request) -> Response:
 
     response = {
         "otpauth_url": otpauth_url,
+        "authenticator_key": secret
     }
 
     # Validate the outgoing response so it matches the documented serializer.
