@@ -426,18 +426,13 @@ def cancel_slurm_job(
     """
     Cancel a job through the Parallel Works / Slurm execution path.
 
-    Planned behavior:
-    1. call Slurm cancellation command using slurm_job_id
-    2. publish a CANCELED event (or FAILED if cancellation fails)
-
-    NOTE:
-    This function is currently a stub. The actual Slurm cancellation command
-    (e.g., `scancel`) is not yet implemented.
+    Runs scancel and publishes a terminal CANCELED event on success,
+    or FAILED if scancel returns a non-zero exit code.
 
     :param job_type: Normalized job type string
     :param run_id: Run identifier
     :param slurm_job_id: Slurm job identifier (required)
-    :return: True if cancellation was successful (stubbed as True)
+    :return: True if cancellation succeeded, False otherwise
     :raises ValueError: If slurm_job_id is None
     """
     if slurm_job_id is None:
@@ -453,14 +448,11 @@ def cancel_slurm_job(
         slurm_job_id,
     )
 
-    # TODO:
-    # subprocess.run(["scancel", str(slurm_job_id)], check=True)
-    # publish_job_event(...)
+    result = subprocess.run(["scancel", str(slurm_job_id)], capture_output=True, text=True)
+    if result.returncode != 0:
+        logger.error("scancel failed for slurm_job_id=%s: %s", slurm_job_id, result.stderr.strip())
+        publish_terminal_job_event(job_type, run_id, SlurmCallbackStatusEnum.FAILED, slurm_job_id)
+        return False
 
-    publish_terminal_job_event(
-        job_type,
-        run_id,
-        SlurmCallbackStatusEnum.CANCELED,
-        slurm_job_id,
-    )
+    publish_terminal_job_event(job_type, run_id, SlurmCallbackStatusEnum.CANCELED, slurm_job_id)
     return True
