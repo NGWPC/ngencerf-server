@@ -450,9 +450,16 @@ def login(request: Request) -> Response:
     # Case 1: MFA OFF -> ignore all per-user MFA state and stored credentials.
     if not mfa_global:
         refresh = RefreshToken.for_user(user)
+
+        access_token = refresh.access_token.__str__()
+        refresh_token = refresh.__str__()
+
         response = {
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
+            "access": access_token,
+            "refresh": refresh_token,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "message": "Login successful",
         }
 
         response_validator, error_response = validate_response(TokenPairResponseSerializer, response)
@@ -597,9 +604,16 @@ def verify_mfa(request: Request) -> Response:
         logger.info(f'{get_caller_name()}() recovery code used for MFA verify user: {user.email}')
 
     refresh = RefreshToken.for_user(user)
+
+    access_token = refresh.access_token.__str__()
+    refresh_token = refresh.__str__()
+
     response = {
-        "access": str(refresh.access_token),
-        "refresh": str(refresh),
+        "access": access_token,
+        "refresh": refresh_token,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "message": "MFA verification successful",
     }
 
     response_validator, error_response = validate_response(TokenPairResponseSerializer, response)

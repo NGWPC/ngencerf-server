@@ -1941,6 +1941,9 @@ class MFAVerifySerializer(BaseSerializer):
 class TokenPairResponseSerializer(BaseSerializer):
     access = serializers.CharField(required=True)
     refresh = serializers.CharField(required=True)
+    first_name = serializers.CharField(required=True, allow_blank=True)
+    last_name = serializers.CharField(required=True, allow_blank=True)
+    message = serializers.CharField(required=False, allow_blank=True)
 
 
 class MFASetupRequiredResponseSerializer(GenericMessageResponseSerializer):
