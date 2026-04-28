@@ -1,11 +1,10 @@
 import logging
 import os
-import shutil
 import socket
 import subprocess
 from typing import Any
 
-from job_runner.job_executor_common import publish_terminal_job_event
+from job_runner.job_executor_common import publish_job_event, publish_terminal_job_event
 from job_runner.job_runner_enums import SlurmCallbackStatusEnum
 
 logger = logging.getLogger(__name__)
@@ -13,7 +12,6 @@ logger = logging.getLogger(__name__)
 CONTROLLER_HOSTNAME = socket.gethostname()
 LOCAL_DATA_DIR = os.environ.get('LOCAL_DATA_DIR')
 CONTAINER_DATA_DIR = os.environ.get('CONTAINER_DATA_DIR')
-CALLBACKS_DIR = os.path.join(LOCAL_DATA_DIR, "slurm-callbacks", "pending")
 NWM_CAL_MGR_SINGULARITY_CONTAINER_PATH = os.environ.get('nwm_cal_mgr_singularity_container_path')
 NWM_FCST_MGR_SINGULARITY_CONTAINER_PATH = os.environ.get('nwm_fcst_mgr_singularity_container_path')
 NWM_VERF_SINGULARITY_CONTAINER_PATH = os.environ.get('nwm_verf_singularity_container_path')
@@ -23,6 +21,9 @@ SINGULARITY_RUN_NWM_FCST_MGR_CMD = f"/usr/bin/time -v singularity run -B {LOCAL_
 SINGULARITY_RUN_NWM_VERF_CMD = f"/usr/bin/time -v singularity run -B {LOCAL_DATA_DIR}:{CONTAINER_DATA_DIR} --env NGENCERF_URL={NGENCERF_URL} {NWM_VERF_SINGULARITY_CONTAINER_PATH}"
 PARTITIONS_STR = os.environ.get('PARTITIONS')
 PARTITIONS = PARTITIONS_STR.split(',')
+SLURM_JOB_METRICS = os.environ.get('SLURM_JOB_METRICS')
+
+_PUBLISH_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'publish_job_event.py')
 
 
 def handle_slurm_message(body: dict[str, Any]) -> None:
@@ -56,21 +57,6 @@ def handle_slurm_message(body: dict[str, Any]) -> None:
     raise ValueError(f"Unsupported message_type: {message_type}")
 
 
-def get_callback(callbacks_dir, callback_url, auth_token, **kwargs):
-    data = {key: value for key, value in kwargs.items()}
-    json_data = ', '.join([f'\"{key}\": \"{value}\"' for key, value in data.items()])
-    callback_command = f'curl -s -o {callbacks_dir}/callback.json -w "%{{http_code}}" --location "{callback_url}" --header "Content-Type: application/json" --header "Authorization: Bearer {auth_token}" --data \'{{{json_data}}}\''
-    return callback_command
-
-
-def write_callback(callbacks_dir, callback_command):
-    os.makedirs(callbacks_dir, exist_ok=True)
-    callback_file_path = os.path.join(callbacks_dir, 'callback')
-    with open(callback_file_path, 'w') as file:
-        file.write(callback_command)
-    logger.info(f'Writing callback script {callback_file_path}')
-
-
 def ensure_file_owned(file_path: str):
     try:
         current_uid = os.getuid()
@@ -90,8 +76,10 @@ def ensure_file_owned(file_path: str):
 def write_slurm_script(run_id, job_type, input_file_local, output_file_local, singularity_run_cmd, nprocs=1):
     job_script = output_file_local.rsplit('.', 1)[0] + '.slurm.sh'
     job_dir = os.path.dirname(os.path.dirname(input_file_local))
-    callbacks_dir = os.path.join(CALLBACKS_DIR, job_type, run_id)
     performance_file = output_file_local.replace('stdout', 'performance')
+
+    rabbitmq_url = os.environ.get('RABBITMQ_URL', '')
+    rabbitmq_queue = os.environ.get('RABBITMQ_JOB_EVENTS_QUEUE', 'job_events_queue')
 
     ensure_file_owned(job_script)
     ensure_file_owned(output_file_local)
@@ -107,6 +95,9 @@ def write_slurm_script(run_id, job_type, input_file_local, output_file_local, si
         script.write('\n')
 
         script.write('echo Running Job $SLURM_JOB_ID \n\n')
+
+        script.write(f'export RABBITMQ_URL="{rabbitmq_url}"\n')
+        script.write(f'export RABBITMQ_JOB_EVENTS_QUEUE="{rabbitmq_queue}"\n\n')
 
         current_uid = os.getuid()
         current_gid = os.getgid()
@@ -124,18 +115,13 @@ def write_slurm_script(run_id, job_type, input_file_local, output_file_local, si
             f'| sudo xargs -0 -r -P"$p" chmod a+rwX\n\n'
         )
 
-        script.write(f'echo export job_status=STARTING > {callbacks_dir}/callback-inputs.sh\n\n')
-        script.write(f'echo export slurm_job_id=$SLURM_JOB_ID >> {callbacks_dir}/callback-inputs.sh\n')
-        script.write(f'echo export performance_file={performance_file} >> {callbacks_dir}/callback-inputs.sh\n')
-        script.write(f'echo export job_type={job_type} >> {callbacks_dir}/callback-inputs.sh\n')
-        script.write(f'echo export run_id={run_id} >> {callbacks_dir}/callback-inputs.sh\n')
-
         notify_job_start_cmd = (
-            f'curl -X POST http://{CONTROLLER_HOSTNAME}:5000/job-start '
-            f'-d "job_type={job_type}" -d "run_id={run_id}"\n'
+            f'python3 {_PUBLISH_SCRIPT} '
+            f'--job_type {job_type} --run_id {run_id} '
+            f'--job_status STARTING --slurm_job_id $SLURM_JOB_ID\n'
         )
-
         script.write(notify_job_start_cmd)
+
         script.write('\n# Extract the exact CPUs Slurm assigned to this job\n')
         script.write('CPUSET=$(python3 -c "import os; print(*sorted(os.sched_getaffinity(0)), sep=\',\')")\n')
         script.write('echo "Job isolated to CPUs: $CPUSET"\n\n')
@@ -143,7 +129,6 @@ def write_slurm_script(run_id, job_type, input_file_local, output_file_local, si
         script.write('export SINGULARITYENV_OMPI_MCA_rmaps_base_oversubscribe=1\n\n')
 
         modified_singularity_run_cmd = f'taskset -c "${{CPUSET}}" {singularity_run_cmd}'
-
         script.write(f'{modified_singularity_run_cmd}\n')
 
         script.write('if [ $? -eq 0 ]; then\n')
@@ -155,13 +140,17 @@ def write_slurm_script(run_id, job_type, input_file_local, output_file_local, si
 
         script.write('echo Job Completed with status $job_status\n')
         script.write('echo\n\n')
-        script.write(f'echo export job_status=${{job_status}} >> {callbacks_dir}/callback-inputs.sh\n\n')
 
-        postprocess_cmd = (
-            f'curl -X POST http://{CONTROLLER_HOSTNAME}:5000/postprocess '
-            f'-d "performance_file={performance_file}" -d "slurm_job_id=$SLURM_JOB_ID" -d "job_type={job_type}" -d "run_id={run_id}"\n'
+        if SLURM_JOB_METRICS:
+            script.write(f'sleep 5\n')
+            script.write(f'sacct -j $SLURM_JOB_ID -o {SLURM_JOB_METRICS} --parsable --units=K > {performance_file}\n\n')
+
+        notify_job_end_cmd = (
+            f'python3 {_PUBLISH_SCRIPT} '
+            f'--job_type {job_type} --run_id {run_id} '
+            f'--job_status ${{job_status}} --slurm_job_id $SLURM_JOB_ID\n'
         )
-        script.write(postprocess_cmd)
+        script.write(notify_job_end_cmd)
 
     return job_script
 
@@ -196,7 +185,6 @@ def submit_job(input_file, output_file, run_id, job_type, singularity_run_cmd, n
     logger.info(f"Starting job submission for job run ID: {run_id}")
     input_file_local = input_file.replace(CONTAINER_DATA_DIR, LOCAL_DATA_DIR)
     output_file_local = output_file.replace(CONTAINER_DATA_DIR, LOCAL_DATA_DIR)
-    callbacks_dir = os.path.join("postprocess", job_type, run_id)
     if not os.path.exists(input_file_local):
         error_msg = f"File path '{input_file_local}' does not exist on the shared filesystem under {LOCAL_DATA_DIR}."
         logger.exception(error_msg)
@@ -208,8 +196,6 @@ def submit_job(input_file, output_file, run_id, job_type, singularity_run_cmd, n
 
         slurm_job_id, error = _run_sbatch(job_script, partition=partition)
         if error:
-            shutil.rmtree(callbacks_dir)
-            logger.info(f'Removed {callbacks_dir}')
             raise RuntimeError(error)
 
         return slurm_job_id
@@ -225,7 +211,6 @@ def submit_calibration_job(run_id, payload):
     job_type = 'calibration'
     input_file = payload.get('input_file')
     output_file = payload.get('output_file')
-    auth_token = payload.get('auth_token')
     nprocs = payload.get('nprocs', '1')
     node_type = payload.get('node_type', None)
 
@@ -235,25 +220,11 @@ def submit_calibration_job(run_id, payload):
     if not output_file:
         raise ValueError("No output_file provided")
 
-    if not auth_token:
-        raise ValueError("No auth_token provided")
-
     if node_type:
         if node_type not in PARTITIONS:
             raise ValueError(f"node_type {node_type} provided does not match any partitions {PARTITIONS_STR}")
 
     singularity_run_cmd = f"{SINGULARITY_RUN_NWM_CAL_MGR_CMD} calibration {input_file}"
-
-    callbacks_dir = os.path.join(CALLBACKS_DIR, job_type, run_id)
-
-    callback = get_callback(
-        callbacks_dir,
-        f'http://{CONTROLLER_HOSTNAME}:8000/calibration/calibration_job_slurm_callback/',
-        auth_token,
-        calibration_run_id=run_id,
-        job_status="__job_status__"
-    )
-    write_callback(callbacks_dir, callback)
 
     return submit_job(input_file, output_file, run_id, job_type, singularity_run_cmd, nprocs=nprocs, partition=node_type)
 
@@ -262,7 +233,6 @@ def submit_validation_job(run_id, payload):
     job_type = 'validation'
     input_file = payload.get('input_file')
     output_file = payload.get('output_file')
-    auth_token = payload.get('auth_token')
     validation_type = payload.get('validation_type')
     worker_name = payload.get('worker_name')
     iteration = payload.get('iteration')
@@ -275,9 +245,6 @@ def submit_validation_job(run_id, payload):
     if not output_file:
         raise ValueError("No output_file provided")
 
-    if not auth_token:
-        raise ValueError("No auth_token provided")
-
     if node_type:
         if node_type not in PARTITIONS:
             raise ValueError(f"node_type {node_type} provided does not match any partitions {PARTITIONS_STR}")
@@ -289,7 +256,7 @@ def submit_validation_job(run_id, payload):
             raise ValueError("No iteration provided for validation_type 'valid_iteration'")
 
         try:
-            iteration_int = int(iteration)
+            int(iteration)
         except ValueError:
             raise ValueError("Invalid iteration provided; must be an integer")
 
@@ -300,17 +267,6 @@ def submit_validation_job(run_id, payload):
     else:
         raise ValueError("Invalid validation_type provided; must be one of 'valid_control', 'valid_best', or 'valid_iteration'")
 
-    callbacks_dir = os.path.join(CALLBACKS_DIR, job_type, run_id)
-
-    callback = get_callback(
-        callbacks_dir,
-        f'http://{CONTROLLER_HOSTNAME}:8000/calibration/validation_job_slurm_callback/',
-        auth_token,
-        validation_run_id=run_id,
-        job_status="__job_status__"
-    )
-    write_callback(callbacks_dir, callback)
-
     return submit_job(input_file, output_file, run_id, job_type, singularity_run_cmd, nprocs=nprocs, partition=node_type)
 
 
@@ -319,7 +275,6 @@ def submit_forecast_job(run_id, payload):
     validation_yaml = payload.get('validation_yaml')
     realization_file = payload.get('realization_file')
     stdout_file = payload.get('stdout_file')
-    auth_token = payload.get('auth_token')
 
     if not validation_yaml:
         raise ValueError("No validation_yaml provided")
@@ -330,21 +285,7 @@ def submit_forecast_job(run_id, payload):
     if not stdout_file:
         raise ValueError("No stdout_file provided")
 
-    if not auth_token:
-        raise ValueError("No auth_token provided")
-
     singularity_run_cmd = f"{SINGULARITY_RUN_NWM_FCST_MGR_CMD} forecast {validation_yaml} {realization_file}"
-
-    callbacks_dir = os.path.join(CALLBACKS_DIR, job_type, run_id)
-
-    callback = get_callback(
-        callbacks_dir,
-        f'http://{CONTROLLER_HOSTNAME}:8000/calibration/forecast_job_slurm_callback/',
-        auth_token,
-        forecast_run_id=run_id,
-        job_status="__job_status__"
-    )
-    write_callback(callbacks_dir, callback)
 
     return submit_job(validation_yaml, stdout_file, run_id, job_type, singularity_run_cmd)
 
@@ -358,7 +299,6 @@ def submit_hindcast_job(run_id, payload):
     num_iterations = payload.get('num_iterations')
     use_state = payload.get('use_state')
     stdout_file = payload.get('stdout_file')
-    auth_token = payload.get('auth_token')
 
     if not validation_yaml:
         raise ValueError("No validation_yaml provided")
@@ -381,21 +321,7 @@ def submit_hindcast_job(run_id, payload):
     if not stdout_file:
         raise ValueError("No stdout_file provided")
 
-    if not auth_token:
-        raise ValueError("No auth_token provided")
-
     singularity_run_cmd = f"{SINGULARITY_RUN_NWM_FCST_MGR_CMD} hindcast {validation_yaml} {config_file} {run_name} {interval_cycle} {num_iterations} {use_state}"
-
-    callbacks_dir = os.path.join(CALLBACKS_DIR, job_type, run_id)
-
-    callback = get_callback(
-        callbacks_dir,
-        f'http://{CONTROLLER_HOSTNAME}:8000/calibration/hindcast_job_slurm_callback/',
-        auth_token,
-        hindcast_run_id=run_id,
-        job_status="__job_status__"
-    )
-    write_callback(callbacks_dir, callback)
 
     return submit_job(validation_yaml, stdout_file, run_id, job_type, singularity_run_cmd)
 
@@ -405,7 +331,6 @@ def submit_cold_start_job(run_id, payload):
     validation_yaml = payload.get('validation_yaml')
     realization_file = payload.get('realization_file')
     stdout_file = payload.get('stdout_file')
-    auth_token = payload.get('auth_token')
 
     if not validation_yaml:
         raise ValueError("No validation_yaml provided")
@@ -416,21 +341,7 @@ def submit_cold_start_job(run_id, payload):
     if not stdout_file:
         raise ValueError("No stdout_file provided")
 
-    if not auth_token:
-        raise ValueError("No auth_token provided")
-
     singularity_run_cmd = f"{SINGULARITY_RUN_NWM_FCST_MGR_CMD} cold_start {validation_yaml} {realization_file}"
-
-    callbacks_dir = os.path.join(CALLBACKS_DIR, job_type, run_id)
-
-    callback = get_callback(
-        callbacks_dir,
-        f'http://{CONTROLLER_HOSTNAME}:8000/calibration/cold_start_job_slurm_callback/',
-        auth_token,
-        cold_start_run_id=run_id,
-        job_status="__job_status__"
-    )
-    write_callback(callbacks_dir, callback)
 
     return submit_job(validation_yaml, stdout_file, run_id, job_type, singularity_run_cmd)
 
@@ -439,7 +350,6 @@ def submit_verification_job(run_id, payload):
     job_type = 'verification-job'
     verification_config = payload.get('verification_config')
     stdout_file = payload.get('stdout_file')
-    auth_token = payload.get('auth_token')
 
     if not verification_config:
         raise ValueError("No verification_config provided")
@@ -447,21 +357,7 @@ def submit_verification_job(run_id, payload):
     if not stdout_file:
         raise ValueError("No stdout_file provided")
 
-    if not auth_token:
-        raise ValueError("No auth_token provided")
-
     singularity_run_cmd = f"{SINGULARITY_RUN_NWM_VERF_CMD} verification {verification_config}"
-
-    callbacks_dir = os.path.join(CALLBACKS_DIR, job_type, run_id)
-
-    callback = get_callback(
-        callbacks_dir,
-        f'http://{CONTROLLER_HOSTNAME}:8000/calibration/verification_job_slurm_callback/',
-        auth_token,
-        verification_run_id=run_id,
-        job_status="__job_status__"
-    )
-    write_callback(callbacks_dir, callback)
 
     return submit_job(verification_config, stdout_file, run_id, job_type, singularity_run_cmd)
 
@@ -491,14 +387,11 @@ def submit_slurm_job(job_type: str, run_id: int, payload: dict[str, Any]) -> Non
        - Allows Django to persist the Slurm job identifier
 
     2. STARTING
-       - Publish when the job actually begins execution
-       - Should include slurm_job_id
+       - Published from inside the SLURM job script via publish_job_event.py
        - Allows Django to mark the run as RUNNING and set run_start
 
-    3. Terminal callback (exactly one)
-       - Status must be one of:
-         DONE | FAILED | CANCELED
-       - Must include slurm_job_id
+    3. Terminal callback (exactly one of DONE / FAILED / CANCELED)
+       - Published from inside the SLURM job script via publish_job_event.py
        - Triggers final status updates and post-processing in Django
 
     :param job_type: Normalized job type string
@@ -517,9 +410,12 @@ def submit_slurm_job(job_type: str, run_id: int, payload: dict[str, Any]) -> Non
         slurm_job_id,
     )
 
-    # TODO: publish SUBMITTED event with slurm_job_id
-    # TODO: publish STARTING event with slurm_job_id when execution begins
-    # TODO: publish terminal DONE / FAILED / CANCELED event with slurm_job_id
+    publish_job_event(
+        job_type,
+        run_id,
+        SlurmCallbackStatusEnum.SUBMITTED,
+        slurm_job_id=slurm_job_id,
+    )
 
 
 def cancel_slurm_job(
@@ -529,14 +425,6 @@ def cancel_slurm_job(
 ) -> bool:
     """
     Cancel a job through the Parallel Works / Slurm execution path.
-
-    This function requires a valid slurm_job_id. The external consumer does
-    not perform any lookup against Django or other storage, so the identifier
-    must be provided in the incoming message.
-
-    At present, the actual Slurm cancellation command is not yet implemented.
-    As placeholder behavior, this function logs the request and publishes a
-    terminal CANCELED event.
 
     Planned behavior:
     1. call Slurm cancellation command using slurm_job_id
