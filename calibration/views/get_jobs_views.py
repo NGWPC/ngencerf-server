@@ -503,8 +503,11 @@ def _normalize_filters_and_sort(filters: dict | None, sort: dict | None) -> tupl
     # sort: if field is blank/whitespace or sort is not a dict, treat as "no sort".
     if not isinstance(sort, dict):
         sort = None
-    elif sort and (not sort.get("field") or str(sort.get("field")).strip() == ""):
-        sort = None
+    elif sort:
+        field = sort.get("field")
+
+        if not isinstance(field, str) or not field.strip():
+            sort = None
 
     return filters, sort
 

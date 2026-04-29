@@ -423,10 +423,12 @@ def _get_secondary_timeseries_data(
         return ResponseError(f"Unsupported data type: {data_type}")
 
     cfg = data_config[data_type]
-    label = cfg["label"]
+    label = cast(str, cfg["label"])
+    csv_func = cast(Callable[[ValidationRun], str], cfg["csv_func"])
+    png_func = cast(Callable[[ValidationRun], str], cfg["png_func"])
 
     # Read the CSV file and convert to JSON
-    csv_filepath = cfg["csv_func"](run)
+    csv_filepath = csv_func(run)
     try:
         ts_data = read_csv_as_json(csv_filepath)
     except Exception as e:
@@ -435,7 +437,7 @@ def _get_secondary_timeseries_data(
 
     response = {
         "message": f"Retrieved {label} timeseries data for {get_job_description(run)}",
-        "timeseries_image": png_to_base64_url(cfg["png_func"](run)),
+        "timeseries_image": png_to_base64_url(png_func(run)),
         "timeseries_data": ts_data,
     }
 

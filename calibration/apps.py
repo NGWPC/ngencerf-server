@@ -5,7 +5,6 @@ import sys
 from django.apps import AppConfig
 from django.conf import settings
 
-from calibration.util.cloud_util import check_aws_credentials, S3CredentialsExpired
 from calibration.util.db_diagnostics import patch_ensure_connection_with_diagnostics
 from calibration.util.git_util import print_git_info_all
 from calibration.views.mpi_rules import log_mpi_rules

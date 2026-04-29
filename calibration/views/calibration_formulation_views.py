@@ -68,8 +68,7 @@ def get_modules(request) -> Response:
             "display_name": module.display_name,
             "description": module.description,
             "is_active": module.is_active,
-            "groups": sorted([g.name for g in module.groups.all()], key=lambda n: n)
-
+            "groups": get_module_group_names(module)
         }
         for module in cached_modules.values()
     ]
@@ -708,7 +707,7 @@ def split_routing_modules(
     non_routing: set[str] = set()
 
     for name in module_names:
-        group_names = {g.name for g in cached_modules[name].groups.all()}
+        group_names = set(get_module_group_names(cached_modules[name]))
         if "Routing" in group_names:
             routing.add(name)
         else:
@@ -802,10 +801,10 @@ def validate_formulation(module_names: set[str], geopackage_path: str | None, re
     group_counts = {grp_name: 0 for grp_name in group_defs}
 
     # Parse the groups for each module once and update the group counts
-    for module in my_modules:
-        for group in module.groups.all():
-            if group.name in group_counts:  # Only count groups that are in the group_requirements
-                group_counts[group.name] += 1
+    for module_obj in my_modules:
+        for group_name in get_module_group_names(module_obj):
+            if group_name in group_counts:
+                group_counts[group_name] += 1
 
     # 1) Check module_dependencies
     dependency_defs = formulation_validations["formulation_rules"].get("module_dependencies", {})
@@ -843,7 +842,7 @@ def validate_formulation(module_names: set[str], geopackage_path: str | None, re
             # Find which modules from this group are currently specified
             modules_in_group = sorted(
                 m.name for m in my_modules
-                if any(g.name == group_name for g in m.groups.all())
+                if group_name in get_module_group_names(m)
             )
 
             msg = f"{group_name} group is expected to have {expected_str} {word}, but it currently has {count}"
@@ -870,7 +869,8 @@ def validate_formulation(module_names: set[str], geopackage_path: str | None, re
     if 'Topoflow-Glacier' in module_names and geopackage_path:
         glacier_status = validate_topoflow_glacier(geopackage_path)
         if not glacier_status.get('result'):
-            nonfatal_errors.append(glacier_status.get('message'))
+            message = glacier_status.get("message") or "Topoflow glacier validation failed."
+            nonfatal_errors.append(message)
 
     # 5) If no fatal errors, indicate that the formulation is Calibratable
     if not fatal_errors:
@@ -893,13 +893,14 @@ def get_represented_groups_message(module_names: set[str]) -> str | None:
     """
     cached_modules = get_cached_modules_with_groups()
 
-    represented_groups = set()
+    represented_groups: set[str] = set()
+
     for name in module_names:
-        module = cached_modules.get(name)
-        if not module:
+        module_obj = cached_modules.get(name)
+        if not module_obj:
             continue
-        for g in module.groups.all():
-            represented_groups.add(g.name)
+
+        represented_groups.update(get_module_group_names(module_obj))
 
     if not represented_groups:
         return None
@@ -928,10 +929,17 @@ def check_completeness(module_names: set[str], fatal_errors: list[str], nonfatal
     modules_included = [modules_by_name[name] for name in module_names if name in modules_by_name]
 
     # Get all output variable names from cacheable modules
-    all_output_vars = {ov.name for m in modules_by_id.values() for ov in m.output_variables.all()}
-
+    all_output_vars = {
+        name
+        for m in modules_by_id.values()
+        for name in get_module_output_variable_names(m)
+    }
     # Collect only the output variables produced by selected modules
-    included_output_vars = {ov.name for m in modules_included for ov in m.output_variables.all()}
+    included_output_vars = {
+        name
+        for m in modules_included
+        for name in get_module_output_variable_names(m)
+    }
 
     missing_output_vars = sorted(all_output_vars - included_output_vars)
     produced_output_vars = sorted(included_output_vars)
@@ -981,7 +989,8 @@ def build_module_property_write_plan(
         *,
         module_properties: list[dict[str, Any]] | None,
         user,
-        modules_by_name: dict[str, Any],
+        modules_by_name: dict[str, object],
+
         allowed_module_names: set[str] | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """
@@ -1054,12 +1063,14 @@ def build_module_property_write_plan(
         raw_value = p["property_value"]
 
         module_obj = modules_by_name.get(module_name)
-        if not module_obj:
+        if module_obj is None:
             errors.append(f"[{i}] Unknown module '{module_name}'")
             continue
 
-        requested_module_ids.add(module_obj.id)
-        resolved_items.append((module_name, module_obj.id, prop_name, raw_value))
+        module_id = getattr(module_obj, "id")
+
+        requested_module_ids.add(module_id)
+        resolved_items.append((module_name, module_id, prop_name, raw_value))
 
     if errors:
         return None, {"module_properties": errors}
@@ -1180,3 +1191,13 @@ def apply_module_property_write_plan(*, run: CalibrationRun, plan: dict[str, Any
 
     # Single bulk insert for performance.
     CalibrationModulePropertyValue.objects.bulk_create(rows, ignore_conflicts=False)
+
+
+def get_module_group_names(module_obj: Any) -> list[str]:
+    # Django's dynamic ManyToMany manager is not always understood by PyCharm.
+    return sorted(group.name for group in module_obj.groups.all())
+
+
+def get_module_output_variable_names(module_obj: Any) -> list[str]:
+    # Django dynamic ManyToMany typing workaround for PyCharm.
+    return sorted(output_variable.name for output_variable in module_obj.output_variables.all())

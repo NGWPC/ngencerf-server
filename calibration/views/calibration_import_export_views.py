@@ -186,6 +186,7 @@ def import_calibration_run_data(request: Request,
 
         # If a gage_id was provided, ensure the gage exists
         if gage_id:
+            assert isinstance(gage_id, str)
             gage_dict = get_gage_by_id(gage_id)
             if not gage_dict:
                 return None, None, ResponseError(

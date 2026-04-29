@@ -22,9 +22,11 @@ DJANGO_START_TIME = datetime.now(tz=timezone.utc)
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FILE_PATH = os.path.abspath(str(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(FILE_PATH))
+THIS_DIR = os.path.dirname(FILE_PATH)
 
-dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+dotenv_path = os.path.join(THIS_DIR, '.env')
 print(f'Loading values from {dotenv_path}')
 load_dotenv(dotenv_path)
 
