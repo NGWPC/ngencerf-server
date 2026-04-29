@@ -291,7 +291,7 @@ def validate_optimizations(
 
 
 def validate_objective_function(run: CalibrationRun,
-                                objective_function_name: str,
+                                objective_function_name: str | None,
                                 streamflow_threshold: float | None,
                                 peak_flow_threshold: float | None) -> str | None:
     """

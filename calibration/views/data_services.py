@@ -206,9 +206,21 @@ def get_observational_date_range_from_data_services(run: CalibrationRun) -> Date
     )
     observational_info_json = fetch_from_data_services('GET', url, headers=default_headers)
 
-    dr = observational_info_json.get('date_range') or {}
-    start = _parse_utc(dr.get('start'))
-    end = _parse_utc(dr.get('end'))
+    if not isinstance(observational_info_json, dict):
+        raise DataServicesException(
+            "Observational info from Data Services returned non-JSON response"
+        )
+
+    dr = observational_info_json.get("date_range") or {}
+
+    start_raw = dr.get("start")
+    end_raw = dr.get("end")
+
+    if not isinstance(start_raw, str) or not isinstance(end_raw, str):
+        raise DataServicesException("Invalid observational date_range returned from Data Services")
+
+    start = _parse_utc(start_raw)
+    end = _parse_utc(end_raw)
 
     return DateTimeRange(start, end)
 
@@ -385,7 +397,11 @@ def get_module_metadata_from_data_services(
     # Resolve gage context (explicit args take precedence)
     # -------------------------------------------------------
     resolved_gage_id = gage_id or (run.gage.gage_id if run.gage else None)
-    resolved_domain = domain or (run.gage.domain.name if run.gage and run.gage.domain_id else None)
+    resolved_domain = domain
+
+    if resolved_domain is None and run.gage and run.gage.domain_id:
+        gage_domain = run.gage.domain
+        resolved_domain = gage_domain.name
 
     if not resolved_gage_id or not resolved_domain:
         raise ValueError(
@@ -418,6 +434,11 @@ def get_module_metadata_from_data_services(
             "status_code": e.status_code if e.status_code else None
         }]
 
+    if not isinstance(module_json, dict):
+        raise DataServicesException(
+            "Module metadata from Data Services returned non-JSON response"
+        )
+
     module_metadata = validate_response_data(
         ModuleDataListSerializer,
         module_json,
@@ -426,7 +447,8 @@ def get_module_metadata_from_data_services(
 
     # Check for any error fields from EDFS
     eds_errors: list[dict] = []
-    for module_data in module_metadata.get("modules", []):
+    modules = module_metadata.get("modules") or []
+    for module_data in modules:
         err = module_data.get("error")
         if err:
             module_name = module_data.get("module_name")
@@ -456,8 +478,7 @@ def update_parameters(run: CalibrationRun, module_metadata: dict, gage_changed: 
     :return: None.
     """
 
-    for module_data in module_metadata.get('modules'):
-
+    for module_data in module_metadata.get("modules", []):
         module_name = module_data['module_name']
         module_instance = get_cached_module_by_name(module_name)
 

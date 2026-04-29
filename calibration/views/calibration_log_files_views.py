@@ -649,6 +649,7 @@ def get_all_validation_logs(calibration_run: CalibrationRun) -> list[str]:
 
     return logs
 
+
 def get_hindcast_logs(hindcast_run) -> list[str]:
     """
     Collect hindcast-specific log files.
