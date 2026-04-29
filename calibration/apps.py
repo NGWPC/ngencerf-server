@@ -5,7 +5,7 @@ import sys
 from django.apps import AppConfig
 from django.conf import settings
 
-from calibration.util.active_directory_config import validate_active_directory_settings
+from calibration.auth.active_directory_config import validate_active_directory_settings
 from calibration.util.db_diagnostics import patch_ensure_connection_with_diagnostics
 from calibration.util.git_util import print_git_info_all
 from calibration.views.mpi_rules import log_mpi_rules
