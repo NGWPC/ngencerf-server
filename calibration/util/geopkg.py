@@ -2,7 +2,7 @@ import logging
 import os
 import traceback
 from functools import lru_cache
-from io import BytesIO
+from io import BytesIO, StringIO
 from itertools import cycle
 
 import fiona
@@ -84,7 +84,7 @@ def check_file_accessible(file_path: str) -> None:
         raise PermissionError(f"Permission denied: {file_path}")
 
 
-def safe_read_gpkg(gpkg_path: str, layer: str = None) -> gpd.GeoDataFrame:
+def safe_read_gpkg(gpkg_path: str, layer: str | None = None) -> gpd.GeoDataFrame:
     """
     Read a specific layer from a GeoPackage file with detailed error handling.
 
@@ -187,7 +187,7 @@ def gpkg_to_png_selected_layers(gpkg_path: str) -> BytesIO:
         boundary_gdf.plot(
             ax=ax,
             color=style.get("color", "black"),
-            linewidth=style.get("linewidth", 1.5),
+            linewidth=float(style.get("linewidth", 1.5)),
         )
     except Exception as e:
         raise RuntimeError(f"Failed to read or plot required layer 'divides' from '{gpkg_path}'. Error: {e}")
@@ -218,7 +218,7 @@ def gpkg_to_png_selected_layers(gpkg_path: str) -> BytesIO:
 
                 plot_method = style.get("plot_method", "line")
                 color = style.get("color", next(color_cycle))
-                linewidth = style.get("linewidth", 1.5)
+                linewidth = float(style.get("linewidth", 1.5))
                 linestyle = style.get("linestyle", "-")
                 markersize = style.get("markersize", 10)
 
@@ -243,7 +243,7 @@ def gpkg_to_png_selected_layers(gpkg_path: str) -> BytesIO:
 
 
 @lru_cache()
-def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_layer: str = None) -> dict:
+def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str | None = None, gage_layer: str | None = None) -> dict:
     """
     Extract catchment boundaries (as WKT) and gage coordinates (latitude/longitude) from a local GeoPackage.
 
@@ -288,6 +288,8 @@ def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_lay
     except Exception as e:
         raise RuntimeError(f"Failed to read layer '{catchment_layer}' from '{gpkg_path}'. Error: {e}")
 
+    catchments_crs = gdf_catchments.crs
+
     # Catchment id column can vary between formats.
     # Prefer NEW FORMAT (nhf): div_id, then fall back to OLD FORMAT: divide_id.
     catchment_id_col = None
@@ -313,7 +315,7 @@ def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_lay
         return {
             "catchments": catchments,
             "gage_coordinates": None,
-            "crs": gdf_catchments.crs.to_string() if gdf_catchments.crs else None
+            "crs": catchments_crs.to_string() if catchments_crs is not None else None
         }
 
     try:
@@ -326,8 +328,8 @@ def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_lay
     if not gdf_gage.empty:
         # NEW FORMAT (nhf): use geometry directly when available
         if "geometry" in gdf_gage.columns and gdf_gage.geometry is not None and not gdf_gage.geometry.is_empty.all():
-            if gdf_gage.crs is None and gdf_catchments.crs is not None:
-                gdf_gage = gdf_gage.set_crs(gdf_catchments.crs)
+            if gdf_gage.crs is None and catchments_crs is not None:
+                gdf_gage = gdf_gage.set_crs(catchments_crs.to_string())
 
             gdf_gage_ll = gdf_gage.to_crs(epsg=4326)
             pt = gdf_gage_ll.geometry.iloc[0]
@@ -341,8 +343,8 @@ def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_lay
 
             # Assign CRS from catchments if gage CRS is missing
             if gdf_gage.crs is None:
-                if gdf_catchments.crs:
-                    gdf_gage.set_crs(gdf_catchments.crs, inplace=True)
+                if catchments_crs is not None:
+                    gdf_gage.set_crs(catchments_crs.to_string(), inplace=True)
                 else:
                     raise RuntimeError(
                         "CRS is missing for both the gage and catchments layers in "
@@ -357,7 +359,7 @@ def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_lay
     return {
         "catchments": catchments,
         "gage_coordinates": gage_coordinates,
-        "crs": gdf_catchments.crs.to_string() if gdf_catchments.crs else None
+        "crs": catchments_crs.to_string() if catchments_crs is not None else None
     }
 
 
@@ -510,7 +512,10 @@ def display_layer_metadata(gpkg_path: str, layer_name: str) -> None:
     try:
         gdf = safe_read_gpkg(gpkg_path, layer=layer_name)
         logger.info(f"Layer '{layer_name}' metadata for '{gpkg_path}':")
-        logger.info(gdf.info())
+
+        buffer = StringIO()
+        gdf.info(buf=buffer)
+        logger.info(buffer.getvalue())
         logger.info("\nSample data:")
         logger.info(gdf.head())
     except Exception as e:
