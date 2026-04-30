@@ -1371,8 +1371,10 @@ class GetStatusForHindcastResponseSerializer(CommonStatusFieldsMixin, HindcastRu
     message = serializers.CharField(required=False)
     configuration = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=True, allow_null=False)
-    cold_start_run = GetStatusColdStartSerializer(required=False, allow_null=True)
     created_new_cold_start = serializers.BooleanField(required=True, allow_null=False)
+    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24], required=True)
+    num_iterations = serializers.IntegerField(required=True, allow_null=False, validators=[MinValueValidator(1)])
+    cold_start_run = GetStatusColdStartSerializer(required=False, allow_null=True)
 
 
 class GetStatusForCalibrationResponseSerializer(GenericResponseSerializer, CommonStatusFieldsMixin):

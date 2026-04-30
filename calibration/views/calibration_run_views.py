@@ -513,6 +513,8 @@ def get_status_for_hindcast(hindcast_run: HindcastRun, include_performance_metri
         'calibration_run_id': hindcast_run.calibration_run_id,
         'status': hindcast_run.status.name,
         'configuration': hindcast_run.configuration.name,
+        'interval_cycle': hindcast_run.interval_cycle,
+        'num_iterations': hindcast_run.num_iterations,
         'cycle_date': hindcast_run.cycle_date,
         'submit_date': hindcast_run.submit_date,
         'sent_date': hindcast_run.sent_date,
@@ -625,11 +627,15 @@ def get_status_for_verification(verification_run: VerificationRun, include_perfo
         'run_end': parent_run.run_end,
     }
 
-    if verification_run.forecast_run_id is not None:
+    if isinstance(parent_run, ForecastRun):
         parent_data['forecast_run_id'] = parent_run.id
-    else:
+    elif isinstance(parent_run, HindcastRun):
         parent_data['hindcast_run_id'] = parent_run.id
+        parent_data['interval_cycle'] = parent_run.interval_cycle
+        parent_data['num_iterations'] = parent_run.num_iterations
         parent_data['created_new_cold_start'] = parent_run.created_new_cold_start
+    else:
+        raise TypeError(f"Unexpected verification parent run type: {type(parent_run).__name__}")
 
     parent_failure_message = normalize_failure_messages(parent_run.failure_messages)
     if parent_failure_message:
