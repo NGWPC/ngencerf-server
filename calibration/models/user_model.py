@@ -31,9 +31,9 @@ class CustomUser(AbstractUser):
             'unique': "A user with this email already exists."
         }
     )
-    username = models.CharField(max_length=255, blank=True, null=True)
-
+    username = models.CharField(max_length=255, blank=True, null=True)  # Make username optional
     mfa_enabled = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
 
     objects = CustomUserManager()
 

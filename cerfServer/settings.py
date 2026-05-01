@@ -12,6 +12,7 @@ import os
 import re
 from datetime import timedelta, datetime, timezone
 from enum import StrEnum, auto
+from urllib.parse import urlparse
 
 from datetimerange import DateTimeRange
 from dotenv import load_dotenv
@@ -19,8 +20,6 @@ from dotenv import load_dotenv
 from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum, JobType
 
 DJANGO_START_TIME = datetime.now(tz=timezone.utc)
-
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 FILE_PATH = os.path.abspath(str(__file__))
 BASE_DIR = os.path.dirname(os.path.dirname(FILE_PATH))
@@ -33,6 +32,20 @@ load_dotenv(dotenv_path)
 version_path = os.path.join(BASE_DIR, 'version.env')
 print(f'Loading values from {version_path}')
 load_dotenv(version_path)
+
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_USE_SSL = False
+
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")  # your Gmail address
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")  # Gmail app password
+
+DEFAULT_FROM_EMAIL = "pakronenberg@gmail.com"
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = str(os.getenv('DJANGO_DEBUG', 'true')).lower() == 'true'
@@ -77,7 +90,10 @@ INSTALLED_APPS = [
 TOKEN_MODEL = None
 
 REST_FRAMEWORK = {
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+        "calibration.auth.permissions.IsEmailVerifiedOrAllowed"
+    ),
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
         "rest_framework.authentication.TokenAuthentication",
@@ -149,13 +165,86 @@ CACHES = {
 
 AUTH_USER_MODEL = 'calibration.CustomUser'
 
+# ------------------------------------------------------------------------------
+# Email verification token configuration
+# ------------------------------------------------------------------------------
+
+# Salt used for signing custom email verification tokens created with
+# django.core.signing.dumps().
+#
+# The cryptographic secret used to sign tokens is Django's SECRET_KEY.
+# Since SECRET_KEY is different on each deployed system, tokens generated
+# on one system will not validate on another system even if the salt value
+# is the same.
+#
+# The purpose of the salt is namespacing: it ensures that verification
+# tokens cannot be confused with other signed tokens in the application
+# that may also use django.core.signing.
+#
+# These tokens are used by:
+#   calibration.views.email_verification_views._make_email_verify_token()
+#
+# Changing this value will immediately invalidate all previously issued
+# verification links.
+EMAIL_VERIFY_SALT = "cerf.email.verify.v1"
+
+# ------------------------------------------------------------------------------
+# Email / account verification configuration
+# ------------------------------------------------------------------------------
+
+# Used by:
+#   calibration.views.email_verification_views._load_email_verify_token()
+#
+# These tokens are generated using django.core.signing and are used for:
+#   - initial registration verification
+#   - resending verification emails
+#   - verifying changed email addresses
+#
+# They are validated using django.core.signing.loads(..., max_age=...)
+EMAIL_VERIFY_MAX_AGE_SECONDS = 60 * 60 * 24  # 24 hours
+
+# ------------------------------------------------------------------------------
+# Django / Djoser token expiration
+# ------------------------------------------------------------------------------
+
+# Used by Django's PasswordResetTokenGenerator.
+#
+# This affects tokens used by:
+#   - Djoser password reset (/auth/users/reset_password_confirm/)
+#
+# Default Django value is 3 days (259200 seconds), but we explicitly define
+# it here so the timeout policy is clear.
+PASSWORD_RESET_TIMEOUT = 60 * 60 * 24  # 24 hours
+
+# Base frontend URL used when constructing email links.
+EMAIL_FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+EMAIL_SITE_NAME = os.getenv("SITE_NAME", "ngenCerf")
+
+# Ensure URL includes a scheme so urlparse behaves correctly.
+# If the user supplies "localhost:3000", treat it as "http://localhost:3000".
+if "://" not in EMAIL_FRONTEND_URL:
+    EMAIL_FRONTEND_URL = f"http://{EMAIL_FRONTEND_URL}"
+
+_parsed_frontend_url = urlparse(EMAIL_FRONTEND_URL)
+
+EMAIL_FRONTEND_PROTOCOL = _parsed_frontend_url.scheme
+EMAIL_FRONTEND_DOMAIN = _parsed_frontend_url.netloc
+
 DJOSER = {
-    "SEND_CONFIRMATION_EMAIL": False,
+    # Initial email verification is handled by us, not Djoser.
     "SEND_ACTIVATION_EMAIL": False,
+    "SITE_NAME": EMAIL_SITE_NAME,
+    "EMAIL_FRONTEND_PROTOCOL": EMAIL_FRONTEND_PROTOCOL,
+    "EMAIL_FRONTEND_DOMAIN": EMAIL_FRONTEND_DOMAIN,
+
+    "PASSWORD_RESET_CONFIRM_URL": "login?action=reset-password&uid={uid}&token={token}",
+
     "SET_PASSWORD_RETYPE": True,
     "UPDATE_LAST_LOGIN": True,
-    "PASSWORD_RESET_CONFIRM_URL": "reset-password-confirm/{uid}/{token}",
+
     "SERIALIZERS": {
+        "password_reset": "calibration.user_serializers.VerifiedEmailResetSerializer",
+        "password_reset_confirm_retype": "calibration.user_serializers.VerifiedPasswordResetConfirmRetypeSerializer",
         "user_create": "calibration.user_serializers.CustomUserCreateSerializer",
         "user": "calibration.user_serializers.CustomUserSerializer",
         "current_user": "calibration.user_serializers.CustomUserSerializer",

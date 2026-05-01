@@ -1,0 +1,29 @@
+Note:
+All authentication email links now land on the shared login page:
+
+    /login
+
+Behavior is determined by the query parameter:
+
+    action=<activate | verify-email | reset-password>
+
+User logs in
+/login
+        │
+        │ POST /auth/jwt/create/
+        ▼
+JWT issued
+        │
+        │ GET /auth/users/me/
+        ▼
+Check email_verified
+        │
+        ├── email_verified = True
+        │
+        │      ▼
+        │   /dashboard
+        │
+        └── email_verified = False
+               ▼
+        /verify-email-required
+        (verify_email_required.html)

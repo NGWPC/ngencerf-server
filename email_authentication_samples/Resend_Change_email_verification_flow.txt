@@ -1,0 +1,45 @@
+Note:
+All authentication email links now land on the shared login page:
+
+    /login
+
+Behavior is determined by the query parameter:
+
+    action=<verify-email | reset-password>
+
+/verify-email-required
+        │
+        ├── Option A
+        │    Resend verification
+        │
+        │ POST /auth/users/send_verification_email/
+        │ Body: {}
+        │
+        └── Option B
+             Change email
+
+             POST /auth/users/send_verification_email/
+             Body:
+             {
+               new_email: "new@example.com"
+             }
+
+        ▼
+/verification-email-sent
+(verification_email_sent.html)
+        │
+        ▼
+User clicks verification link in email
+
+/login?action=verify-email&token=SIGNED_TOKEN
+(login_verify_email.html)
+        │
+        │ POST /auth/users/verify_email_confirm/
+        │
+        ▼
+Token validated
+email_verified = True
+(optional: email updated)
+        │
+        ▼
+/dashboard

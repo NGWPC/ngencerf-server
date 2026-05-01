@@ -1893,6 +1893,16 @@ class SlurmSubmitResponseSerializer(BaseSerializer):
 
 
 ##################################
+# Email validation
+##################################
+class SendVerificationEmailRequestSerializer(BaseSerializer):
+    new_email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+
+
+class VerifyEmailConfirmRequestSerializer(BaseSerializer):
+    token = serializers.CharField(required=True, allow_blank=False)
+
+
 # MFA
 ##################################
 class MFASetupResponseSerializer(BaseSerializer):

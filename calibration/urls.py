@@ -7,8 +7,8 @@ import calibration.views.get_jobs_views
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
     calibration_evaluation_views, calibration_forecast_views, calibration_regionalization_views, \
-    calibration_verification_views, calibration_secondary_data_views, calibration_download_views, calibration_log_files_views, \
-    calibration_create_jobs_views, calibration_mfa_views
+    calibration_verification_views, calibration_secondary_data_views, calibration_download_views, email_verification_views, \
+    calibration_create_jobs_views, calibration_mfa_views, calibration_log_files_views
 
 urlpatterns = [
     ##################################
@@ -180,6 +180,12 @@ urlpatterns = [
     path("auth/mfa/setup/confirm/", calibration_mfa_views.confirm_setup_mfa, name="confirmSetupMfa"),
     path("auth/mfa/verify/", calibration_mfa_views.verify_mfa, name="verifyMfa"),
     path("auth/login/", calibration_mfa_views.login, name="login"),
+
+    
+    # Authentication
+    ##################################
+    path("auth/users/send_verification_email/", email_verification_views.send_verification_email),
+    path("auth/users/verify_email_confirm/", email_verification_views.verify_email_confirm),
 
     ##################################
     # Swagger - drf_spectacular

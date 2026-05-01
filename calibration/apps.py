@@ -50,7 +50,7 @@ class CalibrationConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'calibration'
 
-    def ready(self):
+    def ready(self) -> None:
 
         # -------------------------------------------------------------
         # Detect dev server or gunicorn
