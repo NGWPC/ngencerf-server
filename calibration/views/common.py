@@ -888,8 +888,7 @@ def get_valid_path(eds_path: str | None, get_path_func: Callable[[], str | None]
         return job_specific_file
 
     # Fall back to the EDS path if the job-specific file is not found
-    # TODO Might be cloud url.  change to os.path.exists once we are exclusiving using BMI Forcing
-    if eds_path and path_exists(eds_path):
+    if eds_path and os.path.exists(eds_path):
         return eds_path
 
     return None

@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
 from typing import Literal
 from urllib.parse import urlparse
@@ -26,12 +25,11 @@ from calibration.util.caching import get_cached_module_by_name, have_LSTM, get_c
 from calibration.util.calibration_validators import CalibrationRunIdSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
     ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse, \
     ValidateParametersResponseSerializer, SaveTuningResponseSerializer
-from calibration.util.ngen_locations import get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, \
-    get_valid_path, format_datetime, get_user_email, get_elapsed_str, readonly_transaction, ErrorReport
-from calibration.views.data_services import should_use_bmi_forcing, get_observational_date_range_from_data_services
+    format_datetime, get_user_email, get_elapsed_str, readonly_transaction, ErrorReport
+from calibration.views.data_services import get_observational_date_range_from_data_services
 
 logger = logging.getLogger(__name__)
 
@@ -248,32 +246,10 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
         logger.info("Time range is already set")
         return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
-    forcing_path = get_valid_path(
-        run.forcing_eds_dir_path,
-        lambda: get_forcing_dir_for_job(run)
-    )
-
-    use_bmi = should_use_bmi_forcing(run)
-
-    # Explicitly log the resolved paths
-    logger.info(
-        f"get_time_range: "
-        f"forcing_path={forcing_path},"
-        f"use_bmi_forcing={use_bmi}"
-    )
-
-    # TODO More cleanup when we are exclusively using bmi forcing
-    # For CSV forcing, forcing_path is also required
-    if not use_bmi and not forcing_path:
-        return {}
-
     # If both paths are available, calculate intersection and update run
     daterange_intersection_start = time.perf_counter()
 
-    daterange = get_date_range_intersection(
-        run,
-        None if use_bmi else forcing_path
-    )
+    daterange = get_date_range_intersection(run)
 
     logger.info(f"Date range intersection completed in "
                 f"{time.perf_counter() - daterange_intersection_start:.2f}s")
@@ -1267,44 +1243,44 @@ def get_csv_daterange(path: str) -> DateTimeRange:
         raise CerfException(f"Error reading file {path}: {e}")
 
 
-def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
-    """
-    Computes the encompassing date range for all valid CSV files in a given directory.
-    Supports both local paths and cloud URLs.
+#
+# def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
+#     """
+#     Computes the encompassing date range for all valid CSV files in a given directory.
+#     Supports both local paths and cloud URLs.
+#
+#     :param forcing_dir_path: Directory path or cloud URL containing forcing data files.
+#     :return: DateTimeRange covering all CSV files, or None if no files found.
+#     """
+#     csv_files = cloud_util.list_files(forcing_dir_path, pattern="*.csv")
+#     if not csv_files:
+#         return None
+#
+#     # Use ThreadPoolExecutor for parallel processing
+#     with ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4)) as executor:
+#         ranges = list(executor.map(get_csv_daterange, csv_files))
+#
+#     # Combine all individual ranges into a single encompassing range
+#     timerange = None
+#     for r in ranges:
+#         timerange = timerange.encompass(r) if timerange else r
+#     return timerange
 
-    :param forcing_dir_path: Directory path or cloud URL containing forcing data files.
-    :return: DateTimeRange covering all CSV files, or None if no files found.
-    """
-    csv_files = cloud_util.list_files(forcing_dir_path, pattern="*.csv")
-    if not csv_files:
-        return None
 
-    # Use ThreadPoolExecutor for parallel processing
-    with ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4)) as executor:
-        ranges = list(executor.map(get_csv_daterange, csv_files))
-
-    # Combine all individual ranges into a single encompassing range
-    timerange = None
-    for r in ranges:
-        timerange = timerange.encompass(r) if timerange else r
-    return timerange
-
-
-def get_date_range_intersection(run: CalibrationRun, forcing_dir_path: str | None = None) -> DateTimeRange | None:
+def get_date_range_intersection(run: CalibrationRun) -> DateTimeRange | None:
     """
     Calculates the intersection of date ranges between observational and forcing data.
     Supports both local paths and cloud URLs.
 
     :param run Calibration Run
-    :param forcing_dir_path: Directory path or cloud URL containing forcing data.
     :return: DateTimeRange representing the overlapping period, or None if no overlap.
     """
     # Calculate the date range for the observational data
     obs_range = get_observational_date_range_from_data_services(run)
     logger.debug(f"obs_range: {obs_range}")
 
-    # Calculate the date range for the forcing data
-    forcing_range = get_forcing_date_range(forcing_dir_path) if forcing_dir_path else settings.FORCING_BMI_DATE_RANGE
+    # Use fixed date range for the forcing data
+    forcing_range = settings.FORCING_BMI_DATE_RANGE
     logger.debug(f"forcing_range: {forcing_range}")
 
     # Compute the intersection of the two ranges

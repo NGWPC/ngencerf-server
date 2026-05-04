@@ -34,7 +34,7 @@ from calibration.views.common import get_calibration_run, ResponseError, handle_
     validate_request, truncate_large_fields, get_user_email, generate_ngen_logging_config, get_elapsed_str, readonly_transaction, \
     format_datetime
 from calibration.views.data_services import DataServicesException, get_geopackage_from_data_services, \
-    get_forcing_data_from_s3, get_module_metadata_from_data_services, update_parameters
+    get_module_metadata_from_data_services, update_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -296,33 +296,33 @@ def import_calibration_run_data(request: Request,
             else None
         )
 
-        # Decide whether we need to fetch BEFORE mutating the run
-        needs_forcing_fetch = (
-                forcing_source_requested_name
-                and (
-                        not run.forcing_source_requested
-                        or run.forcing_source_requested.name != forcing_source_requested_name
-                )
-        )
+        # # Decide whether we need to fetch BEFORE mutating the run
+        # needs_forcing_fetch = (
+        #         forcing_source_requested_name
+        #         and (
+        #                 not run.forcing_source_requested
+        #                 or run.forcing_source_requested.name != forcing_source_requested_name
+        #         )
+        # )
 
         # Must be set before get_forcing_data_from_s3() because should_use_bmi_forcing() reads it
         run.forcing_source_requested = forcing_source_requested
-
-        if gage_id and needs_forcing_fetch and run.forcing_source_requested:
-            try:
-                get_forcing_data_from_s3(run, run.forcing_source_requested.name)
-            except DataServicesException as e:
-                errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
-                eds_errors.append({
-                    'name': 'forcing',
-                    'message': str(e),
-                    'status_code': e.status_code if e.status_code else None
-                })
-
-        elif not forcing_source_requested_name:
-            # No forcing requested → clear any existing forcing state
-            run.forcing_eds_dir_path = None
-            run.forcing_source_actual = None
+        #
+        # if gage_id and needs_forcing_fetch and run.forcing_source_requested:
+        #     try:
+        #         get_forcing_data_from_s3(run, run.forcing_source_requested.name)
+        #     except DataServicesException as e:
+        #         errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
+        #         eds_errors.append({
+        #             'name': 'forcing',
+        #             'message': str(e),
+        #             'status_code': e.status_code if e.status_code else None
+        #         })
+        #
+        # elif not forcing_source_requested_name:
+        #     # No forcing requested → clear any existing forcing state
+        #     run.forcing_eds_dir_path = None
+        #     # run.forcing_source_actual = None
 
         # -----------------------------
         # Observational data
@@ -523,7 +523,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             'time_range': serialized_time_range,
             'job_data_dir': map_path_to_host(run.job_data_dir),
             'num_catchments': run.num_catchments,
-            'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None,
+            # 'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None,
         }
         fm = normalize_failure_messages(run.failure_messages)
         if fm is not None:
@@ -568,7 +568,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             calibration_run_data['failure_messages'] = fm
 
         calibration_run_data['forcing_source_requested'] = run.forcing_source_requested.name if run.forcing_source_requested else None
-        calibration_run_data['forcing_source_actual'] = run.forcing_source_actual.name if run.forcing_source_actual else None
+        # calibration_run_data['forcing_source_actual'] = run.forcing_source_actual.name if run.forcing_source_actual else None
 
         # Generate Geopackage map if requested
         if include_gpkg_map:

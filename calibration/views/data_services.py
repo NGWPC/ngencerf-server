@@ -11,11 +11,9 @@ from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_aware
 from mswm.utils.ginputfunc import call_icefabric_gpkg
 
-from calibration.enums import ForcingSourceEnum, DomainEnum
 from calibration.models import CalibrationParameter, CalibrationRun, CalibrationFormulation
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups
 from calibration.util.calibration_validators import ModuleDataListSerializer
-from calibration.util.cloud_util import join_url, is_dir
 from calibration.util.ngen_locations import get_geopackage_dir_for_job
 from calibration.views.common import validate_response_data
 
@@ -275,69 +273,69 @@ def clear_times(run: CalibrationRun, cli: bool = False):
         run.validation_eval_start_period = None
         run.validation_eval_end_period = None
 
+#
+# def should_use_bmi_forcing(run: CalibrationRun) -> bool:
+#     """
+#     Determine whether BMI forcing should be used for this run.
+#
+#     BMI forcing is used only when a gage is present and the run is CONUS + AORC
+#     and BMI forcing is enabled in settings.
+#
+#     :param run: CalibrationRun instance to evaluate.
+#     :return: True if BMI forcing should be used, otherwise False.
+#     """
+#     if run.gage is None:
+#         return False
+#
+#     # Use BMI forcing only if Conus and AORC
+#     return settings.USE_BMI_FORCING and run.gage.domain == DomainEnum.CONUS.db_instance and run.forcing_source_requested == ForcingSourceEnum.AORC.db_instance
 
-def should_use_bmi_forcing(run: CalibrationRun) -> bool:
-    """
-    Determine whether BMI forcing should be used for this run.
 
-    BMI forcing is used only when a gage is present and the run is CONUS + AORC
-    and BMI forcing is enabled in settings.
-
-    :param run: CalibrationRun instance to evaluate.
-    :return: True if BMI forcing should be used, otherwise False.
-    """
-    if run.gage is None:
-        return False
-
-    # Use BMI forcing only if Conus and AORC
-    return settings.USE_BMI_FORCING and run.gage.domain == DomainEnum.CONUS.db_instance and run.forcing_source_requested == ForcingSourceEnum.AORC.db_instance
-
-
-def get_forcing_data_from_s3(run: CalibrationRun, forcing_source_name: str):
-    """
-    Populate forcing paths for the run from configured S3 forcing directories.
-
-    Skips forcing retrieval when BMI forcing applies (CONUS + AORC).
-    On success, sets run.forcing_eds_dir_path and run.forcing_source_actual and clears times.
-    The CalibrationRun instance is mutated but not saved.
-
-    settings.FORCING_DATA_DIRS_xxx is a dict of S3 URLs (prefixes).
-
-    :param run: CalibrationRun instance with associated gage information.
-    :param forcing_source_name: Name of the forcing source to retrieve data for.
-    :raises DataServicesException: If the forcing data cannot be found in the local S3 directories.
-    """
-    if should_use_bmi_forcing(run):
-        logger.info("Skipping forcing retrieval for CONUS and AORC")
-        return
-
-    forcing_containers = (
-        settings.FORCING_DATA_DIRS_AORC
-        if forcing_source_name == ForcingSourceEnum.AORC.value
-        else settings.FORCING_DATA_DIRS_RETRO
-    )
-
-    for src_key, s3_uri in forcing_containers.items():
-        # <prefix>/<domain>/Gage_<gage_id>
-        forcing_dir = join_url(s3_uri, run.gage.domain.name, f"Gage_{run.gage.gage_id}")
-
-        if is_dir(forcing_dir):
-            logger.info(f"Found forcing directory {forcing_dir}")
-            run.forcing_eds_dir_path = forcing_dir
-            run.forcing_source_actual = ForcingSourceEnum.get_instance(src_key)
-            clear_times(run)
-            logger.info(
-                "Setting run.forcing_eds_dir_path to %s; forcing_source_actual=%s",
-                run.forcing_eds_dir_path, run.forcing_source_actual
-            )
-            return
-        else:
-            logger.info(
-                "Forcing directory for gage %s doesn't exist at %s (key: %s)",
-                run.gage.gage_id, forcing_dir, src_key
-            )
-
-    raise DataServicesException(f"Could not find forcing data for gage {run.gage.gage_id}")
+# def get_forcing_data_from_s3(run: CalibrationRun, forcing_source_name: str):
+#     """
+#     Populate forcing paths for the run from configured S3 forcing directories.
+#
+#     Skips forcing retrieval when BMI forcing applies (CONUS + AORC).
+#     On success, sets run.forcing_eds_dir_path and run.forcing_source_actual and clears times.
+#     The CalibrationRun instance is mutated but not saved.
+#
+#     settings.FORCING_DATA_DIRS_xxx is a dict of S3 URLs (prefixes).
+#
+#     :param run: CalibrationRun instance with associated gage information.
+#     :param forcing_source_name: Name of the forcing source to retrieve data for.
+#     :raises DataServicesException: If the forcing data cannot be found in the local S3 directories.
+#     """
+    # if should_use_bmi_forcing(run):
+    #     logger.info("Skipping forcing retrieval for CONUS and AORC")
+    #     return
+    #
+    # forcing_containers = (
+    #     settings.FORCING_DATA_DIRS_AORC
+    #     if forcing_source_name == ForcingSourceEnum.AORC.value
+    #     else settings.FORCING_DATA_DIRS_RETRO
+    # )
+    #
+    # for src_key, s3_uri in forcing_containers.items():
+    #     # <prefix>/<domain>/Gage_<gage_id>
+    #     forcing_dir = join_url(s3_uri, run.gage.domain.name, f"Gage_{run.gage.gage_id}")
+    #
+    #     if is_dir(forcing_dir):
+    #         logger.info(f"Found forcing directory {forcing_dir}")
+    #         run.forcing_eds_dir_path = forcing_dir
+    #         run.forcing_source_actual = ForcingSourceEnum.get_instance(src_key)
+    #         clear_times(run)
+    #         logger.info(
+    #             "Setting run.forcing_eds_dir_path to %s; forcing_source_actual=%s",
+    #             run.forcing_eds_dir_path, run.forcing_source_actual
+    #         )
+    #         return
+    #     else:
+    #         logger.info(
+    #             "Forcing directory for gage %s doesn't exist at %s (key: %s)",
+    #             run.gage.gage_id, forcing_dir, src_key
+    #         )
+    #
+    # raise DataServicesException(f"Could not find forcing data for gage {run.gage.gage_id}")
 
 
 def get_module_metadata_from_data_services(

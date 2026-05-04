@@ -86,8 +86,8 @@ def get_forcing_filename_pattern() -> str:
 
 
 # Job-specific forcing directory
-def get_forcing_dir_for_job(run: CalibrationRun) -> str:
-    return os.path.join(run.job_data_dir, 'forcing')
+# def get_forcing_dir_for_job(run: CalibrationRun) -> str:
+#     return os.path.join(run.job_data_dir, 'forcing')
 
 
 # Job-specific observation directory

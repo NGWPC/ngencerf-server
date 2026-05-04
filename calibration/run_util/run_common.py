@@ -26,14 +26,13 @@ from calibration.util.git_util import get_git_info_internal
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
     get_forecast_stdout_file, get_forecast_dir, get_validation_iteration_git_info_file, get_validation_special_git_info_file, \
-    get_calibration_git_info_file, get_forecast_git_info_file, get_forcing_dir_for_job, get_verification_git_info_file, get_forecast_realization_file, \
+    get_calibration_git_info_file, get_forecast_git_info_file,  get_verification_git_info_file, get_forecast_realization_file, \
     get_cold_start_realization_file, \
     get_cold_start_stdout_file, get_cold_start_dir, \
     get_cold_start_git_info_file, get_hindcast_stdout_file, get_hindcast_git_info_file, get_hindcast_dir, get_cold_start_state, \
     get_verification_stdout_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, write_ngen_logging_file
-from calibration.views.data_services import should_use_bmi_forcing
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output, \
     read_cold_start_output, read_verification_output, read_hindcast_output
 from calibration.views.forecast_input import create_forecast_input
@@ -545,13 +544,13 @@ def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Resp
     job_description = get_job_description(calibration_run)
     try:
         logger.info(f'Final preparation to run Calibration Job {calibration_run.id}')
-        validation_errors = final_preprocessing_for_calibration(calibration_run)
-
-        if validation_errors:
-            return True, ResponseError(
-                f'Calibration Job {calibration_run.id} failed validation after preprocessing',
-                errors=validation_errors
-            )
+        # validation_errors = final_preprocessing_for_calibration(calibration_run)
+        #
+        # if validation_errors:
+        #     return True, ResponseError(
+        #         f'Calibration Job {calibration_run.id} failed validation after preprocessing',
+        #         errors=validation_errors
+        #     )
 
         logger.info(f'Running build_calib for {job_description} with config {config_file}')
         build_calib(config_file)
@@ -870,36 +869,36 @@ def finalize_verification_after_callback(run: VerificationRun, failed_so_far: bo
     set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
 
 
-def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
-    """
-    Executes the long-running preparation steps for the given CalibrationRun.
-    Assumes that all prerequisites (paths, date ranges) have been validated.
-
-    :param run: The CalibrationRun to process.
-    :return: List of validation error messages.
-    """
-    errors: list[str] = []
-
-    date_range = DateTimeRange(
-        min(run.calibration_start_period, run.validation_start_period),
-        max(run.calibration_end_period, run.validation_end_period),
-    )
-
-    use_bmi = should_use_bmi_forcing(run)
-
-    # ─────────────────────────────────────────────────────────────
-    # Forcing data
-    # ─────────────────────────────────────────────────────────────
-    # Subset only CSV data, not BMI
-    if not use_bmi:
-        subset_directory_by_time_range(
-            run,
-            run.forcing_eds_dir_path,
-            get_forcing_dir_for_job(run),
-            date_range
-        )
-
-    return errors
+# def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
+#     """
+#     Executes the long-running preparation steps for the given CalibrationRun.
+#     Assumes that all prerequisites (paths, date ranges) have been validated.
+#
+#     :param run: The CalibrationRun to process.
+#     :return: List of validation error messages.
+#     """
+#     errors: list[str] = []
+#
+#     date_range = DateTimeRange(
+#         min(run.calibration_start_period, run.validation_start_period),
+#         max(run.calibration_end_period, run.validation_end_period),
+#     )
+#
+#     # use_bmi = should_use_bmi_forcing(run)
+#
+#     # ─────────────────────────────────────────────────────────────
+#     # Forcing data
+#     # ─────────────────────────────────────────────────────────────
+#     # Subset only CSV data, not BMI
+#     # if not use_bmi:
+#     #     subset_directory_by_time_range(
+#     #         run,
+#     #         run.forcing_eds_dir_path,
+#     #         get_forcing_dir_for_job(run),
+#     #         date_range
+#     #     )
+#
+#     return errors
 
 
 def _get_fs_and_scheme(path_or_url: str):
