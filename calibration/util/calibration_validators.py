@@ -869,6 +869,7 @@ class DomainResponseSerializer(BaseSerializer):
 
 class ForcingSourceSerializer(BaseSerializer):
     name = serializers.CharField(required=True, validators=[enum_validator(ForcingSourceEnum)])
+    display_name = serializers.CharField(required=True)
     description = serializers.CharField(required=True)
 
 

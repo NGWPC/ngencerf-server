@@ -67,7 +67,7 @@ def load_gage_tab(request: Request) -> Response:
         return error_return
 
     # Retrieve active source and domain options
-    forcing_source_values = ForcingSourceEnum.get_choices_with_fields(fields=['name', 'description'])
+    forcing_source_values = ForcingSourceEnum.get_choices_with_fields(fields=['name', 'display_name', 'description'])
     observational_source_values = ObservationalSourceEnum.get_choices_with_fields(fields=['name', 'description'])
     geopackage_source_values = GeopackageSourceEnum.get_choices_with_fields(fields=['name', 'description'])
     domain_values = DomainEnum.get_choices_with_fields(fields=['name', 'display_name', 'description'])

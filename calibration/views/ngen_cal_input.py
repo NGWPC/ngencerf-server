@@ -229,7 +229,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
 
             # Determine the source of the forcing data
             if not is_missing(run.forcing_source_requested, 'Forcing source', error_object):
-                print('forcing source', run.forcing_source_requested.name.lower())
                 forcing_provider = 'bmi'
                 forcing_configuration = run.forcing_source_requested.name.lower()
 
@@ -239,7 +238,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
                 #         pass
                 #
                 forcing['forcing_provider'] = forcing_provider
-                forcing['forcing_configuration'] = forcing_configuration
+                forcing['forcing_configuration'] = forcing_configuration.lower()
 
             if not is_missing(run.observational_source, 'Observational source', error_object):
                 if build:

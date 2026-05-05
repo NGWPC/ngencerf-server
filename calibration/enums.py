@@ -32,7 +32,7 @@ class ForcingSourceEnum(AbstractEnum):
     Enum for Forcing Sources
     """
     AORC = 'AORC'
-    NWM_RETROSPECTIVE = 'NWM Retrospective'
+    NWM_RETROSPECTIVE = 'NWM'
 
     @classmethod
     def get_model(cls) -> Type[ForcingSource]:

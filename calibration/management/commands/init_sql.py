@@ -531,14 +531,25 @@ class Command(BaseCommand):
             ForcingSource.objects.all().delete()
 
         values = [
-            {"name": "AORC", "description": "Analysis of Record For Calibration", "is_active": True},
-            {"name": "NWM Retrospective", "description": "NWM Retrospective", "is_active": True},
+            {
+                "name": "AORC",
+                "display_name": "AORC",
+                "description": "Analysis of Record For Calibration",
+                "is_active": True
+            },
+            {
+                "name": "NWM",
+                "display_name": "NWM Retrospective",
+                "description": "NWM Retrospective",
+                "is_active": True}
+
         ]
 
         for v in values:
             ForcingSource.objects.update_or_create(
                 name=v['name'],
                 defaults={
+                    "display_name": v['display_name'],
                     "is_active": v.get('is_active', True),
                     "description": v['description'],
                     "created_by": self.user
