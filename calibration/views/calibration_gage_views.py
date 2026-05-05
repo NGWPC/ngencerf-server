@@ -280,31 +280,31 @@ def save_gage_tab(request: Request):
 
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
-        # Get Forcing data
-        # Determine requested forcing source
-        forcing_source_requested = (
-            ForcingSourceEnum.get_instance(forcing_source_requested_name)
-            if forcing_source_requested_name
-            else None
-        )
+    # Get Forcing data
+    # Determine requested forcing source
+    forcing_source_requested = (
+        ForcingSourceEnum.get_instance(forcing_source_requested_name)
+        if forcing_source_requested_name
+        else None
+    )
 
-        # Must be set before get_forcing_data_from_s3() because should_use_bmi_forcing() reads it
-        run.forcing_source_requested = forcing_source_requested
+    print('setting forcing source', forcing_source_requested)
+    run.forcing_source_requested = forcing_source_requested
 
-        # if forcing_source_requested_name:
-        #     try:
-        #         get_forcing_data_from_s3(run, forcing_source_requested_name)
-        #     except DataServicesException as e:
-        #         logger.exception("Error retrieving forcing data from Data Services")
-        #         eds_errors.append({
-        #             'name': 'forcing',
-        #             'message': str(e),
-        #             'status_code': e.status_code if e.status_code else None
-        #         })
-        # else:
-        #     # No forcing_source_requested → clear any existing forcing state
-        #     run.forcing_eds_dir_path = None
-        #     run.forcing_source_actual = None
+    # if forcing_source_requested_name:
+    #     try:
+    #         get_forcing_data_from_s3(run, forcing_source_requested_name)
+    #     except DataServicesException as e:
+    #         logger.exception("Error retrieving forcing data from Data Services")
+    #         eds_errors.append({
+    #             'name': 'forcing',
+    #             'message': str(e),
+    #             'status_code': e.status_code if e.status_code else None
+    #         })
+    # else:
+    #     # No forcing_source_requested → clear any existing forcing state
+    #     run.forcing_eds_dir_path = None
+    #     run.forcing_source_actual = None
 
     # else:
     #     # Get Forcing data
@@ -349,6 +349,7 @@ def save_gage_tab(request: Request):
     run.save()
 
     ngen_cal_input.ready_to_run(run)
+    print('forcing', run.forcing_source_requested.name)
 
     response = {
         'message': f'Calibration Job {run.id} updated',

@@ -246,13 +246,19 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
         logger.info("Time range is already set")
         return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
+    if not run.gage:
+        logger.info("Skipping time range computation because run has no gage")
+        return {}
+
     # If both paths are available, calculate intersection and update run
     daterange_intersection_start = time.perf_counter()
 
     daterange = get_date_range_intersection(run)
 
-    logger.info(f"Date range intersection completed in "
-                f"{time.perf_counter() - daterange_intersection_start:.2f}s")
+    logger.info(
+        f"Date range intersection completed in "
+        f"{time.perf_counter() - daterange_intersection_start:.2f}s"
+    )
 
     if daterange:
         start_time = daterange.start_datetime
