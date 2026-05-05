@@ -230,9 +230,9 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
                 datafile['hydrofab_file'] = get_geopackage_file_path(run)
 
             # Determine the source of the forcing data
-            if not is_missing(run.forcing_source_requested, 'Forcing source', error_object):
+            if not is_missing(run.forcing_source, 'Forcing source', error_object):
                 forcing_provider = 'bmi'
-                forcing_configuration = run.forcing_source_requested.name.lower()
+                forcing_configuration = run.forcing_source.name.lower()
 
                 # if not use_bmi:
                 #     # CSV forcing path rules apply

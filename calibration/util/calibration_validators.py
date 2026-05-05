@@ -604,7 +604,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     job_data_dir = serializers.CharField(required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     gage = GageSerializer(required=True, allow_null=True)
-    forcing_source_requested = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     # forcing_source_actual = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
@@ -847,7 +847,7 @@ class GetValidationJobsRequestSerializer(ValidationRunIdSerializer):
 class SaveGageRequestSerializer(CalibrationRunIdSerializer):
     gage_id = serializers.CharField(required=False, allow_blank=False)
     job_name = serializers.CharField(required=False, allow_blank=False, validators=[no_space_validator])
-    forcing_source_requested = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
 
@@ -857,7 +857,7 @@ class SaveGageResponseSerializer(GenericResponseSerializer):
     eds_errors = EdsErrorsSerializer(many=True, required=False)
     warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
-    forcing_source_requested = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     # forcing_source_actual = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
 
 

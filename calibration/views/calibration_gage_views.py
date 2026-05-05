@@ -196,7 +196,7 @@ def save_gage_tab(request: Request):
 
     calibration_run_id = validator.get('calibration_run_id')
     gage_id = validator.get('gage_id')
-    forcing_source_requested_name = validator.get('forcing_source_requested')
+    forcing_source_name = validator.get('forcing_source')
     observational_source_name = validator.get('observational_source')
     geopackage_source_name = validator.get('geopackage_source')
     job_name = validator.get('job_name')
@@ -280,68 +280,13 @@ def save_gage_tab(request: Request):
 
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
-    # Get Forcing data
-    # Determine requested forcing source
-    forcing_source_requested = (
-        ForcingSourceEnum.get_instance(forcing_source_requested_name)
-        if forcing_source_requested_name
+    forcing_source = (
+        ForcingSourceEnum.get_instance(forcing_source_name)
+        if forcing_source_name
         else None
     )
 
-    print('setting forcing source', forcing_source_requested)
-    run.forcing_source_requested = forcing_source_requested
-
-    # if forcing_source_requested_name:
-    #     try:
-    #         get_forcing_data_from_s3(run, forcing_source_requested_name)
-    #     except DataServicesException as e:
-    #         logger.exception("Error retrieving forcing data from Data Services")
-    #         eds_errors.append({
-    #             'name': 'forcing',
-    #             'message': str(e),
-    #             'status_code': e.status_code if e.status_code else None
-    #         })
-    # else:
-    #     # No forcing_source_requested → clear any existing forcing state
-    #     run.forcing_eds_dir_path = None
-    #     run.forcing_source_actual = None
-
-    # else:
-    #     # Get Forcing data
-    #     # Gage unchanged → refetch only if requested source changed
-    #
-    #     forcing_source_requested = (
-    #         ForcingSourceEnum.get_instance(forcing_source_requested_name)
-    #         if forcing_source_requested_name
-    #         else None
-    #     )
-    #
-    #     needs_forcing_fetch = (
-    #             forcing_source_requested_name
-    #             and (
-    #                     not run.forcing_source_requested
-    #                     or run.forcing_source_requested.name != forcing_source_requested_name
-    #             )
-    #     )
-    #
-    #     # Persist the requested source selection even if we don't refetch
-    #     run.forcing_source_requested = forcing_source_requested
-    #
-    #     if needs_forcing_fetch:
-    #         try:
-    #             get_forcing_data_from_s3(run, forcing_source_requested_name)
-    #         except DataServicesException as e:
-    #             logger.exception("Error retrieving forcing data from Data Services")
-    #             eds_errors.append({
-    #                 'name': 'forcing',
-    #                 'message': str(e),
-    #                 'status_code': e.status_code if e.status_code else None
-    #             })
-    #     elif not forcing_source_requested_name:
-    #         # No forcing_source_requested → clear any existing forcing state
-    #         run.forcing_eds_dir_path = None
-    #         run.forcing_source_actual = None
-    #         clear_times(run)
+    run.forcing_source = forcing_source
 
     # -------------------------
     # Write phase
@@ -349,7 +294,6 @@ def save_gage_tab(request: Request):
     run.save()
 
     ngen_cal_input.ready_to_run(run)
-    print('forcing', run.forcing_source_requested.name)
 
     response = {
         'message': f'Calibration Job {run.id} updated',
@@ -357,14 +301,9 @@ def save_gage_tab(request: Request):
         'status': run.status.name,
         'geopackage_image_url': geopackage_image_url,
         'num_catchments': run.num_catchments,
-        'forcing_source_requested': run.forcing_source_requested.name if run.forcing_source_requested else None
+        'forcing_source': run.forcing_source.name if run.forcing_source else None
     }
-    # should_use_bmi = should_use_bmi_forcing(run)
-    # if not should_use_bmi:
-    #     if run.forcing_source_requested and run.forcing_source_requested != run.forcing_source_actual:
-    #         response['warnings'] = [
-    #             f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name if run.forcing_source_actual else None}'
-    #         ]
+
     if eds_errors:
         response['eds_errors'] = eds_errors
 

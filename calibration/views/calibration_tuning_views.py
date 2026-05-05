@@ -274,7 +274,7 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
     return {}
 
 
-def persist_time_range(run: CalibrationRun, time_range: dict[str, datetime]) -> None:
+def persist_time_range(run: CalibrationRun, time_range: dict[str, datetime | None]) -> None:
     """
     Persist the computed time range to the database if values are provided.
 
@@ -788,7 +788,7 @@ def validate_time_range_against_data(
     return None
 
 
-def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, datetime], validation_times: dict[str, datetime]) -> str | None:
+def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, datetime] | None, validation_times: dict[str, datetime] | None) -> str | None:
     """
     Validates calibration and validation time ranges, ensuring they fall within the allowable data range.
     If valid, updates the `CalibrationRun` instance with the provided times.
