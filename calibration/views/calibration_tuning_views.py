@@ -1249,30 +1249,6 @@ def get_csv_daterange(path: str) -> DateTimeRange:
         raise CerfException(f"Error reading file {path}: {e}")
 
 
-#
-# def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
-#     """
-#     Computes the encompassing date range for all valid CSV files in a given directory.
-#     Supports both local paths and cloud URLs.
-#
-#     :param forcing_dir_path: Directory path or cloud URL containing forcing data files.
-#     :return: DateTimeRange covering all CSV files, or None if no files found.
-#     """
-#     csv_files = cloud_util.list_files(forcing_dir_path, pattern="*.csv")
-#     if not csv_files:
-#         return None
-#
-#     # Use ThreadPoolExecutor for parallel processing
-#     with ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4)) as executor:
-#         ranges = list(executor.map(get_csv_daterange, csv_files))
-#
-#     # Combine all individual ranges into a single encompassing range
-#     timerange = None
-#     for r in ranges:
-#         timerange = timerange.encompass(r) if timerange else r
-#     return timerange
-
-
 def get_date_range_intersection(run: CalibrationRun) -> DateTimeRange | None:
     """
     Calculates the intersection of date ranges between observational and forcing data.
