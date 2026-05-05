@@ -67,6 +67,9 @@ INSTALLED_APPS = [
     "djoser",
     "rest_framework_simplejwt",
     'corsheaders',
+    "django_otp",
+    "django_otp.plugins.otp_totp",
+    "django_otp.plugins.otp_static",
 ]
 
 # Points to which token model should be used for authentication. In case if only stateless
@@ -96,7 +99,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'calibration.util.middleware.LogUnmatchedCalibrationRequestsMiddleware',
+    "django_otp.middleware.OTPMiddleware",
+    'calibration.util.middleware.ApiRequestDiagnosticsMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django_currentuser.middleware.ThreadLocalUserMiddleware',
@@ -108,6 +112,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:3001",
 ]
+
+MFA_ENABLED = str(os.getenv('MFA_ENABLED', 'false')).lower() == 'true'
 
 ROOT_URLCONF = 'cerfServer.urls'
 
@@ -243,7 +249,6 @@ ZIP_DOWNLOAD_URL_TTL_SECONDS = 300
 
 # How long the ZIP object is kept in S3 (and how long status is cached) before cleanup may delete it
 ZIP_RETENTION_SECONDS = 3600
-
 
 # -----------------------------
 # ngen/nwm-cal-mgr Locations

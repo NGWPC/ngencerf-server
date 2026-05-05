@@ -8,7 +8,7 @@ from calibration.views import calibration_formulation_views, calibration_tuning_
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
     calibration_evaluation_views, calibration_forecast_views, calibration_regionalization_views, \
     calibration_verification_views, calibration_secondary_data_views, calibration_download_views, calibration_log_files_views, \
-    calibration_create_jobs_views
+    calibration_create_jobs_views, calibration_mfa_views
 
 urlpatterns = [
     ##################################
@@ -172,6 +172,14 @@ urlpatterns = [
     ##################################
     path('calibration/get_regionalization_files_zip/', calibration_regionalization_views.get_regionalization_files_zip,
          name="getRegionalizationFilesZip"),
+
+    ##################################
+    # MFA
+    ##################################
+    path("auth/mfa/setup/", calibration_mfa_views.setup_mfa, name="setupMfa"),
+    path("auth/mfa/setup/confirm/", calibration_mfa_views.confirm_setup_mfa, name="confirmSetupMfa"),
+    path("auth/mfa/verify/", calibration_mfa_views.verify_mfa, name="verifyMfa"),
+    path("auth/login/", calibration_mfa_views.login, name="login"),
 
     ##################################
     # Swagger - drf_spectacular

@@ -1726,6 +1726,8 @@ class ErrorDetailListField(serializers.ListField):
 class ErrorResponseSerializer(BaseSerializer):
     response_type = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     message = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    error_code = serializers.CharField(required=False, allow_blank=False, allow_null=False)
+    ui_action = serializers.CharField(required=False, allow_blank=False, allow_null=False)
     validation_errors = serializers.JSONField(required=False, allow_null=False)
     errors = serializers.JSONField(required=False, allow_null=False)
 
@@ -1888,3 +1890,71 @@ class GetTimeseriesDataResponseSerializer(GenericMessageResponseSerializer):
 ##################################
 class SlurmSubmitResponseSerializer(BaseSerializer):
     slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
+
+
+##################################
+# MFA
+##################################
+class MFASetupResponseSerializer(BaseSerializer):
+    otpauth_url = serializers.CharField()
+    authenticator_key = serializers.CharField()
+
+
+class MFASetupRequestSerializer(BaseSerializer):
+    mfa_token = serializers.CharField(required=True, allow_blank=False)
+
+
+class MFAConfirmSetupSerializer(BaseSerializer):
+    mfa_token = serializers.CharField(required=True, allow_blank=False)
+    code = serializers.CharField(required=True, allow_blank=False, min_length=6, max_length=6)
+
+
+class LoginRequestSerializer(BaseSerializer):
+    email = serializers.EmailField()
+    password = serializers.CharField()
+
+
+class MFAVerifySerializer(BaseSerializer):
+    mfa_token = serializers.CharField(required=True, allow_blank=False)
+    code = serializers.CharField(required=True, allow_blank=False, max_length=20)
+
+    def validate_code(self, value: str) -> str:
+        value = value.strip()
+
+        # TOTP: exactly 6 digits
+        if value.isdigit() and len(value) == 6:
+            return value
+
+        # Recovery code: hex-hex format (6-6)
+        parts = value.split("-")
+        if len(parts) == 2 and all(len(p) == 6 for p in parts):
+            try:
+                int(parts[0], 16)
+                int(parts[1], 16)
+                return value.lower()
+            except ValueError:
+                pass
+
+        raise serializers.ValidationError("Invalid MFA code format.")
+
+
+class TokenPairResponseSerializer(BaseSerializer):
+    access = serializers.CharField(required=True)
+    refresh = serializers.CharField(required=True)
+    first_name = serializers.CharField(required=True, allow_blank=True)
+    last_name = serializers.CharField(required=True, allow_blank=True)
+    message = serializers.CharField(required=False, allow_blank=True)
+
+
+class MFASetupRequiredResponseSerializer(GenericMessageResponseSerializer):
+    mfa_setup_required = serializers.BooleanField(required=True)
+    mfa_token = serializers.CharField(required=True)
+
+
+class MFARequiredResponseSerializer(GenericMessageResponseSerializer):
+    mfa_required = serializers.BooleanField(required=True)
+    mfa_token = serializers.CharField(required=True)
+
+
+class MFAConfirmSetupResponseSerializer(GenericMessageResponseSerializer):
+    recovery_codes = serializers.ListField(child=serializers.CharField(), required=True)
