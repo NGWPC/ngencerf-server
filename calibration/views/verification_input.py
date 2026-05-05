@@ -1,5 +1,6 @@
 import copy
 import logging
+from datetime import timedelta
 from typing import Any
 
 import yaml
@@ -92,6 +93,22 @@ def create_verification_input(run: VerificationRun) -> str:
     calibration_run = parent_run.calibration_run
     configuration_internal_name = parent_run.configuration.internal_name
 
+    short_range = configuration_internal_name.startswith('short_range')
+    medium_range = configuration_internal_name.startswith('medium_range')
+    long_range = configuration_internal_name.startswith('long_range')
+
+    metrics_lead_time_short_range = ['all', '1-5', '6-10', '11-18', 'all_aggregated']
+    metrics_lead_time_medium_range = [24, 48, 72, 96, 120, 144, 168, 192, 216, 240, '1-72', '73-144', '145-240', 'all_aggregated']
+    metrics_lead_time_long_range = ['1-120', '121-240', '241-360', '361-480', '481-600', '601-720', '1-360', '361-720', 'all_aggregated']
+
+    time_series_lead_times_short_range = [1, 6, 12, 18]
+    time_series_lead_times_medium_range = [24, 48, 120, 240]
+    time_series_lead_times_long_range = [120, 240, 360, 720]
+
+    bar_chart_lead_times_short_range = [1, 5, 10, 18, '1-5', '6-10', '11-18', 'all_aggregated']
+    bar_chart_lead_times_medium_range = [24, 72, 120, 168, 240, '1-72', '73-144', '145-240', 'all_aggregated']
+    bar_chart_lead_times_long_range = ['1-120', '121-240', '241-360', '361-480', '481-600', '601-720', '1-360', '361-720', 'all_aggregated']
+
     config = copy.deepcopy(CONFIG_TEMPLATE)
 
     # Add hard-coded file paths to YAML
@@ -103,13 +120,19 @@ def create_verification_input(run: VerificationRun) -> str:
     )
 
     if is_hindcast:
+        hindcast_run = run.hindcast_run
+        assert hindcast_run is not None
+
         file_paths['fcst_data_dir'] = {
-            calibration_run.job_name: get_hindcast_dir(run.hindcast_run)
+            calibration_run.job_name: get_hindcast_dir(hindcast_run)
         }
-        file_paths['fcst_data_file'] = get_hindcast_output_file_name(run.hindcast_run)
+        file_paths['fcst_data_file'] = get_hindcast_output_file_name(hindcast_run)
     else:
+        forecast_run = run.forecast_run
+        assert forecast_run is not None
+
         file_paths['fcst_data_file'] = {
-            calibration_run.job_name: get_forecast_output_file_path(run.forecast_run)
+            calibration_run.job_name: get_forecast_output_file_path(forecast_run)
         }
 
     file_paths['output_dir'] = get_verification_run_dir(run)
@@ -123,7 +146,21 @@ def create_verification_input(run: VerificationRun) -> str:
     general['dataset_name'] = [calibration_run.job_name]
     general['nwm_version'] = ['ngen']
     general['forecast_start_date'] = [format_datetime(parent_run.cycle_date)]
-    general['forecast_end_date'] = [format_datetime(parent_run.cycle_date)]
+
+    # Forecast verification uses one cycle, so the end date is the same as the start date.
+    #
+    # Hindcast verification spans multiple cycles. For hindcast, forecast_end_date should be
+    # the start time of the last hindcast cycle.
+    if is_hindcast:
+        hindcast_run = run.hindcast_run
+        assert hindcast_run is not None
+
+        last_cycle_date = hindcast_run.cycle_date + timedelta(
+            hours=hindcast_run.interval_cycle * (hindcast_run.num_iterations - 1)
+        )
+        general['forecast_end_date'] = [format_datetime(last_cycle_date)]
+    else:
+        general['forecast_end_date'] = [format_datetime(parent_run.cycle_date)]
 
     nwm_forecast: dict[str, Any] = config['nwm_forecast']
     nwm_forecast['data_source'] = 'hindcast' if is_hindcast else 'ngenCERF'
@@ -132,12 +169,30 @@ def create_verification_input(run: VerificationRun) -> str:
     metrics['lead_times'] = ['all', '1-5', '6-10', '11-18', 'all_aggregated'] if is_hindcast else ['all_aggregated']
 
     plots: dict[str, Any] = config['plots']
+
     if is_hindcast:
-        plots['time_series']['lead_times'] = [1, 6, 12, 18]
-        # plots['time_series']['reference_times'] = ['2025-08-20 00:00:00', '2025-08-21 00:00:00', '2025-08-22 00:00:00']
-        plots['metric_table']['lead_times'] = [1, 10, '1-5', 'all_aggregated']
-        plots['barchart']['lead_times'] = [1, 5, 10, 18, '1-5', '6-10', '11-18', 'all_aggregated']
-        plots['barchart']['metric_subset'] = ['KGE', 'NSE', 'CORR', 'NNSE']
+        if short_range:
+            metrics_lead_times = metrics_lead_time_short_range
+            time_series_lead_times = time_series_lead_times_short_range
+            bar_chart_lead_times = bar_chart_lead_times_short_range
+        elif medium_range:
+            metrics_lead_times = metrics_lead_time_medium_range
+            time_series_lead_times = time_series_lead_times_medium_range
+            bar_chart_lead_times = bar_chart_lead_times_medium_range
+        elif long_range:
+            metrics_lead_times = metrics_lead_time_long_range
+            time_series_lead_times = time_series_lead_times_long_range
+            bar_chart_lead_times = bar_chart_lead_times_long_range
+        else:
+            raise ValueError(f"Unsupported hindcast configuration: {configuration_internal_name}")
+
+        metrics['lead_times'] = metrics_lead_times
+        plots['time_series']['lead_times'] = time_series_lead_times
+        plots['metric_table']['lead_times'] = time_series_lead_times  # Use same as time_series
+        plots['barchart']['lead_times'] = bar_chart_lead_times
+        plots['barchart']['metric_subset'] = ['KGE', 'NSE', 'CORR', 'NNSE', 'PBIAS']
+    else:
+        metrics['lead_times'] = ['all_aggregated']
 
     # -----------------------------
     # FILE WRITE PHASE
