@@ -245,7 +245,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
             if not is_missing(run.observational_source, 'Observational source', error_object):
                 if build:
                     # Get the observational data
-                    # TODO Need to subset
                     date_time_range = DateTimeRange(
                         min(run.calibration_start_period, run.validation_start_period),
                         max(run.calibration_end_period, run.validation_end_period),

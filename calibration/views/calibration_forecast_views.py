@@ -2,7 +2,9 @@ import json
 import logging
 import os
 import shutil
+from datetime import timedelta
 
+from datetimerange import DateTimeRange
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
@@ -18,12 +20,13 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, Loa
     DeleteHindcastRunResponseSerializer, GetColdStartJobsForConfigurationResponseSerializer, \
     HindcastConfigurationSerializer
 from calibration.util.ngen_locations import get_forecast_dir, get_cold_start_output_file, \
-    get_hindcast_dir, get_hindcast_output_file, get_forecast_output_file_path
+    get_hindcast_dir, get_hindcast_output_file, get_forecast_output_file_path, get_observational_file_for_hindcast
 from calibration.views.calibration_secondary_data_views import read_csv_as_json
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
     ResponseError, get_user_email, get_elapsed_str, readonly_transaction, get_calibration_run, truncate_large_fields, \
     create_hindcast_run_internal, get_hindcast_run
+from calibration.views.data_services import get_observational_data_from_data_services, get_observational_date_range_from_data_services
 
 logger = logging.getLogger(__name__)
 
@@ -369,6 +372,8 @@ def get_hindcast_timeseries_data(request: Request) -> Response:
     Rows with the same time are grouped together. Each iteration value is stored
     under its own key such as hindcast_0, hindcast_1, hindcast_2, etc.
 
+    Observed streamflow is also included under observed_flow.
+
     :param request: HTTP request containing hindcast_run_id
     :return: JSON response with hindcast timeseries values for all iterations.
     """
@@ -390,6 +395,59 @@ def get_hindcast_timeseries_data(request: Request) -> Response:
 
     timeseries_by_time: dict[str, dict[str, object]] = {}
 
+    # Build the full hindcast output window in UTC.
+    time_start = run.cycle_date
+    time_end = run.cycle_date + timedelta(
+        hours=run.interval_cycle * (run.num_iterations - 1) + run.configuration.fcst_win
+    )
+
+    # Fetch observed data for the same UTC window used by the hindcast output.
+    date_time_range = DateTimeRange(time_start, time_end)
+
+    # Verify that Data Services has observations for the requested hindcast window.
+    available_date_range = get_observational_date_range_from_data_services(run.calibration_run)
+
+    available_start = available_date_range.start_datetime
+    available_end = available_date_range.end_datetime
+    requested_start = date_time_range.start_datetime
+    requested_end = date_time_range.end_datetime
+
+    # These should always be set if Data Services behaved correctly
+    assert available_start is not None and available_end is not None
+    assert requested_start is not None and requested_end is not None
+
+    observations_available = (
+            available_start <= requested_start
+            and requested_end <= available_end
+    )
+
+    if not observations_available:
+        logger.warning(
+            "Observed streamflow is not available for the full hindcast window. "
+            f"Requested: {requested_start} to {requested_end}. "
+            f"Available: {available_start} to {available_end}."
+        )
+    else:
+        obs_path = get_observational_file_for_hindcast(run)
+
+        # Fetch observed streamflow only when Data Services has the full requested range.
+        obs_csv = get_observational_data_from_data_services(run.calibration_run, date_time_range)
+
+        with open(obs_path, "w", encoding="utf-8", newline="") as f:
+            f.write(obs_csv)
+
+        # Add observed streamflow to the shared time-indexed response.
+        observed_data = read_csv_as_json(obs_path, keys=["Time", "observed_flow"])
+
+        for row in observed_data:
+            time_value = row["Time"]
+
+            if time_value not in timeseries_by_time:
+                timeseries_by_time[time_value] = {"time": time_value}
+
+            timeseries_by_time[time_value]["observed_flow"] = row["observed_flow"]
+
+    # Add each hindcast iteration to the shared time-indexed response.
     for iteration in iterations:
         hindcast_output = get_hindcast_output_file(run, iteration)
         if not os.path.exists(hindcast_output):
@@ -397,7 +455,6 @@ def get_hindcast_timeseries_data(request: Request) -> Response:
 
         # Explicitly enforce the exact keys we want instead of inheriting CSV header
         hindcast_data = read_csv_as_json(hindcast_output, keys=["Time", "sim_flow"])
-
         iteration_key = f"hindcast_{iteration}"
 
         for row in hindcast_data:

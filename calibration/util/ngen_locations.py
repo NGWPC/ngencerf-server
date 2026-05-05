@@ -88,6 +88,10 @@ def get_observational_file_for_job(run: CalibrationRun) -> str:
     return os.path.join(get_observational_dir_for_job(run), get_observational_filename(run))
 
 
+def get_observational_file_for_hindcast(run: HindcastRun) -> str:
+    return os.path.join(get_hindcast_dir(run), get_observational_filename(run.calibration_run))
+
+
 def get_geopackage_dir_for_job(run: CalibrationRun) -> str:
     return os.path.join(run.job_data_dir, 'geopackage')
 
