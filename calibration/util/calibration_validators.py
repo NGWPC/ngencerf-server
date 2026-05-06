@@ -356,7 +356,7 @@ class CreateForecastRequestSerializer(CalibrationRunIdSerializer):
 class CreateHindcastRequestSerializer(CalibrationRunIdSerializer):
     configuration_name = serializers.CharField(required=True, validators=[enum_validator(HindcastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=False, allow_null=True)
-    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24], required=True)
+    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24, 36, 48, 60, 72, 84, 96, 108, 120, 180, 240], required=True)
     num_iterations = serializers.IntegerField(required=True, allow_null=False, validators=[MinValueValidator(1)])
     cold_start_date = serializers.DateTimeField(required=False, allow_null=True)
     cold_start_run_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
@@ -1373,7 +1373,7 @@ class GetStatusForHindcastResponseSerializer(CommonStatusFieldsMixin, HindcastRu
     configuration = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=True, allow_null=False)
     created_new_cold_start = serializers.BooleanField(required=True, allow_null=False)
-    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24], required=True)
+    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24, 36, 48, 60, 72, 84, 96, 108, 120, 180, 240], required=True)
     num_iterations = serializers.IntegerField(required=True, allow_null=False, validators=[MinValueValidator(1)])
     cold_start_run = GetStatusColdStartSerializer(required=False, allow_null=True)
 
@@ -1549,7 +1549,7 @@ class ForecastJobsResponseSerializer(ForecastBaseJobsResponseSerializer, Forecas
 class HindcastJobsResponseSerializer(ForecastBaseJobsResponseSerializer, HindcastRunIdSerializer):
     hindcast_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
     cold_start = ColdStartJobsResponseSerializer(required=True, allow_null=False)
-    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24], required=True)
+    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24, 36, 48, 60, 72, 84, 96, 108, 120, 180, 240], required=True)
     num_iterations = serializers.IntegerField(required=True, allow_null=False, validators=[MinValueValidator(1)])
 
 
