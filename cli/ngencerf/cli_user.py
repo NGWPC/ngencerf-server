@@ -3,6 +3,7 @@ import os
 
 import qrcode
 import requests
+from qrcode.image.pil import PilImage
 
 from ngencerf.cli_util import check_http_error
 
@@ -230,7 +231,7 @@ def perform_full_login(_retry=False) -> bool:
         print("\nScan the QR code or enter this secret key into your authenticator app.")
 
         try:
-            img = qrcode.make(otpauth_url)
+            img = qrcode.make(otpauth_url, image_factory=PilImage)
             img.show()
         except Exception as e:
             print(f"Failed to open QR code window: {e}")
@@ -409,6 +410,7 @@ def ngen_register(optional_email: str = None):
     if check_http_error(response.status_code, response.text):
         print(f"User '{email}' registered successfully.")
 
+
 def _save_tokens(access_token: str, refresh_token: str | None, email: str, password: str) -> None:
     os.environ["ACCESS_TOKEN"] = access_token
     os.environ["NGEN_EMAIL"] = email
@@ -428,6 +430,7 @@ def _handle_token_response(response_json: dict, email: str, password: str) -> bo
 
     if not access_token:
         return False
+    assert isinstance(access_token, str)
 
     _save_tokens(access_token, refresh_token, email, password)
     print(f"{email} login successful.\n")
