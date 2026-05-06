@@ -19,11 +19,10 @@ from calibration.util.calibration_validators import EmptySerializer, CreateCalib
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.calibration_landing_views import logger, validate_forecast_cycle_date
-from calibration.views.calibration_run_views import map_path_to_host
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, get_user_email, validate_request, create_calibration_run_internal, validate_response, \
     get_elapsed_str, get_calibration_run, ResponseError, create_validation_run_internal, format_datetime, create_cold_start_run_internal, \
-    create_forecast_run_internal, get_job_description, get_cold_start_run, create_hindcast_run_internal, readonly_transaction
+    create_forecast_run_internal, get_job_description, get_cold_start_run, create_hindcast_run_internal, readonly_transaction, map_path_to_host
 
 
 @extend_schema(

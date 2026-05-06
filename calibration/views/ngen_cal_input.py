@@ -20,13 +20,14 @@ from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, 
 from calibration.util.geopkg import get_geometry_from_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     get_observational_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, UEB_LIB, NGEN_MODULE_PARAMETERS, \
-    PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES, get_geopackage_file_path
+    PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES, get_geopackage_file_path, FORCING_STATIC_DIR
 from calibration.views.calibration_formulation_views import validate_formulation
 from calibration.views.calibration_secondary_data_views import should_generate_swe, should_generate_soil_moisture
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data, \
     validate_parameter_rules
 from calibration.views.called_from import called_from
-from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
+from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction, \
+    map_path_to_container
 from calibration.views.data_services import get_observational_data_from_data_services
 from calibration.views.mpi_rules import get_mpi_nodes
 from cerfServer.settings import NGEN_ENVIRONMENT, NGEN_BMI_FORCING_WORK_DIR
@@ -110,6 +111,7 @@ CONFIG_TEMPLATE = {
         "root_dir": NGEN_BMI_FORCING_WORK_DIR,
         "forcing_configuration": "",
         "forcing_dir": "",
+        "forcing_static_dir": map_path_to_container(FORCING_STATIC_DIR),
         "forcing_template_dir": BMI_FORCING_TEMPLATES,
 
     },

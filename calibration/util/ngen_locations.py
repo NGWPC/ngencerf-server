@@ -17,7 +17,8 @@ static_dirs = [
     NWM_RETROSPECTIVE_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'nwm_retrospective'),
     NGEN_MODULE_PARAMETERS := os.path.join(settings.NGEN_STATIC_DIR, 'module_parameter_files'),
     BMI_FORCING_TEMPLATES := os.path.join(settings.NGEN_STATIC_DIR, 'bmi_forcing_templates'),
-    VERF_DATA := os.path.join(settings.NGEN_STATIC_DIR, 'verification_data')
+    VERF_DATA := os.path.join(settings.NGEN_STATIC_DIR, 'verification_data'),
+    FORCING_STATIC_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'forcing_static_dir')
 ]
 
 files = [

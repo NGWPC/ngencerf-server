@@ -26,13 +26,13 @@ from calibration.views.calibration_formulation_views import get_sloth_parameters
 from calibration.views.calibration_gage_views import get_data_files_status, reset_gage_dependent_state_on_change
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
-from calibration.views.calibration_run_views import map_path_to_host, normalize_failure_messages
+from calibration.views.calibration_run_views import normalize_failure_messages
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameter_values, \
     save_parameters, has_user_selected_tuning_parameters, compute_time_range, persist_time_range
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request, truncate_large_fields, get_user_email, generate_ngen_logging_config, get_elapsed_str, readonly_transaction, \
-    format_datetime
+    format_datetime, map_path_to_host
 from calibration.views.data_services import DataServicesException, get_geopackage_from_data_services, \
     get_module_metadata_from_data_services, update_parameters
 
