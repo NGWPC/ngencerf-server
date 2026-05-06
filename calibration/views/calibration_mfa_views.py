@@ -20,6 +20,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from calibration.auth.active_directory_service import ActiveDirectoryAuthorizationError
 from calibration.models import MFARecoveryCode
 from calibration.util.calibration_validators import MFASetupResponseSerializer, ErrorResponseSerializer, MFAConfirmSetupSerializer, \
     LoginRequestSerializer, MFAVerifySerializer, MFARequiredResponseSerializer, MFASetupRequiredResponseSerializer, \
@@ -201,7 +202,7 @@ def setup_mfa(request: Request) -> Response:
 
     logger.debug(f'{get_caller_name()}() resolved MFA setup user: {user.email}')
 
-    # If user has already completed mfs setup, then leave everything alone
+    # If user has already completed MFA setup, then leave everything alone
     if user.mfa_enabled:
         return mfa_error_response(
             error_code="MFA_ALREADY_CONFIGURED",
@@ -426,7 +427,15 @@ def login(request: Request) -> Response:
     email = validator.get("email")
     password = validator.get("password")
 
-    user = authenticate(request, email=email, password=password)
+    try:
+        user = authenticate(request, email=email, password=password)
+    except ActiveDirectoryAuthorizationError:
+        return mfa_error_response(
+            error_code="USER_NOT_AUTHORIZED",
+            ui_action=UI_ACTION_STAY_ON_LOGIN,
+            message="User is not authorized for this system.",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
 
     if not user:
         return mfa_error_response(

@@ -65,12 +65,22 @@ class ActiveDirectoryBackend(ModelBackend):
 
         try:
             ad_user = authenticate_active_directory_user(email=email, password=password)
+
         except ActiveDirectoryUserNotFoundError:
             logger.warning("AD login failed: user not found for email=%s", email)
             return None
-        except ActiveDirectoryAuthorizationError:
-            logger.warning("AD login denied: user lacks required group email=%s", email)
-            return None
+
+        except ActiveDirectoryAuthorizationError as e:
+            logger.warning(
+                "AD authorization failed: user lacks required group for system '%s': "
+                "email=%s, required_group=%s, ad_groups=%s",
+                e.system_name,
+                email,
+                e.required_group,
+                e.user_groups
+            )
+            raise
+
         except ActiveDirectoryAuthenticationError:
             logger.warning("AD login failed: invalid credentials email=%s", email)
             return None

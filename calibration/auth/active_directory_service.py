@@ -52,7 +52,18 @@ class ActiveDirectoryAuthenticationError(Exception):
 
 class ActiveDirectoryAuthorizationError(Exception):
     """Raised when the user authenticated successfully but lacks access."""
-    pass
+    def __init__(
+            self,
+            message: str,
+            *,
+            required_group: str | None = None,
+            user_groups: list[str] | None = None,
+            system_name: str | None = None,
+    ):
+        super().__init__(message)
+        self.required_group = required_group
+        self.user_groups = user_groups or []
+        self.system_name = system_name
 
 
 class ActiveDirectoryUserNotFoundError(Exception):
@@ -102,8 +113,10 @@ def authenticate_active_directory_user(email: str, password: str) -> ActiveDirec
             and settings.LDAP_ADMIN_GROUP not in ad_user.groups
     ):
         raise ActiveDirectoryAuthorizationError(
-            f"User is not a member of required group "
-            f"{settings.LDAP_REQUIRED_GROUP_USERS}"
+            f"User is not a member of required group {settings.LDAP_REQUIRED_GROUP_USERS}",
+            required_group=settings.LDAP_REQUIRED_GROUP_USERS,
+            user_groups=ad_user.groups,
+            system_name=settings.LDAP_SYSTEM_NAME
         )
 
     return ad_user
