@@ -466,6 +466,8 @@ def get_hindcast_timeseries_data(request: Request) -> Response:
             timeseries_by_time[time_value][iteration_key] = row["sim_flow"]
 
     timeseries_data = list(timeseries_by_time.values())
+    # Ensure strict chronological ordering by timestamp
+    timeseries_data.sort(key=lambda x: x["time"])
 
     response = {
         'hindcast_run_id': hindcast_run_id,
