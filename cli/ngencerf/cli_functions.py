@@ -114,11 +114,11 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
         if "files" in req_kwargs and req_kwargs["files"]:
             _rewind_files(req_kwargs["files"])
 
-        base_url = get_ngencerf_base_url()
+        request_base_url = get_ngencerf_base_url()
         try:
-            return requests.post(f"{base_url}{endpoint}", **req_kwargs)
+            return requests.post(f"{request_base_url}{endpoint}", **req_kwargs)
         except requests.exceptions.RequestException as e:
-            print(f"\nError: Could not connect to server at {base_url}.")
+            print(f"\nError: Could not connect to server at {request_base_url}.")
             print(f"Details: {e}")
             return None
 
@@ -141,7 +141,8 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
     # ───────────────────────────────
     # 1. First attempt (with spinner)
     # ───────────────────────────────
-    first_resp = _with_spinner(message, _make_post)
+    base_url = get_ngencerf_base_url()
+    first_resp = _with_spinner(f"{message} | Server: {base_url}...", _make_post)
     if first_resp is None:
         return None, False
 
@@ -161,8 +162,8 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
 
     # Retry only if 401 and refresh/login succeeded
     if not ok and first_resp.status_code == 401:
-        print("Retrying request after authentication recovery...")
-        retry_resp = _with_spinner(f"Retrying: {message}...", _make_post)
+        print("Retrying request after authentication recovery.")
+        retry_resp = _with_spinner(f"Retrying: {message} | Server: {base_url}...", _make_post)
         if retry_resp is None:
             return None, False
 
@@ -193,28 +194,9 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
         return None, False
 
     # ───────────────────────────────
-    # 3. Success-after-retry (non-stream)
+    # 3. Successful JSON/non-stream response
     # ───────────────────────────────
-    if not is_stream:
-        return parsed_or_none, True
-
-    # ───────────────────────────────
-    # 4. Success-after-retry (stream)
-    # ───────────────────────────────
-    final_stream_resp = _with_spinner(f"Retrying: {message}...", _make_post)
-    if final_stream_resp is None:
-        return None, False
-    if not final_stream_resp.ok:
-        # If server still responds with an error here, print via check_http_error once more (no further retries).
-        _ = check_http_error(
-            final_stream_resp.status_code,
-            final_stream_resp.text,
-            final_stream_resp.headers.get("Content-Type"),
-            retry_func=None
-        )
-        return None, False
-
-    return final_stream_resp, True
+    return parsed_or_none, True
 
 
 def about(output_path: str | None = None) -> int:
@@ -228,7 +210,7 @@ def about(output_path: str | None = None) -> int:
     final_path = resolve_output_path(output_path, "about_ngencerf.json")
 
     response_json, success = post_with_spinner_and_retry(
-        "Sending request to server...",
+        "Fetching ngenCerf about information",
         "/calibration/get_git_info/",
         headers={"Content-Type": "application/json"}
     )
@@ -265,7 +247,7 @@ def download_zip(calibration_run_id: int, output_path: str | None = None) -> int
 
     payload = {"calibration_run_id": calibration_run_id}
     resp, success = post_with_spinner_and_retry(
-        "Downloading zip...",
+        "Downloading ZIP",
         "/calibration/get_calibration_job_zip/",
         headers={},  # must remain blank to allow auto-injection
         json=payload,
@@ -303,7 +285,7 @@ def run_job(calibration_run_id: int) -> int:
     print(f"Submitting calibration run job {calibration_run_id}")
     payload = {"calibration_run_id": calibration_run_id}
     response_json, success = post_with_spinner_and_retry(
-        "Submitting job...",
+        "Submitting job",
         "/calibration/run_calibration/",
         headers={"Content-Type": "application/json"},
         json=payload,
@@ -330,7 +312,7 @@ def job_status(calibration_run_id: int) -> int:
     """
     payload = {"calibration_run_id": calibration_run_id}
     response_json, success = post_with_spinner_and_retry(
-        "Getting job status...",
+        "Getting job status",
         "/calibration/get_status/",
         headers={"Content-Type": "application/json"},
         json=payload,
@@ -465,7 +447,7 @@ def cancel_job(calibration_run_id: int) -> int:
     print(f"Cancelling calibration run job {calibration_run_id}")
     payload = {"calibration_run_id": calibration_run_id}
     response_json, success = post_with_spinner_and_retry(
-        "Cancelling job...",
+        "Cancelling job",
         "/calibration/cancel_job/",
         headers={"Content-Type": "application/json"},
         json=payload,
@@ -537,7 +519,7 @@ def list_jobs(output_path: str | None = None, filters: dict | None = None, sort:
     # Perform API call
     # ─────────────────────────────────────────────
     response_json, success = post_with_spinner_and_retry(
-        "Fetching job list...",
+        "Fetching job list",
         "/calibration/get_calibration_jobs/",
         headers={"Content-Type": "application/json"},
         json=payload
@@ -601,7 +583,7 @@ def update_and_get_gage_status(gage_id: str, is_active: bool | None = None) -> i
         payload["is_active"] = is_active
 
     response_json, success = post_with_spinner_and_retry(
-        "Updating gage status...",
+        "Updating gage status",
         "/calibration/update_and_get_gage_status/",
         headers={"Content-Type": "application/json"},
         json=payload,
@@ -648,7 +630,7 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
         payload["calibration_run_id"] = calibration_run_id
 
     response_json, success = post_with_spinner_and_retry(
-        f"{action} job...",
+        f"{action} job",
         "/calibration/import/",
         headers={"Content-Type": "application/json"},
         json=payload,
@@ -754,7 +736,7 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
 
     payload = {"calibration_run_id": calibration_run_id}
     response_json, success = post_with_spinner_and_retry(
-        "Fetching job...",
+        "Fetching job",
         "/calibration/export/",
         headers={"Content-Type": "application/json"},
         json=payload,
@@ -803,7 +785,7 @@ def generate_regionalization_files(calibration_run_ids: list[int] | str, output_
 
         # Perform request (with automatic refresh/retry)
         resp, success = post_with_spinner_and_retry(
-            "Downloading regionalization ZIP...",
+            "Downloading regionalization ZIP",
             "/calibration/get_regionalization_files_zip/",
             headers={},  # No static Authorization header
             json=payload,
@@ -1032,7 +1014,7 @@ def _process_job_action(
 
     # ───── Execute API call ─────
     response_json, success = post_with_spinner_and_retry(
-        f"{action_name} jobs...",
+        f"{action_name} jobs",
         endpoint,
         headers={"Content-Type": "application/json"},
         json=payload,
@@ -1075,7 +1057,7 @@ def extract_job_ids_from_markdown(file_path: str) -> list[int]:
 
 
 class Spinner:
-    def __init__(self, message="Processing..."):
+    def __init__(self, message="Processing"):
         self.spinner = itertools.cycle(["|", "/", "-", "\\"])
         self.running = False
         self.thread = None
