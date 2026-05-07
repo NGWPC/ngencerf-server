@@ -5,8 +5,8 @@ import qrcode
 import requests
 from qrcode.image.pil import PilImage
 
-from ngencerf.cli_util import check_http_error
 from ngencerf.cli_config import ENV_FILE, get_ngencerf_base_url, load_ngencerf_env, save_to_env_file, decode_env_password, encode_env_password
+from ngencerf.cli_util import check_http_error
 
 
 def _endpoint(path: str) -> str:
@@ -122,20 +122,25 @@ def perform_full_login(_retry: bool = False) -> bool:
     if response.status_code != 200:
         if response.status_code == 401:
             print("Login failed — incorrect email or password.")
-        else:
-            check_http_error(response.status_code, response.text)
-            print(f"Login failed with HTTP {response.status_code}. Please try again.")
 
-        # Clear stored password for retry
-        print("Saved password failed. Prompting for new credentials...")
-        _clear_saved_password()
-        os.environ.pop("NGEN_PASSWORD", None)
+            # Only clear saved password when the server explicitly rejected credentials.
+            print("Saved password failed. Prompting for new credentials...")
+            _clear_saved_password()
+            os.environ.pop("NGEN_PASSWORD", None)
 
-        if not _retry:
-            print("Saved password failed — retrying full login...")
-            return perform_full_login(_retry=True)
+            if not _retry:
+                print("Saved password failed — retrying full login...")
+                return perform_full_login(_retry=True)
 
-        print("Second login attempt failed. Aborting.")
+            print("Second login attempt failed. Aborting.")
+            return False
+
+        check_http_error(
+            response.status_code,
+            response.text,
+            response.headers.get("Content-Type"),
+        )
+        print(f"Login failed with HTTP {response.status_code}. Check the configured server URL: {get_ngencerf_base_url()}")
         return False
 
     # Success case

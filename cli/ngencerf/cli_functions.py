@@ -17,9 +17,8 @@ from typing import Callable, Any
 import requests
 import tabulate
 
-from ngencerf.cli_util import check_http_error
 from ngencerf.cli_config import get_ngencerf_base_url
-
+from ngencerf.cli_util import check_http_error
 
 
 def _get_bundled_cli_git_info() -> dict:
