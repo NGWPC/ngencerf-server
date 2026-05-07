@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 
@@ -194,3 +195,35 @@ def set_ngencerf_base_url(base_url: str) -> None:
 
     # Active tokens are server-specific.
     remove_from_env_file({"ACCESS_TOKEN", "REFRESH_TOKEN"})
+
+
+ENCODED_PASSWORD_PREFIX = "b64:"
+
+
+def encode_env_password(password: str) -> str:
+    """
+    Encode a password for storage in ~/.ngencerf_env.
+
+    This is obfuscation only, not encryption.
+
+    :param password: Plain-text password.
+    :return: Encoded password with prefix.
+    """
+    encoded = base64.b64encode(password.encode("utf-8")).decode("ascii")
+    return f"{ENCODED_PASSWORD_PREFIX}{encoded}"
+
+
+def decode_env_password(value: str) -> str:
+    """
+    Decode a password loaded from ~/.ngencerf_env.
+
+    Supports both new encoded passwords and legacy plain-text passwords.
+
+    :param value: Stored password value.
+    :return: Plain-text password.
+    """
+    if not value.startswith(ENCODED_PASSWORD_PREFIX):
+        return value
+
+    encoded = value[len(ENCODED_PASSWORD_PREFIX):]
+    return base64.b64decode(encoded.encode("ascii")).decode("utf-8")

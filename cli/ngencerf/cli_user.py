@@ -6,7 +6,7 @@ import requests
 from qrcode.image.pil import PilImage
 
 from ngencerf.cli_util import check_http_error
-from ngencerf.config import ENV_FILE, get_ngencerf_base_url, load_ngencerf_env, save_to_env_file
+from ngencerf.config import ENV_FILE, get_ngencerf_base_url, load_ngencerf_env, save_to_env_file, decode_env_password, encode_env_password
 
 
 def _endpoint(path: str) -> str:
@@ -18,10 +18,10 @@ def _endpoint(path: str) -> str:
 
 def save_credentials_to_env_file(email: str, password: str) -> None:
     """
-    Persist email and password to ~/.ngencerf_env so user isn't prompted every time.
+    Persist email and obfuscated password to ~/.ngencerf_env so user isn't prompted every time.
     """
     save_to_env_file("NGEN_EMAIL", email)
-    save_to_env_file("NGEN_PASSWORD", password)
+    save_to_env_file("NGEN_PASSWORD", encode_env_password(password))
 
 
 def ngen_login() -> bool:
@@ -106,7 +106,9 @@ def perform_full_login(_retry: bool = False) -> bool:
     else:
         # Use stored password or prompt if missing
         password = os.environ.get("NGEN_PASSWORD")
-        if not password:
+        if password:
+            password = decode_env_password(password)
+        else:
             password = getpass.getpass("ngenCerf password: ")
 
     # ───────────────────────────────
