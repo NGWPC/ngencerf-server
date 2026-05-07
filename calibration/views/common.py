@@ -32,7 +32,6 @@ from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
 from calibration.util.caching import get_cached_modules_by_id
 from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
-from calibration.util.cloud_util import path_exists
 from calibration.util.ngen_locations import get_forecast_dir, get_output_calibration_run_dir, \
     get_output_validation_run_dir, get_cold_start_dir, get_ngen_logging_file, \
     get_ngen_logging_basename, get_verification_run_dir, \
@@ -1535,4 +1534,3 @@ def map_path_to_container(path: str) -> str:
 
     # No translation needed
     return path
-

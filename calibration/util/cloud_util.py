@@ -10,7 +10,7 @@ storage (S3, GCS, Azure Blob/ADLS, etc.). It includes helpers for:
   Ensures that bare paths are converted into proper URLs so that fsspec can
   operate consistently across providers.
 
-- File operations (`path_exists`, `is_dir`, `list_files`):
+- File operations (`is_dir`, `list_files`):
   Cloud/local agnostic wrappers that mimic Python’s built-in file and os.path
   utilities but work transparently with remote storage.
 
@@ -831,63 +831,6 @@ def copy_tree(src_url: str,
 # ----------------------------------------------------------------------
 # File operations
 # ----------------------------------------------------------------------
-
-def path_exists(path: str, *, profile_name: str | None = None) -> bool:
-    """
-    Note: Need to remove uses of this function on EFS.  Then we can get rid of this
-    Still needed for forcing data
-
-    Cloud/local agnostic exists() check.
-    Works for file://, s3://, gcs://, az://, etc.
-    Raises S3CredentialsExpired if AWS credentials are expired.
-    Raises S3ProfileError if an explicit AWS profile is missing or invalid.
-
-    :param path: URL or local filesystem path.
-    :param profile_name: Optional AWS profile name used for S3 paths only.
-    :return: True if path exists, False otherwise.
-    """
-    if not path:
-        return False
-
-    parsed = urlparse(path)
-    scheme = parsed.scheme or "file"
-
-    if scheme == "file":
-        return os.path.exists(parsed.path or path)
-
-    try:
-        fs, norm_path = get_filesystem(path, profile_name=profile_name)
-
-        if scheme == "s3":
-            # For S3, force a real backend operation so auth failures do not
-            # get silently turned into False by fs.exists(). This works well
-            # for our S3 "directory" prefixes because they always contain
-            # at least one object (for example, a .keep file).
-            return len(fs.ls(norm_path, detail=False)) > 0
-
-        return fs.exists(norm_path)
-
-    except S3ProfileError:
-        raise
-    except FileNotFoundError:
-        return False
-    except botocore.exceptions.ClientError as e:
-        code = e.response.get("Error", {}).get("Code")
-        if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
-            raise S3CredentialsExpired(
-                _expired_credentials_message("path_exists", path, profile_name)
-            ) from e
-        raise
-    except PermissionError as e:
-        if "expired" in str(e).lower():
-            raise S3CredentialsExpired(
-                _expired_credentials_message("path_exists", path, profile_name)
-            ) from e
-        raise PermissionError(f"{e}{_format_profile_suffix(profile_name)}") from e
-    except Exception as e:
-        _raise_if_s3_profile_error(e, profile_name=profile_name)
-        return False
-
 
 def is_dir(path: str, *, profile_name: str | None = None) -> bool:
     """
