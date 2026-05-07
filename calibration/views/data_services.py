@@ -11,11 +11,9 @@ from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_aware
 from mswm.utils.ginputfunc import call_icefabric_gpkg
 
-from calibration.enums import ForcingSourceEnum, DomainEnum
 from calibration.models import CalibrationParameter, CalibrationRun, CalibrationFormulation
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups
 from calibration.util.calibration_validators import ModuleDataListSerializer
-from calibration.util.cloud_util import join_url, is_dir
 from calibration.util.ngen_locations import get_geopackage_dir_for_job
 from calibration.views.common import validate_response_data
 
@@ -28,14 +26,18 @@ default_headers = {
 
 def fetch_from_data_services(method: str, url: str, headers: dict = None, payload: dict = None) -> dict | str:
     """
-     Issue an HTTP request to Data Services and return a validated JSON object.
+    Issue an HTTP request to Data Services.
+
+    JSON responses are parsed and must return a dictionary. Non-JSON responses
+    are returned as raw text for plain-text/CSV-style endpoints.
 
     :param method: HTTP method (e.g., 'GET' or 'POST').
     :param url: Fully qualified Data Services endpoint URL.
     :param headers: Optional HTTP headers to include in the request.
     :param payload: Optional JSON payload for POST requests.
-    :return: Parsed response JSON as a dictionary OR raw text for non-JSON endpoints.
-    :raises DataServicesException: On network errors, HTTP error status codes, or invalid JSON when JSON is expected.
+    :return: Parsed JSON dictionary, or raw response text for non-JSON endpoints.
+    :raises DataServicesException: On unsupported methods, request failures, HTTP errors,
+                                   HTML error pages, invalid JSON, or unexpected JSON shape.
     """
     status_code = None
     response_text = None
@@ -131,9 +133,12 @@ class DataServicesException(Exception):
 
 def get_geopackage_from_data_services(run: CalibrationRun):
     """
-    Retrieve a GeoPackage for the run's gage from MSWM, which gets it from Data Services and set the file path on the run.
+    Retrieve a GeoPackage for the run's gage and write it to the job GeoPackage directory.
 
-    :param run: A CalibrationRun object with associated gage information.
+    MSWM performs the Data Services lookup and writes the GeoPackage file. This function
+    does not set a file path on the run or save the run.
+
+    :param run: CalibrationRun instance with associated gage information.
     """
     if run.gage:
         logger.info('Retrieving geopackage from Data Services')
@@ -157,12 +162,11 @@ def _parse_utc(dt_str: str) -> datetime:
     """
     Parse an ISO-8601 datetime string and return a timezone-aware UTC datetime.
 
-    Behavior:
-      - If the input string has no timezone/offset (naive), it is interpreted as UTC.
-      - If the input string includes a timezone/offset, it is converted to UTC.
+    Naive datetimes returned by Data Services are interpreted as UTC. Datetimes with
+    an explicit timezone or offset are converted to UTC.
 
-    :param dt_str: ISO-8601 datetime string from Data Services (e.g., "1990-10-01T05:00:00").
-    :return: A timezone-aware datetime normalized to UTC.
+    :param dt_str: ISO-8601 datetime string from Data Services.
+    :return: Timezone-aware datetime normalized to UTC.
     :raises ValueError: If the string cannot be parsed into a datetime.
     """
     dt = parse_datetime(dt_str)
@@ -197,9 +201,13 @@ def _format_naive(dt):
 
 def get_observational_date_range_from_data_services(run: CalibrationRun) -> DateTimeRange:
     """
-    Retrieve observational date range for the run's gage from Data Services.
+    Retrieve the available observational data date range for the run's gage from Data Services.
 
-    :param run: A CalibrationRun object with associated gage information.
+    Returned start/end values are normalized to timezone-aware UTC datetimes.
+
+    :param run: CalibrationRun instance with associated gage information.
+    :return: Available observational data range.
+    :raises DataServicesException: If Data Services returns non-JSON data or an invalid date_range.
     """
 
     logger.info('Getting observational data from Data Services')
@@ -232,10 +240,14 @@ def get_observational_date_range_from_data_services(run: CalibrationRun) -> Date
 
 def get_observational_data_from_data_services(run: CalibrationRun, date_time_range: DateTimeRange):
     """
-    Retrieves observational data from Data Services and updates the CalibrationRun instance.
+    Retrieve observational data for the run's gage from Data Services.
 
-    :param run: A CalibrationRun object with associated gage information.
-    :param date_time_range: Date range to subset the data
+    The requested date range is sent to Data Services as naive timestamp strings.
+    In this codebase, those datetimes should already represent UTC.
+
+    :param run: CalibrationRun instance with associated gage information.
+    :param date_time_range: Date range used to subset the observational data.
+    :return: Parsed JSON dictionary or raw response text from Data Services.
     """
     logger.info('Getting observational data from Data Services')
     params = {
@@ -274,70 +286,6 @@ def clear_times(run: CalibrationRun, cli: bool = False):
         run.calibration_eval_end_period = None
         run.validation_eval_start_period = None
         run.validation_eval_end_period = None
-
-
-def should_use_bmi_forcing(run: CalibrationRun) -> bool:
-    """
-    Determine whether BMI forcing should be used for this run.
-
-    BMI forcing is used only when a gage is present and the run is CONUS + AORC
-    and BMI forcing is enabled in settings.
-
-    :param run: CalibrationRun instance to evaluate.
-    :return: True if BMI forcing should be used, otherwise False.
-    """
-    if run.gage is None:
-        return False
-
-    # Use BMI forcing only if Conus and AORC
-    return settings.USE_BMI_FORCING and run.gage.domain == DomainEnum.CONUS.db_instance and run.forcing_source_requested == ForcingSourceEnum.AORC.db_instance
-
-
-def get_forcing_data_from_s3(run: CalibrationRun, forcing_source_name: str):
-    """
-    Populate forcing paths for the run from configured S3 forcing directories.
-
-    Skips forcing retrieval when BMI forcing applies (CONUS + AORC).
-    On success, sets run.forcing_eds_dir_path and run.forcing_source_actual and clears times.
-    The CalibrationRun instance is mutated but not saved.
-
-    settings.FORCING_DATA_DIRS_xxx is a dict of S3 URLs (prefixes).
-
-    :param run: CalibrationRun instance with associated gage information.
-    :param forcing_source_name: Name of the forcing source to retrieve data for.
-    :raises DataServicesException: If the forcing data cannot be found in the local S3 directories.
-    """
-    if should_use_bmi_forcing(run):
-        logger.info("Skipping forcing retrieval for CONUS and AORC")
-        return
-
-    forcing_containers = (
-        settings.FORCING_DATA_DIRS_AORC
-        if forcing_source_name == ForcingSourceEnum.AORC.value
-        else settings.FORCING_DATA_DIRS_RETRO
-    )
-
-    for src_key, s3_uri in forcing_containers.items():
-        # <prefix>/<domain>/Gage_<gage_id>
-        forcing_dir = join_url(s3_uri, run.gage.domain.name, f"Gage_{run.gage.gage_id}")
-
-        if is_dir(forcing_dir):
-            logger.info(f"Found forcing directory {forcing_dir}")
-            run.forcing_eds_dir_path = forcing_dir
-            run.forcing_source_actual = ForcingSourceEnum.get_instance(src_key)
-            clear_times(run)
-            logger.info(
-                "Setting run.forcing_eds_dir_path to %s; forcing_source_actual=%s",
-                run.forcing_eds_dir_path, run.forcing_source_actual
-            )
-            return
-        else:
-            logger.info(
-                "Forcing directory for gage %s doesn't exist at %s (key: %s)",
-                run.gage.gage_id, forcing_dir, src_key
-            )
-
-    raise DataServicesException(f"Could not find forcing data for gage {run.gage.gage_id}")
 
 
 def get_module_metadata_from_data_services(
@@ -471,15 +419,17 @@ def get_module_metadata_from_data_services(
 
 def update_parameters(run: CalibrationRun, module_metadata: dict, gage_changed: bool = False):
     """
-    Persist module parameters for an existing (run, module) formulation.
+    Persist module parameters for existing run/module formulations.
 
-    The corresponding CalibrationFormulation row must already exist.
+    The corresponding CalibrationFormulation rows must already exist. Missing
+    CalibrationParameter rows are inserted. Existing rows are normally left unchanged.
+    When gage_changed is True, only initial_value is refreshed for existing parameters.
+
     This function performs database writes and should be called inside a write transaction.
 
     :param run: CalibrationRun instance the parameters belong to.
     :param module_metadata: Normalized module metadata containing calibratable_parameters.
-    :param gage_changed: If True, update initial_value for existing parameters while
-                          preserving min/max and other fields.
+    :param gage_changed: If True, refresh initial_value for existing parameters only.
     :return: None.
     """
 
@@ -600,7 +550,10 @@ translation_map = {
 
 def fix_module_metadata(module_metadata):
     """
-    Normalize module metadata by translating parameter names using translation map.
+     Normalize module metadata by translating selected parameter names.
+
+    Translation is based on the module name and original parameter name. Modules with
+    EDFS errors are skipped.
 
     :param module_metadata: Dictionary containing module metadata.
                      Example structure:
@@ -614,6 +567,7 @@ def fix_module_metadata(module_metadata):
                              }
                          ]
                      }
+    :return: None. The input dictionary is modified in place.
     """
     modules = (module_metadata or {}).get("modules") or []
     for module in modules:
@@ -641,9 +595,10 @@ def fix_module_metadata(module_metadata):
 
 def safe_float(value, label, param_name, module_name):
     """
-    Attempt to convert a value to float, returning None on empty or invalid values.
+    Convert a value to float.
 
-    Logs a warning including module and parameter context when conversion fails.
+    Empty values return None. Invalid values also return None and log a warning with
+    module and parameter context.
 
     :param value: Raw value to convert.
     :param label: Human-readable label for the value being converted.

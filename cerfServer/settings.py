@@ -221,17 +221,17 @@ ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL')
 ENTERPRISE_DATA_ENV = os.getenv('ENTERPRISE_DATA_ENV')
 
 # Due to circular imports, can't use the enums as keys.  But the values must match exactly
-FORCING_DATA_DIRS_AORC = {
-    "AORC": 's3://ngwpc-forcing/aorc_2.2',
-    "NWM Retrospective": 's3://ngwpc-forcing/retrospective_2.2'
-}
-FORCING_DATA_DIRS_RETRO = {
-    "NWM Retrospective": 's3://ngwpc-forcing/retrospective_2.2'
-}
+# FORCING_DATA_DIRS_AORC = {
+#     "AORC": 's3://ngwpc-forcing/aorc_2.2',
+#     "NWM Retrospective": 's3://ngwpc-forcing/retrospective_2.2'
+# }
+# FORCING_DATA_DIRS_RETRO = {
+#     "NWM Retrospective": 's3://ngwpc-forcing/retrospective_2.2'
+# }
 
 # Default time range for BMI forcing data
 FORCING_BMI_DATE_RANGE = DateTimeRange("1980-01-01T00:00:00+0000", "2024-12-31T23:59:59+0000")
-USE_BMI_FORCING = str(os.getenv('USE_BMI_FORCING', 'true')).lower() == 'true'
+# USE_BMI_FORCING = str(os.getenv('USE_BMI_FORCING', 'true')).lower() == 'true'
 
 # Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
 # S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))
@@ -318,10 +318,10 @@ NGEN_FORECAST_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_
 NWM_VERF_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-verf'
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
-CAL_MGR_SCRIPT = os.path.join(CAL_MGR_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
+CAL_MGR_SCRIPT = os.path.join(CAL_MGR_REPO_ROOT, 'docker', 'run-nwm-cal-mgr.sh')
 NGEN_FORECAST_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
 NGEN_COLD_START_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
-VERIFICATION_SCRIPT = os.path.join(NWM_VERF_REPO_ROOT, 'docker', 'run-ngen-verf.sh')
+VERIFICATION_SCRIPT = os.path.join(NWM_VERF_REPO_ROOT, 'docker', 'run-nwm-verf.sh')
 
 RUNTIME_INFO = {
     ScriptEnum.CALIBRATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),

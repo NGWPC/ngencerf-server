@@ -17,7 +17,8 @@ static_dirs = [
     NWM_RETROSPECTIVE_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'nwm_retrospective'),
     NGEN_MODULE_PARAMETERS := os.path.join(settings.NGEN_STATIC_DIR, 'module_parameter_files'),
     BMI_FORCING_TEMPLATES := os.path.join(settings.NGEN_STATIC_DIR, 'bmi_forcing_templates'),
-    VERF_DATA := os.path.join(settings.NGEN_STATIC_DIR, 'verification_data')
+    VERF_DATA := os.path.join(settings.NGEN_STATIC_DIR, 'verification_data'),
+    FORCING_STATIC_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'forcing_static_dir')
 ]
 
 files = [
@@ -73,23 +74,6 @@ def get_forcing_filename_pattern() -> str:
     return r"^cat-\d+\.csv$"
 
 
-# def get_bmi_config_dir_for_job(run: CalibrationRun) -> str:
-#     return os.path.join(run.job_data_dir, 'bmi_config')
-#
-#
-# def get_bmi_config_dir_for_module(run: CalibrationRun, module_name: str) -> str:
-#     return os.path.join(get_bmi_config_dir_for_job(run), module_name.lower())
-
-
-# def get_bmi_config_key(module_name: str) -> str:
-#     return f"{module_name.lower().replace('-', '_')}_bmi_dir"
-
-
-# Job-specific forcing directory
-def get_forcing_dir_for_job(run: CalibrationRun) -> str:
-    return os.path.join(run.job_data_dir, 'forcing')
-
-
 # Job-specific observation directory
 def get_observational_dir_for_job(run: CalibrationRun) -> str:
     return os.path.join(run.job_data_dir, 'observation')
@@ -102,6 +86,10 @@ def get_observational_filename(run: CalibrationRun) -> str:
 # Job-specific observation file
 def get_observational_file_for_job(run: CalibrationRun) -> str:
     return os.path.join(get_observational_dir_for_job(run), get_observational_filename(run))
+
+
+def get_observational_file_for_hindcast(run: HindcastRun) -> str:
+    return os.path.join(get_hindcast_dir(run), get_observational_filename(run.calibration_run))
 
 
 def get_geopackage_dir_for_job(run: CalibrationRun) -> str:

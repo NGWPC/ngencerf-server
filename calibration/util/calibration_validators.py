@@ -356,7 +356,7 @@ class CreateForecastRequestSerializer(CalibrationRunIdSerializer):
 class CreateHindcastRequestSerializer(CalibrationRunIdSerializer):
     configuration_name = serializers.CharField(required=True, validators=[enum_validator(HindcastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=False, allow_null=True)
-    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24], required=True)
+    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24, 36, 48, 60, 72, 84, 96, 108, 120, 180, 240], required=True)
     num_iterations = serializers.IntegerField(required=True, allow_null=False, validators=[MinValueValidator(1)])
     cold_start_date = serializers.DateTimeField(required=False, allow_null=True)
     cold_start_run_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
@@ -604,8 +604,8 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     job_data_dir = serializers.CharField(required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     gage = GageSerializer(required=True, allow_null=True)
-    forcing_source_requested = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    forcing_source_actual = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    # forcing_source_actual = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     geopackage_image_url = serializers.CharField(required=False)
@@ -847,7 +847,7 @@ class GetValidationJobsRequestSerializer(ValidationRunIdSerializer):
 class SaveGageRequestSerializer(CalibrationRunIdSerializer):
     gage_id = serializers.CharField(required=False, allow_blank=False)
     job_name = serializers.CharField(required=False, allow_blank=False, validators=[no_space_validator])
-    forcing_source_requested = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
 
@@ -857,8 +857,8 @@ class SaveGageResponseSerializer(GenericResponseSerializer):
     eds_errors = EdsErrorsSerializer(many=True, required=False)
     warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
-    forcing_source_requested = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    forcing_source_actual = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    # forcing_source_actual = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
 
 
 class DomainResponseSerializer(BaseSerializer):
@@ -869,6 +869,7 @@ class DomainResponseSerializer(BaseSerializer):
 
 class ForcingSourceSerializer(BaseSerializer):
     name = serializers.CharField(required=True, validators=[enum_validator(ForcingSourceEnum)])
+    display_name = serializers.CharField(required=True)
     description = serializers.CharField(required=True)
 
 
@@ -1372,7 +1373,7 @@ class GetStatusForHindcastResponseSerializer(CommonStatusFieldsMixin, HindcastRu
     configuration = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=True, allow_null=False)
     created_new_cold_start = serializers.BooleanField(required=True, allow_null=False)
-    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24], required=True)
+    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24, 36, 48, 60, 72, 84, 96, 108, 120, 180, 240], required=True)
     num_iterations = serializers.IntegerField(required=True, allow_null=False, validators=[MinValueValidator(1)])
     cold_start_run = GetStatusColdStartSerializer(required=False, allow_null=True)
 
@@ -1548,7 +1549,7 @@ class ForecastJobsResponseSerializer(ForecastBaseJobsResponseSerializer, Forecas
 class HindcastJobsResponseSerializer(ForecastBaseJobsResponseSerializer, HindcastRunIdSerializer):
     hindcast_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
     cold_start = ColdStartJobsResponseSerializer(required=True, allow_null=False)
-    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24], required=True)
+    interval_cycle = serializers.ChoiceField(choices=[1, 3, 6, 12, 18, 24, 36, 48, 60, 72, 84, 96, 108, 120, 180, 240], required=True)
     num_iterations = serializers.IntegerField(required=True, allow_null=False, validators=[MinValueValidator(1)])
 
 

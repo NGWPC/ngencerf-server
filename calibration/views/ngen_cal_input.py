@@ -20,14 +20,15 @@ from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, 
 from calibration.util.geopkg import get_geometry_from_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     get_observational_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, UEB_LIB, NGEN_MODULE_PARAMETERS, \
-    PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES, get_forcing_dir_for_job, get_geopackage_file_path
+    PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES, get_geopackage_file_path, FORCING_STATIC_DIR
 from calibration.views.calibration_formulation_views import validate_formulation
 from calibration.views.calibration_secondary_data_views import should_generate_swe, should_generate_soil_moisture
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data, \
     validate_parameter_rules
 from calibration.views.called_from import called_from
-from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
-from calibration.views.data_services import should_use_bmi_forcing, get_observational_data_from_data_services
+from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction, \
+    map_path_to_container
+from calibration.views.data_services import get_observational_data_from_data_services
 from calibration.views.mpi_rules import get_mpi_nodes
 from cerfServer.settings import NGEN_ENVIRONMENT, NGEN_BMI_FORCING_WORK_DIR
 
@@ -110,6 +111,7 @@ CONFIG_TEMPLATE = {
         "root_dir": NGEN_BMI_FORCING_WORK_DIR,
         "forcing_configuration": "",
         "forcing_dir": "",
+        "forcing_static_dir": map_path_to_container(FORCING_STATIC_DIR),
         "forcing_template_dir": BMI_FORCING_TEMPLATES,
 
     },
@@ -182,8 +184,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
     # READ-ONLY PHASE
     # -----------------------------
     with readonly_transaction():
-        use_bmi = should_use_bmi_forcing(run)
-
         allowed_status_names = [StatusEnum.SAVED.value, StatusEnum.READY.value]
         if build:
             allowed_status_names.append(StatusEnum.SUBMITTED.value)
@@ -230,31 +230,21 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
                 datafile['hydrofab_file'] = get_geopackage_file_path(run)
 
             # Determine the source of the forcing data
-            if not is_missing(run.forcing_source_requested, 'Forcing source', error_object):
-                if use_bmi:
-                    logger.info("Using BMI forcing (USE_BMI_FORCING enabled, CONUS + AORC)")
-                    forcing_dir = None
-                    forcing_provider = 'bmi'
-                    forcing_configuration = "aorc"
-                else:
-                    logger.info("Using CSV forcing (BMI disabled or conditions not met)")
-                    forcing_dir = get_forcing_dir_for_job(run)
-                    forcing_provider = 'csv'
-                    forcing_configuration = ""
+            if not is_missing(run.forcing_source, 'Forcing source', error_object):
+                forcing_provider = 'bmi'
+                forcing_configuration = run.forcing_source.name.lower()
 
-                if not use_bmi:
-                    # CSV forcing path rules apply
-                    if not is_missing(run.forcing_eds_dir_path, "Forcing directory", error_object):
-                        pass
-
-                forcing['forcing_dir'] = forcing_dir
+                # if not use_bmi:
+                #     # CSV forcing path rules apply
+                #     if not is_missing(run.forcing_eds_dir_path, "Forcing directory", error_object):
+                #         pass
+                #
                 forcing['forcing_provider'] = forcing_provider
-                forcing['forcing_configuration'] = forcing_configuration
+                forcing['forcing_configuration'] = forcing_configuration.lower()
 
             if not is_missing(run.observational_source, 'Observational source', error_object):
                 if build:
                     # Get the observational data
-                    # TODO Need to subset
                     date_time_range = DateTimeRange(
                         min(run.calibration_start_period, run.validation_start_period),
                         max(run.calibration_end_period, run.validation_end_period),

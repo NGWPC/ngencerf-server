@@ -26,15 +26,15 @@ from calibration.views.calibration_formulation_views import get_sloth_parameters
 from calibration.views.calibration_gage_views import get_data_files_status, reset_gage_dependent_state_on_change
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
-from calibration.views.calibration_run_views import map_path_to_host, normalize_failure_messages
+from calibration.views.calibration_run_views import normalize_failure_messages
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameter_values, \
     save_parameters, has_user_selected_tuning_parameters, compute_time_range, persist_time_range
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request, truncate_large_fields, get_user_email, generate_ngen_logging_config, get_elapsed_str, readonly_transaction, \
-    format_datetime
+    format_datetime, map_path_to_host
 from calibration.views.data_services import DataServicesException, get_geopackage_from_data_services, \
-    get_forcing_data_from_s3, get_module_metadata_from_data_services, update_parameters
+    get_module_metadata_from_data_services, update_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,12 @@ def import_calibration_run_data(request: Request,
     # Inputs pulled once
     gage_id = calibration_run_data.get('gage_id')
     modules_list = calibration_run_data.get('modules')
-    module_names = set(modules_list) if modules_list else set()
+
+    if isinstance(modules_list, list):
+        module_names: set[str] = set(modules_list)
+    else:
+        module_names = set()
+
     module_properties: list[dict[str, Any]] = calibration_run_data.get("module_properties") or []
 
     sloth_parameters = calibration_run_data.get('sloth_parameters')
@@ -89,14 +94,19 @@ def import_calibration_run_data(request: Request,
     objective_function_name = calibration_run_data.get('objective_function')
     streamflow_threshold = calibration_run_data.get('streamflow_threshold')
     peak_flow_threshold = calibration_run_data.get('peak_flow_threshold')
-    optimization_inputs = calibration_run_data.get('optimization_inputs')
+    raw_optimization_inputs = calibration_run_data.get('optimization_inputs')
+
+    if isinstance(raw_optimization_inputs, list):
+        optimization_inputs: list[dict[str, Any]] = raw_optimization_inputs
+    else:
+        optimization_inputs = []
     stop_criteria = calibration_run_data.get('stop_criteria')
     save_plot_iteration_frequency = calibration_run_data.get('save_plot_iteration_frequency')
     save_output_iteration = calibration_run_data.get('save_output_iteration')
     logging_config = calibration_run_data.get('logging_config')
 
     geopackage_source_name = calibration_run_data.get('geopackage_source')
-    forcing_source_requested_name = calibration_run_data.get('forcing_source')
+    forcing_source_name = calibration_run_data.get('forcing_source')
     observational_source_name = calibration_run_data.get('observational_source')
 
     # Prepared (read-only) outputs
@@ -172,6 +182,7 @@ def import_calibration_run_data(request: Request,
 
         # Optimization validations (assigns to `run` in memory only; no DB write)
         if optimization_name:
+            assert isinstance(optimization_name, str)
             _, prepared_inputs, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
             if error_message:
                 return None, None, ResponseError(error_message)
@@ -233,6 +244,7 @@ def import_calibration_run_data(request: Request,
         # Gage
         # -----------------------------
         if gage_id:
+            assert gage is not None
             reset_gage_dependent_state_on_change(run, gage, cli=is_cli)
 
             # -----------------------------
@@ -288,46 +300,20 @@ def import_calibration_run_data(request: Request,
         # -----------------------------
         # Forcing data
         # -----------------------------
-        # TODO his code is duplicated form calibration_gage_views.  Need to re-factor once we are fully on BMI
-        # Determine forcing forcing source
-        forcing_source_requested = (
-            ForcingSourceEnum.get_instance(forcing_source_requested_name)
-            if forcing_source_requested_name
+        forcing_source = (
+            ForcingSourceEnum.get_instance(forcing_source_name)
+            if forcing_source_name
             else None
         )
 
-        # Decide whether we need to fetch BEFORE mutating the run
-        needs_forcing_fetch = (
-                forcing_source_requested_name
-                and (
-                        not run.forcing_source_requested
-                        or run.forcing_source_requested.name != forcing_source_requested_name
-                )
-        )
-
         # Must be set before get_forcing_data_from_s3() because should_use_bmi_forcing() reads it
-        run.forcing_source_requested = forcing_source_requested
-
-        if gage_id and needs_forcing_fetch and run.forcing_source_requested:
-            try:
-                get_forcing_data_from_s3(run, run.forcing_source_requested.name)
-            except DataServicesException as e:
-                errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
-                eds_errors.append({
-                    'name': 'forcing',
-                    'message': str(e),
-                    'status_code': e.status_code if e.status_code else None
-                })
-
-        elif not forcing_source_requested_name:
-            # No forcing requested → clear any existing forcing state
-            run.forcing_eds_dir_path = None
-            run.forcing_source_actual = None
-
+        run.forcing_source = forcing_source
         # -----------------------------
         # Observational data
         # -----------------------------
-        run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
+        if observational_source_name:
+            assert isinstance(observational_source_name, str)
+            run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name)
 
         # -----------------------------
         # Tuning (validate & persist)
@@ -523,7 +509,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             'time_range': serialized_time_range,
             'job_data_dir': map_path_to_host(run.job_data_dir),
             'num_catchments': run.num_catchments,
-            'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None,
         }
         fm = normalize_failure_messages(run.failure_messages)
         if fm is not None:
@@ -532,7 +517,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['metadata'] = metadata
         calibration_run_data['run_after_import'] = False
         calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
-        calibration_run_data['forcing_source'] = run.forcing_source_requested.name if run.forcing_source_requested else None
+        calibration_run_data['forcing_source'] = run.forcing_source.name if run.forcing_source else None
 
         # Use cached modules when exporting parameters
         calibration_run_data['parameters'] = get_parameters_for_export(run)
@@ -567,8 +552,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         if fm is not None:
             calibration_run_data['failure_messages'] = fm
 
-        calibration_run_data['forcing_source_requested'] = run.forcing_source_requested.name if run.forcing_source_requested else None
-        calibration_run_data['forcing_source_actual'] = run.forcing_source_actual.name if run.forcing_source_actual else None
+        calibration_run_data['forcing_source'] = run.forcing_source.name if run.forcing_source else None
 
         # Generate Geopackage map if requested
         if include_gpkg_map:
@@ -667,11 +651,12 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
                 else p.default_value
             )
 
+            property_value = effective_value or ""
             # Always export (materialize defaults)
             module_properties_export.append({
                 "module": module.name,
                 "property_name": p.name,
-                "property_value": effective_value,
+                "property_value": property_value
             })
 
         # Stable ordering helps diffs / test fixtures

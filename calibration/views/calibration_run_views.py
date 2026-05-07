@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 from datetime import datetime, timezone
 
 import requests
@@ -1318,37 +1317,6 @@ def _get_cancellable_forecast_or_hindcast(
         f'Current status: {cold_start_run.status.name}'
     )
     return None, None, ResponseError(error)
-
-
-def map_path_to_host(path_to_normalize: str) -> str:
-    """
-    Normalize a job path (directory or file path) based on the current settings.
-
-    This is used to translate paths stored using the container mount point
-    (settings.NGEN_CAL_MOUNT_POINT) into the host path (settings.NGEN_CAL_DATA_PATH),
-    when those differ.
-
-    :param path_to_normalize: Absolute path under NGEN_CAL_MOUNT_POINT
-    :return: Normalized host path (or the input unchanged if no translation needed)
-    :raises ValueError: If the path is not absolute or does not start with the expected root.
-    """
-    if not path_to_normalize:
-        return path_to_normalize
-
-    if settings.NGEN_CAL_DATA_PATH and settings.NGEN_CAL_DATA_PATH != settings.NGEN_CAL_MOUNT_POINT:
-        # Ensure the absolute path starts with the old root
-        if not os.path.isabs(path_to_normalize):
-            raise ValueError(f"The path '{path_to_normalize}' is not absolute.")
-        if not path_to_normalize.startswith(settings.NGEN_CAL_MOUNT_POINT):
-            raise ValueError(
-                f"The path '{path_to_normalize}' does not start with the old root '{settings.NGEN_CAL_MOUNT_POINT}'."
-            )
-
-        # Replace the old root with the new root
-        relative_path = os.path.relpath(path_to_normalize, start=settings.NGEN_CAL_MOUNT_POINT)
-        return os.path.join(settings.NGEN_CAL_DATA_PATH, relative_path)
-
-    return path_to_normalize
 
 
 @extend_schema(
