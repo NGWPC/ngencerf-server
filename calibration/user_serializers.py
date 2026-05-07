@@ -47,7 +47,6 @@ class CustomUserCreateSerializer(UserCreateSerializer):
         return super().create(validated_data)
 
 
-
 class CustomUserSerializer(UserSerializer):
     class Meta(UserSerializer.Meta):
         model = User

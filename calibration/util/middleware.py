@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 
@@ -133,8 +134,6 @@ class ApiRequestDiagnosticsMiddleware(MiddlewareMixin):
             )
 
         return response
-
-import json
 
 
 SENSITIVE_FIELDS = {
