@@ -2,14 +2,15 @@
 """
 ngencerf CLI entry point.
 
-Supports import, export, show, run, delete, cancel, register, and download commands
-for managing calibration jobs via a REST API.
+Supports setup, authentication, job management, import/export, downloads,
+regionalization file generation, and status queries via the ngenCerf REST API.
 """
 
 import argparse
 import json
 import os
 import sys
+from ngencerf.config import get_ngencerf_base_url, set_ngencerf_base_url
 
 import yaml
 
@@ -137,7 +138,7 @@ def str_to_bool(value):
 
 
 # Commands that do not require authentication
-COMMANDS_AUTH_EXEMPT = {"register"}
+COMMANDS_AUTH_EXEMPT = {"register", "setup"}
 
 
 def main():
@@ -483,6 +484,34 @@ def main():
     run_parser = add_parser("run", "Submit calibration job")
     run_parser.add_argument("run_id", type=int, help="Calibration job ID")
     run_parser.set_defaults(func=lambda cmd_args: run_job(cmd_args.run_id))
+
+    setup_parser = add_parser("setup", "Set the ngenCerf server URL")
+    setup_parser.add_argument(
+        "url",
+        nargs="?",
+        help="Server URL, e.g. https://ngencerf.example.com"
+    )
+
+    def _handle_setup(cmd_args):
+        current_url = get_ngencerf_base_url()
+
+        if cmd_args.url:
+            new_url = cmd_args.url
+        else:
+            entered = input(f"ngenCerf server URL [{current_url}]: ").strip()
+            new_url = entered or current_url
+
+        try:
+            set_ngencerf_base_url(new_url)
+        except ValueError as e:
+            print(f"Error: {e}")
+            return 1
+
+        print(f"ngenCerf server set to: {get_ngencerf_base_url()}")
+        print("Existing access and refresh tokens were cleared.")
+        return 0
+
+    setup_parser.set_defaults(func=_handle_setup)
 
     show_parser = add_parser("show", "Display job details")
     show_parser.add_argument("run_id", type=int, help="Calibration job ID")

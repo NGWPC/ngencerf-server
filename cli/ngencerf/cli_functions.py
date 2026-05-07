@@ -18,15 +18,15 @@ import requests
 import tabulate
 
 from ngencerf.cli_util import check_http_error
+from ngencerf.config import get_ngencerf_base_url
 
-API_BASE = "http://localhost:8000"
 
 
 def _get_bundled_cli_git_info() -> dict:
     """
     Return CLI git info bundled into the PyInstaller executable.
     """
-    base_path = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+    base_path = str(getattr(sys, "_MEIPASS", os.path.dirname(__file__)))
     git_info_path = os.path.join(base_path, "ngencerf", "git_info.json")
 
     try:
@@ -68,7 +68,7 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
         - If still fails → prints error via check_http_error() and returns (None, False).
 
     :param message: Message to display while waiting.
-    :param endpoint: API endpoint (path relative to API_BASE).
+    :param endpoint: API endpoint path relative to the configured ngenCerf base URL.
     :param kwargs: Forwarded to `requests.post` (headers, json, files, stream, etc.)
     :return: (Response|dict|None, bool)
              - Response (if streaming), dict (if JSON), or None (if failed).
@@ -100,7 +100,7 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
                 except Exception:
                     pass
 
-    def _make_post():
+    def _make_post() -> requests.Response | None:
         # Prepare kwargs for each attempt — never reuse mutated objects.
         req_kwargs = dict(kwargs)
 
@@ -114,14 +114,15 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
         if "files" in req_kwargs and req_kwargs["files"]:
             _rewind_files(req_kwargs["files"])
 
+        base_url = get_ngencerf_base_url()
         try:
-            return requests.post(f"{API_BASE}{endpoint}", **req_kwargs)
+            return requests.post(f"{base_url}{endpoint}", **req_kwargs)
         except requests.exceptions.RequestException as e:
-            print(f"\nError: Could not connect to server at {API_BASE}.")
+            print(f"\nError: Could not connect to server at {base_url}.")
             print(f"Details: {e}")
             return None
 
-    def _with_spinner(msg: str, fn):
+    def _with_spinner(msg: str, fn: Callable[[], requests.Response | None]) -> requests.Response | None:
         # Wrapper that runs a function while showing an animated spinner.
         # Always stops spinner, even on Ctrl-C or exception.
         sp = Spinner(msg)
@@ -231,7 +232,7 @@ def about(output_path: str | None = None) -> int:
         "/calibration/get_git_info/",
         headers={"Content-Type": "application/json"}
     )
-    if not success or not response_json:
+    if not success or not isinstance(response_json, dict):
         return 1
 
     cli_git_info = _get_bundled_cli_git_info()
@@ -270,7 +271,7 @@ def download_zip(calibration_run_id: int, output_path: str | None = None) -> int
         json=payload,
         stream=True,
     )
-    if not success or resp is None:
+    if not success or not isinstance(resp, requests.Response):
         return 1
 
     # If server sends Content-Disposition, honor the filename
@@ -307,14 +308,16 @@ def run_job(calibration_run_id: int) -> int:
         headers={"Content-Type": "application/json"},
         json=payload,
     )
-    if not success:
+    if not success or not isinstance(response_json, dict):
         return 1
     if message := response_json.get("message"):
         print(message)
-    if warnings := response_json.get("warnings"):
+    warnings = response_json.get("warnings")
+    if isinstance(warnings, list):
         print("Warnings:")
         for w in warnings:
             print(f"   {w}")
+
     return 0
 
 
@@ -332,7 +335,7 @@ def job_status(calibration_run_id: int) -> int:
         headers={"Content-Type": "application/json"},
         json=payload,
     )
-    if not success:
+    if not success or not isinstance(response_json, dict):
         return 1
 
     # Display top-level fields first (excluding validations and forecasts)
@@ -344,13 +347,15 @@ def job_status(calibration_run_id: int) -> int:
     print(json.dumps(top_level, indent=2))
 
     # Display validations, if present
-    if validations := response_json.get("validations"):
+    validations = response_json.get("validations")
+    if isinstance(validations, list):
         print("\nValidations:")
         for v in validations:
             print(json.dumps(v, indent=2))
 
     # Display forecasts, if present
-    if forecasts := response_json.get("forecasts"):
+    forecasts = response_json.get("forecasts")
+    if isinstance(forecasts, list):
         print("\nForecasts:")
         for f in forecasts:
             print(json.dumps(f, indent=2))
@@ -465,14 +470,16 @@ def cancel_job(calibration_run_id: int) -> int:
         headers={"Content-Type": "application/json"},
         json=payload,
     )
-    if not success:
+    if not success or not isinstance(response_json, dict):
         return 1
     if message := response_json.get("message"):
         print(message)
-    if warnings := response_json.get("warnings"):
+    warnings = response_json.get("warnings")
+    if isinstance(warnings, list):
         print("Warnings:")
         for w in warnings:
             print(f"   {w}")
+
     return 0
 
 
@@ -535,11 +542,11 @@ def list_jobs(output_path: str | None = None, filters: dict | None = None, sort:
         headers={"Content-Type": "application/json"},
         json=payload
     )
-    if not success or not response_json:
+    if not success or not isinstance(response_json, dict):
         return 1
 
     jobs = response_json.get("jobs", [])
-    if not jobs:
+    if not isinstance(jobs, list) or not jobs:
         print("No jobs found.")
         return 0
 
@@ -599,7 +606,7 @@ def update_and_get_gage_status(gage_id: str, is_active: bool | None = None) -> i
         headers={"Content-Type": "application/json"},
         json=payload,
     )
-    if not success:
+    if not success or not isinstance(response_json, dict):
         return 1
 
     message = response_json.get("message", "")
@@ -646,7 +653,7 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
         headers={"Content-Type": "application/json"},
         json=payload,
     )
-    if not success:
+    if not success or not isinstance(response_json, dict):
         return 1
 
     # Print top-level message
@@ -659,33 +666,51 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
     info_messages = []
 
     # Nested messages block
-    if messages := response_json.get("messages"):
-        combined_errors.extend(messages.get("errors", []))
-        combined_errors.extend(e.get("message", str(e)) for e in messages.get("eds_errors", []))
-        combined_warnings.extend(messages.get("warnings", []))
-        info_messages.extend(messages.get("info", []))
+    messages = response_json.get("messages")
+    if isinstance(messages, dict):
+        errors = messages.get("errors", [])
+        if isinstance(errors, list):
+            combined_errors.extend(errors)
+
+        eds_errors = messages.get("eds_errors", [])
+        if isinstance(eds_errors, list):
+            combined_errors.extend(
+                e.get("message", str(e)) if isinstance(e, dict) else str(e)
+                for e in eds_errors
+            )
+
+        warnings = messages.get("warnings", [])
+        if isinstance(warnings, list):
+            combined_warnings.extend(warnings)
+
+        info = messages.get("info", [])
+        if isinstance(info, list):
+            info_messages.extend(info)
 
     # Top-level blocks
-    if errors := response_json.get("errors"):
+    errors = response_json.get("errors")
+    if isinstance(errors, list):
         combined_errors.extend(errors)
-    if warnings := response_json.get("warnings"):
+
+    warnings = response_json.get("warnings")
+    if isinstance(warnings, list):
         combined_warnings.extend(warnings)
 
     # Print all collected errors and warnings
     if combined_errors:
         print("Errors:")
         for e in combined_errors:
-            print('  ', e)
+            print("  ", e)
 
     if combined_warnings:
         print("Warnings:")
         for w in combined_warnings:
-            print('  ', w)
+            print("  ", w)
 
     if info_messages:
         print("Info:")
         for w in info_messages:
-            print('  ', w)
+            print("  ", w)
 
     return 0
 
@@ -734,7 +759,7 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
         headers={"Content-Type": "application/json"},
         json=payload,
     )
-    if not success or not response_json:
+    if not success or not isinstance(response_json, dict):
         return 1
 
     if display:
@@ -784,7 +809,7 @@ def generate_regionalization_files(calibration_run_ids: list[int] | str, output_
             json=payload,
             stream=True,
         )
-        if not success or resp is None:
+        if not success or not isinstance(resp, requests.Response):
             return 1
 
         # Save ZIP to temp path
@@ -1012,12 +1037,14 @@ def _process_job_action(
         headers={"Content-Type": "application/json"},
         json=payload,
     )
-    if not success:
+    if not success or not isinstance(response_json, dict):
         return 1
 
     # ───── Print results ─────
-    for job in response_json.get("jobs", []):
-        print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+    jobs = response_json.get("jobs", [])
+    if isinstance(jobs, list):
+        for job in jobs:
+            print(job.get("message", f"Job {job['calibration_run_id']} processed."))
     return 0
 
 
