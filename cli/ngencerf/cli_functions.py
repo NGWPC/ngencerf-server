@@ -18,7 +18,7 @@ import requests
 import tabulate
 
 from ngencerf.cli_util import check_http_error
-from ngencerf.config import get_ngencerf_base_url
+from ngencerf.cli_config import get_ngencerf_base_url
 
 
 

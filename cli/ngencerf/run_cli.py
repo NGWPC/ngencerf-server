@@ -25,7 +25,7 @@ from ngencerf.cli_functions import (
     download_zip, archive_job, unarchive_job, about, generate_regionalization_files, job_status, update_and_get_gage_status, lock_job, unlock_job,
 )
 from ngencerf.cli_user import ngen_login, ngen_register
-from ngencerf.config import get_ngencerf_base_url, set_ngencerf_base_url, add_saved_server_url, delete_saved_server_url, load_saved_server_urls
+from ngencerf.cli_config import get_ngencerf_base_url, set_ngencerf_base_url, add_saved_server_url, delete_saved_server_url, load_saved_server_urls
 
 
 class SmartArgumentParser(argparse.ArgumentParser):

@@ -129,6 +129,7 @@ def save_server_urls(urls: list[str]) -> None:
         json.dump({"servers": urls}, f, indent=2)
 
 
+# noinspection HttpUrlsUsage
 def normalize_server_url(base_url: str) -> str:
     """
     Normalize and validate a server URL.
@@ -141,6 +142,7 @@ def normalize_server_url(base_url: str) -> str:
     :raises ValueError: If the URL does not start with http:// or https://.
     """
     base_url = base_url.strip().rstrip("/")
+
     if not base_url.startswith(("http://", "https://")):
         raise ValueError("Server URL must start with http:// or https://")
     return base_url

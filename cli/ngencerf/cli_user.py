@@ -6,7 +6,7 @@ import requests
 from qrcode.image.pil import PilImage
 
 from ngencerf.cli_util import check_http_error
-from ngencerf.config import ENV_FILE, get_ngencerf_base_url, load_ngencerf_env, save_to_env_file, decode_env_password, encode_env_password
+from ngencerf.cli_config import ENV_FILE, get_ngencerf_base_url, load_ngencerf_env, save_to_env_file, decode_env_password, encode_env_password
 
 
 def _endpoint(path: str) -> str:
