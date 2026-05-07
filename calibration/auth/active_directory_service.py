@@ -27,7 +27,7 @@ from typing import cast
 
 from django.conf import settings
 from ldap3 import Server, Connection, SUBTREE, ALL
-
+from ldap3.core.exceptions import LDAPBindError, LDAPException
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,12 @@ class ActiveDirectoryUser:
 
 class ActiveDirectoryAuthenticationError(Exception):
     """Raised when LDAP authentication fails or returned data is invalid."""
+    pass
+
+class ActiveDirectoryServiceBindError(Exception):
+    """
+    Raised when the LDAP service account cannot bind to Active Directory.
+    """
     pass
 
 
@@ -141,13 +147,37 @@ def _get_service_connection() -> Connection:
     """
     server = _get_server()
 
-    return Connection(
-        server,
-        user=settings.LDAP_BIND_DN,
-        password=settings.LDAP_BIND_PASSWORD,
-        auto_bind=True,
-        receive_timeout=settings.LDAP_TIMEOUT,
-    )
+    try:
+        return Connection(
+            server,
+            user=settings.LDAP_BIND_DN,
+            password=settings.LDAP_BIND_PASSWORD,
+            auto_bind=True,
+            receive_timeout=settings.LDAP_TIMEOUT,
+        )
+
+    except LDAPBindError as exc:
+        logger.exception(
+            "LDAP service bind failed: invalid bind credentials or bind DN. "
+            "bind_dn=%s server=%s",
+            settings.LDAP_BIND_DN,
+            settings.LDAP_SERVER_URI,
+        )
+
+        raise ActiveDirectoryServiceBindError(
+            "Active Directory service account bind failed"
+        ) from exc
+
+    except LDAPException as exc:
+        logger.exception(
+            "LDAP service connection failed: bind_dn=%s server=%s",
+            settings.LDAP_BIND_DN,
+            settings.LDAP_SERVER_URI,
+        )
+
+        raise ActiveDirectoryServiceBindError(
+            "Active Directory service connection failed"
+        ) from exc
 
 
 def _authenticate_user_dn(user_dn: str, password: str) -> None:

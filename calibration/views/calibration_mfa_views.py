@@ -20,7 +20,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from calibration.auth.active_directory_service import ActiveDirectoryAuthorizationError
+from calibration.auth.active_directory_service import ActiveDirectoryAuthorizationError, ActiveDirectoryServiceBindError
 from calibration.models import MFARecoveryCode
 from calibration.util.calibration_validators import MFASetupResponseSerializer, ErrorResponseSerializer, MFAConfirmSetupSerializer, \
     LoginRequestSerializer, MFAVerifySerializer, MFARequiredResponseSerializer, MFASetupRequiredResponseSerializer, \
@@ -435,6 +435,14 @@ def login(request: Request) -> Response:
             ui_action=UI_ACTION_STAY_ON_LOGIN,
             message="User is not authorized for this system.",
             status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    except ActiveDirectoryServiceBindError:
+        return mfa_error_response(
+            error_code="ACTIVE_DIRECTORY_UNAVAILABLE",
+            ui_action=UI_ACTION_STAY_ON_LOGIN,
+            message="Active Directory authentication service is currently unavailable.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
     if not user:

@@ -34,7 +34,7 @@ from calibration.auth.active_directory_service import (
     ActiveDirectoryAuthenticationError,
     ActiveDirectoryAuthorizationError,
     ActiveDirectoryUserNotFoundError,
-    authenticate_active_directory_user,
+    authenticate_active_directory_user, ActiveDirectoryServiceBindError,
 )
 from calibration.models import CustomUser
 
@@ -81,6 +81,13 @@ class ActiveDirectoryBackend(ModelBackend):
             )
             raise
 
+        except ActiveDirectoryServiceBindError:
+            logger.exception(
+                "AD login failed due to LDAP service bind failure: email=%s",
+                email,
+            )
+            raise
+
         except ActiveDirectoryAuthenticationError:
             logger.warning("AD login failed: invalid credentials email=%s", email)
             return None
@@ -117,9 +124,10 @@ class ActiveDirectoryBackend(ModelBackend):
             if user is None:
                 # First login: create Django user automatically
                 logger.info(
-                    "Creating Django user from AD identity: email=%s ad_guid=%s",
+                    "Creating Django user from AD identity: email=%s, ad_guid=%s, admin=%s",
                     ad_user.email,
                     ad_user.ad_guid,
+                    ad_user.is_admin
                 )
 
                 user = User.objects.create_user(
@@ -145,10 +153,11 @@ class ActiveDirectoryBackend(ModelBackend):
 
             # Local user now becomes AD-linked
             logger.info(
-                "Linking existing Django user to AD identity: user_id=%s email=%s ad_guid=%s",
+                "Linking existing Django user to AD identity: user_id=%s email=%s ad_guid=%s, admin=%s",
                 user.id,
                 user.email,
                 ad_user.ad_guid,
+                ad_user.is_admin
             )
             user.ad_guid = ad_user.ad_guid
 

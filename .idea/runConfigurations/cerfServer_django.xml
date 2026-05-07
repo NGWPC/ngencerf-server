@@ -13,6 +13,7 @@
     <option name="IS_MODULE_SDK" value="true" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
+    <option name="DEBUG_JUST_MY_CODE" value="true" />
     <option name="RUN_TOOL" value="" />
     <option name="launchJavascriptDebuger" value="false" />
     <option name="port" value="8000" />
@@ -25,6 +26,7 @@
     <option name="customRunCommand" value="" />
     <method v="2">
       <option name="RunConfigurationTask" enabled="true" run_configuration_name="pre_start" run_configuration_type="PythonConfigurationType" />
+      <option name="ToolBeforeRunTask" enabled="true" actionId="Tool_External Tools_Redis FLUSHALL" />
     </method>
   </configuration>
 </component>
