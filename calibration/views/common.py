@@ -1439,19 +1439,19 @@ def map_path_to_host(path: str) -> str:
     - The same data volume is mounted at different locations in host vs container.
 
     Example mapping:
-        Container: /ngencerf-app/data/foo/bar
-        Host:      /ngencerf/data/foo/bar
+        Container: /ngencerf/data/foo/bar
+        Host:      /ngencerf-app/data/ngen-cal-data/foo/bar
 
     Controlled by settings:
-        NGEN_CAL_MOUNT_POINT = host root (e.g. /ngencerf/data)
-        NGEN_CAL_DATA_PATH   = container root (e.g. /ngencerf-app/data)
+        NGEN_CAL_MOUNT_POINT = container root (e.g. /ngencerf/data)
+        NGEN_CAL_DATA_PATH   = host root (e.g. /ngencerf-app/data/ngen-cal-data)
 
     Behavior:
     - If the roots differ, replace the container root with the host root.
     - If they are the same, return the path unchanged.
     - Fail fast if the input path is invalid or outside the expected root.
 
-    :param path: Absolute container path under NGEN_CAL_DATA_PATH
+    :param path: Absolute container path under NGEN_CAL_MOUNT_POINT
     :return: Corresponding host path
     :raises ValueError:
         - If the path is not absolute
@@ -1460,23 +1460,24 @@ def map_path_to_host(path: str) -> str:
     if not path:
         return path
 
-    host_root = settings.NGEN_CAL_MOUNT_POINT
-    container_root = settings.NGEN_CAL_DATA_PATH
+    container_root = os.path.normpath(settings.NGEN_CAL_MOUNT_POINT)
+    host_root = os.path.normpath(settings.NGEN_CAL_DATA_PATH)
+    path = os.path.normpath(path)
 
     # Only translate if the roots are actually different
-    if host_root and container_root and host_root != container_root:
+    if container_root and host_root and container_root != host_root:
         if not os.path.isabs(path):
             raise ValueError(f"The path '{path}' is not absolute.")
 
         # Ensure we are only translating paths that belong to the mounted volume
-        if not path.startswith(container_root):
+        if not path.startswith(container_root + os.sep) and path != container_root:
             raise ValueError(
                 f"The path '{path}' does not start with the container root '{container_root}'."
             )
 
         # Strip the container root and rebuild under the host root
         relative_path = os.path.relpath(path, start=container_root)
-        return os.path.join(host_root, relative_path)
+        return os.path.normpath(os.path.join(host_root, relative_path))
 
     # No translation needed
     return path
@@ -1493,19 +1494,19 @@ def map_path_to_container(path: str) -> str:
       at different root paths.
 
     Example mapping:
-        Host:      /ngencerf/data/foo/bar
-        Container: /ngencerf-app/data/foo/bar
+        Host:      /ngencerf-app/data/ngen-cal-data/foo/bar
+        Container: /ngencerf/data/foo/bar
 
     Controlled by settings:
-        NGEN_CAL_MOUNT_POINT = host root (e.g. /ngencerf/data)
-        NGEN_CAL_DATA_PATH   = container root (e.g. /ngencerf-app/data)
+        NGEN_CAL_MOUNT_POINT = container root (e.g. /ngencerf/data)
+        NGEN_CAL_DATA_PATH   = host root (e.g. /ngencerf-app/data/ngen-cal-data)
 
     Behavior:
     - If the roots differ, replace the host root with the container root.
     - If they are the same, return the path unchanged.
     - Fail fast if the input path is invalid or outside the expected root.
 
-    :param path: Absolute host path under NGEN_CAL_MOUNT_POINT
+    :param path: Absolute host path under NGEN_CAL_DATA_PATH
     :return: Corresponding container path
     :raises ValueError:
         - If the path is not absolute
@@ -1514,23 +1515,24 @@ def map_path_to_container(path: str) -> str:
     if not path:
         return path
 
-    host_root = settings.NGEN_CAL_MOUNT_POINT
-    container_root = settings.NGEN_CAL_DATA_PATH
+    container_root = os.path.normpath(settings.NGEN_CAL_MOUNT_POINT)
+    host_root = os.path.normpath(settings.NGEN_CAL_DATA_PATH)
+    path = os.path.normpath(path)
 
     # Only translate if the roots are actually different
-    if host_root and container_root and host_root != container_root:
+    if container_root and host_root and container_root != host_root:
         if not os.path.isabs(path):
             raise ValueError(f"The path '{path}' is not absolute.")
 
         # Ensure we are only translating paths that belong to the mounted volume
-        if not path.startswith(host_root):
+        if not path.startswith(host_root + os.sep) and path != host_root:
             raise ValueError(
                 f"The path '{path}' does not start with the host root '{host_root}'."
             )
 
         # Strip the host root and rebuild under the container root
         relative_path = os.path.relpath(path, start=host_root)
-        return os.path.join(container_root, relative_path)
+        return os.path.normpath(os.path.join(container_root, relative_path))
 
     # No translation needed
     return path
