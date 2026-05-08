@@ -111,7 +111,7 @@ CONFIG_TEMPLATE = {
         "root_dir": NGEN_BMI_FORCING_WORK_DIR,
         "forcing_configuration": "",
         "forcing_dir": "",
-        "forcing_static_dir": map_path_to_container(FORCING_STATIC_DIR),
+        "forcing_static_dir": FORCING_STATIC_DIR,
         "forcing_template_dir": BMI_FORCING_TEMPLATES,
 
     },
