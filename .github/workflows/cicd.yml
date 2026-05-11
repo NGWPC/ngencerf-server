@@ -19,20 +19,12 @@ on:
       - release-candidate
   workflow_dispatch:
     inputs:
-      NGEN_ORG:
-        description: 'NGEN_ORG'
+      MSW_MGR_ORG:
+        description: 'MSW_MGR_ORG'
         required: false
         type: string
-      NGEN_REF:
-        description: 'NGEN_REF'
-        required: false
-        type: string
-      MSWM_ORG:
-        description: 'MSWM_ORG'
-        required: false
-        type: string
-      MSWM_REF:
-        description: 'MSWM_REF'
+      MSW_MGR_REF:
+        description: 'MSW_MGR_REF'
         required: false
         type: string
       DATA_ASSIMILATION_ORG:
@@ -209,10 +201,8 @@ jobs:
           push: true
           tags: ${{ needs.setup.outputs.image_base }}:${{ needs.setup.outputs.test_image_tag }}${{ matrix.tag_suffix }}
           build-args: |
-            NGEN_ORG=${{ inputs.NGEN_ORG || 'NGWPC' }}
-            NGEN_REF=${{ inputs.NGEN_REF || 'development' }}
-            MSWM_ORG=${{ inputs.MSWM_ORG || 'NGWPC' }}
-            MSWM_REF=${{ inputs.MSWM_REF || 'development' }}
+            MSW_MGR_ORG=${{ inputs.MSW_MGR_ORG || 'NGWPC' }}
+            MSW_MGR_REF=${{ inputs.MSW_MGR_REF || 'development' }}
             DATA_ASSIMILATION_ORG=${{ inputs.DATA_ASSIMILATION_ORG || 'NGWPC' }}
             DATA_ASSIMILATION_REF=${{ inputs.DATA_ASSIMILATION_REF || 'development' }}
             NGEN_FORCING_ORG=${{ inputs.NGEN_FORCING_ORG || 'NGWPC' }}
