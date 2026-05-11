@@ -42,7 +42,7 @@ services:
     build:
       context: .
       args:
-        - MSWM_REF=${MSWM_REF:-development}
+        - MSW_MGR_REF=${MSW_MGR_REF:-development}
         - NGEN_FORCING_REF=${NGEN_FORCING_REF:-development}
         - DATA_ASSIMILATION_REF=${DATA_ASSIMILATION_REF:-development}
         - CACHE_BUST=${CACHE_BUST:-1}
