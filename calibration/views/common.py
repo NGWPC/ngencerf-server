@@ -787,21 +787,26 @@ class CheckTokenScope(BasePermission):
         token = request.auth
 
         logger.debug(
-            f"Scope check token type={type(token).__name__}, "
-            f"token_class_module={type(token).__module__}, "
-            f"has_get={hasattr(token, 'get')}, "
-            f"has_payload={hasattr(token, 'payload')}"
+            f"Scope check token - "
+            f"type={type(token).__name__}, "
+            f"module={type(token).__module__}",
+            f"payload={getattr(token, 'payload', None)}"
         )
 
         try:
             token_dict = cast(dict[str, Any], token)
             token_scope = str(token_dict.get('scope', '')).split()
         except AttributeError:
-            logger.debug(
-                f"Invalid token object for scope check - "
-                f"type={type(token).__name__}, "
-                f"module={type(token).__module__}"
-            )
+            try:
+                token_dict = cast(dict[str, Any], token)
+                token_scope = str(token_dict.get('scope', '')).split()
+            except AttributeError:
+                logger.debug(
+                    f"Invalid token object for scope check - "
+                    f"type={type(token).__name__}, "
+                    f"payload={getattr(token, 'payload', None)}"
+                )
+                return False
             return False
 
         logger.debug(f"Validating token: Token scope: {token_scope}, Required scope: {self.required_scope}")
