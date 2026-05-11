@@ -14,7 +14,6 @@ import sys
 import yaml
 
 from ngencerf.calibration_sort_fields import CalibrationSortField
-
 from ngencerf.cli_functions import (
     import_job,
     update_job,
@@ -52,7 +51,7 @@ class SmartArgumentParser(argparse.ArgumentParser):
         :raises TypeError: If the provided action is not an instance of argparse._SubParsersAction.
         """
         if not isinstance(subparsers_action, argparse._SubParsersAction):
-            raise TypeError(f"Expected _SubParsersAction, got {type(subparsers_action)}")
+            raise TypeError(f"Expected _SubParsersAction, got {type(subparsers_action).__name__}")
         self._subparsers = subparsers_action  # type: ignore
 
     def format_usage(self):
@@ -101,12 +100,13 @@ class SmartArgumentParser(argparse.ArgumentParser):
         if self._subparsers and hasattr(self._subparsers, "_choices_actions"):
             orig = list(self._subparsers._choices_actions)
             try:
+                # Hide explicitly hidden commands and commands whose help was suppressed.
                 self._subparsers._choices_actions = [
                     a for a in orig
-                    # hide explicitly-hidden commands
-                    if getattr(a, "name", None) not in self.hidden_commands
-                       # and also hide anything whose help was SUPPRESS (== '==SUPPRESS==')
-                       and getattr(a, "help", None) != argparse.SUPPRESS
+                    if (
+                            getattr(a, "name", None) not in self.hidden_commands
+                            and getattr(a, "help", None) != argparse.SUPPRESS
+                    )
                 ]
                 return super().print_help(file=file)
             finally:

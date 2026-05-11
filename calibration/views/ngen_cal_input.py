@@ -710,17 +710,16 @@ def is_missing(value: Any, label: str, report: ErrorReport, have_LSTM_flag: bool
 
 # Global table of node type rules.
 # Each pair represents [max_catchments, node_type]
-NODE_TYPE_RULES = [
-    [500, 'c5n-9xlarge'],
-    [-1, 'r8a-12xlarge']
+NODE_TYPE_RULES: list[tuple[int, str]] = [
+    (500, 'c5n-9xlarge'),
+    (-1, 'r8a-12xlarge')
 ]
 
 
 def get_node_type(num_catchments: int) -> str:
-    node_type = None
     for max_catchments, node_type in NODE_TYPE_RULES:
         if max_catchments == -1 or num_catchments <= max_catchments:
-            break
+            logger.info(f'{num_catchments} catchments using node type {node_type}')
+            return node_type
 
-    logger.info(f'{num_catchments} catchments using node type {node_type}')
-    return node_type
+    raise ValueError(f'No node type rule matched for {num_catchments} catchments')

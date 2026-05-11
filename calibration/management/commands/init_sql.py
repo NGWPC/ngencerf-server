@@ -1,5 +1,6 @@
 import logging
 import sys
+from typing import cast, Any, Callable
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
@@ -123,7 +124,7 @@ class Command(BaseCommand):
         logger.info(f"In init_sql: email: {self.user.email}")
 
         # List of all initialization functions to run in sequence
-        steps = [
+        steps: list[Callable[[], None]] = [
             self.define_module_groups,
             self.define_output_variables,
             self.define_modules,
@@ -884,46 +885,75 @@ class Command(BaseCommand):
 
         values = [
             {
-                "name": "DDS", "description": "Dynamically Dimensioned Search",
+                "name": "DDS",
+                "description": "Dynamically Dimensioned Search",
                 "inputs": [
                     {
-                        "name": "r", "description": "Sample region size", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.2,
-                        "min": 0.2, "max": 0.2
+                        "name": "r",
+                        "description": "Sample region size",
+                        "data_type": DataTypeEnum.DOUBLE.value,
+                        "default_value": 0.2,
+                        "min": 0.2,
+                        "max": 0.2
                     }
                 ]
             },
             {
-                "name": "PSO", "description": "Particle Swarm Optimization",
+                "name": "PSO",
+                "description": "Particle Swarm Optimization",
                 "inputs": [
                     {
-                        "name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 2,
-                        "min": 2},
-                    {
-                        "name": "c1", "description": "Acceleration coefficient c1", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
-                        "min": 1.0, "max": 3.0
+                        "name": "swarm_size",
+                        "description": "Swarm size",
+                        "data_type": DataTypeEnum.INTEGER.value,
+                        "default_value": 2,
+                        "min": 2
                     },
                     {
-                        "name": "c2", "description": "Acceleration coefficient c2 ", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
-                        "min": 1.0, "max": 3.0
+                        "name": "c1",
+                        "description": "Acceleration coefficient c1",
+                        "data_type": DataTypeEnum.DOUBLE.value,
+                        "default_value": 2.0,
+                        "min": 1.0,
+                        "max": 3.0
                     },
                     {
-                        "name": "w", "description": "Inertia weight", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.7,
-                        "min": 0.0, "max": 1.0
+                        "name": "c2",
+                        "description": "Acceleration coefficient c2",
+                        "data_type": DataTypeEnum.DOUBLE.value,
+                        "default_value": 2.0,
+                        "min": 1.0,
+                        "max": 3.0
+                    },
+                    {
+                        "name": "w",
+                        "description": "Inertia weight",
+                        "data_type": DataTypeEnum.DOUBLE.value,
+                        "default_value": 0.7,
+                        "min": 0.0,
+                        "max": 1.0
                     }
                 ]
             },
             {
-                "name": "GWO", "description": "Grey Wolf Optimization",
+                "name": "GWO",
+                "description": "Grey Wolf Optimization",
                 "inputs": [
-                    {"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 4,
-                     "min": 4}
+                    {
+                        "name": "swarm_size",
+                        "description": "Swarm size",
+                        "data_type": DataTypeEnum.INTEGER.value,
+                        "default_value": 4,
+                        "min": 4
+                    }
                 ]
             },
         ]
 
-        # stop_criteria_name and stop_criteria_data_type are not used at this time.  Setting to these values for now, but we never look at it
+        # stop_criteria_name and stop_criteria_data_type are not used at this time.
+        # These are populated with safe default values for now.
         for v in values:
-            optimization, created = Optimization.objects.update_or_create(
+            optimization, _ = Optimization.objects.update_or_create(
                 name=v['name'],
                 defaults={
                     "is_active": v.get('is_active', True),
@@ -934,13 +964,16 @@ class Command(BaseCommand):
                 }
             )
 
-            for i in v['inputs']:
+            inputs = cast(list[dict[str, Any]], v['inputs'])
+
+            for i in inputs:
                 OptimizationInput.objects.update_or_create(
-                    name=i['name'], optimization=optimization,
+                    name=i['name'],
+                    optimization=optimization,
                     defaults={
                         "is_active": i.get('is_active', True),
                         "description": i['description'],
-                        "data_type": i['data_type'].value,
+                        "data_type": i['data_type'],
                         "default_value": i['default_value'],
                         "min": i.get('min', None),
                         "max": i.get('max', None),

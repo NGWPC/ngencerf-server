@@ -774,23 +774,34 @@ class CheckTokenScope(BasePermission):
     def has_permission(self, request, view) -> bool:
         # Ensure that the user is authenticated and has a valid token
         if not request.user or not request.auth:
-            logger.debug(f"No token or user provided - user: {request.user}, auth: {request.auth}")
+            logger.debug(
+                f"No token or user provided - "
+                f"user_authenticated={getattr(request.user, 'is_authenticated', False)}, "
+                f"user_id={getattr(request.user, 'id', None)}, "
+                f"user_email={getattr(request.user, 'email', None)}, "
+                f"auth_provided={request.auth is not None}"
+            )
             return False
 
         # We should already have a validated token in request.auth
         token = request.auth
 
         logger.debug(
-            f"Scope check token type={type(token)}, "
+            f"Scope check token type={type(token).__name__}, "
+            f"token_class_module={type(token).__module__}, "
             f"has_get={hasattr(token, 'get')}, "
-            f"has_payload={hasattr(token, 'payload')}, "
-            f"repr={token!r}"
+            f"has_payload={hasattr(token, 'payload')}"
         )
 
         try:
-            token_scope = str(token.get('scope', '')).split()
+            token_dict = cast(dict[str, Any], token)
+            token_scope = str(token_dict.get('scope', '')).split()
         except AttributeError:
-            logger.debug(f"Invalid token object for scope check: {token!r}")
+            logger.debug(
+                f"Invalid token object for scope check - "
+                f"type={type(token).__name__}, "
+                f"module={type(token).__module__}"
+            )
             return False
 
         logger.debug(f"Validating token: Token scope: {token_scope}, Required scope: {self.required_scope}")
@@ -1476,7 +1487,7 @@ def map_path_to_host(path: str) -> str:
             )
 
         # Strip the container root and rebuild under the host root
-        relative_path = os.path.relpath(path, start=container_root)
+        relative_path = cast(str, os.path.relpath(path, start=container_root))
         return os.path.normpath(os.path.join(host_root, relative_path))
 
     # No translation needed
@@ -1531,7 +1542,7 @@ def map_path_to_container(path: str) -> str:
             )
 
         # Strip the host root and rebuild under the container root
-        relative_path = os.path.relpath(path, start=host_root)
+        relative_path = cast(str, os.path.relpath(path, start=host_root))
         return os.path.normpath(os.path.join(container_root, relative_path))
 
     # No translation needed
