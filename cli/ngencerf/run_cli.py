@@ -2,8 +2,8 @@
 """
 ngencerf CLI entry point.
 
-Supports import, export, show, run, delete, cancel, register, and download commands
-for managing calibration jobs via a REST API.
+Supports authentication, URL selection, job management, import/export, downloads,
+regionalization file generation, and status queries via the ngenCerf REST API.
 """
 
 import argparse
@@ -25,6 +25,7 @@ from ngencerf.cli_functions import (
     download_zip, archive_job, unarchive_job, about, generate_regionalization_files, job_status, update_and_get_gage_status, lock_job, unlock_job,
 )
 from ngencerf.cli_user import ngen_login, ngen_register
+from ngencerf.cli_config import get_ngencerf_base_url, set_ngencerf_base_url, add_saved_server_url, delete_saved_server_url, load_saved_server_urls
 
 
 class SmartArgumentParser(argparse.ArgumentParser):
@@ -37,7 +38,7 @@ class SmartArgumentParser(argparse.ArgumentParser):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._subparsers: None | argparse._SubParsersAction = None
+        self._subparsers_action: None | argparse._SubParsersAction = None
         self.hidden_commands: set[str] = set()  # track hidden subcommands
 
     def set_subparsers(self, subparsers_action: argparse._SubParsersAction) -> None:
@@ -51,8 +52,8 @@ class SmartArgumentParser(argparse.ArgumentParser):
         :raises TypeError: If the provided action is not an instance of argparse._SubParsersAction.
         """
         if not isinstance(subparsers_action, argparse._SubParsersAction):
-            raise TypeError(f"Expected _SubParsersAction, got {type(subparsers_action).__name__}")
-        self._subparsers = subparsers_action  # type: ignore
+            raise TypeError(f"Expected argparse._SubParsersAction, got {type(subparsers_action).__name__}")
+        self._subparsers_action = subparsers_action  # type: ignore
 
     def format_usage(self):
         """
@@ -78,11 +79,11 @@ class SmartArgumentParser(argparse.ArgumentParser):
         cmd = sys.argv[1] if len(sys.argv) > 1 else None
 
         # Handle unknown commands
-        if self._subparsers and cmd not in self._subparsers._name_parser_map:
+        if self._subparsers_action and cmd not in self._subparsers_action._name_parser_map:
             print(f"\nerror: unknown command '{cmd}'\n", flush=True)
             # Show only visible (non-hidden) commands
             visible = [
-                name for name in self._subparsers._name_parser_map.keys()
+                name for name in self._subparsers_action._name_parser_map.keys()
                 if name not in getattr(self, "hidden_commands", set())
             ]
             if visible:
@@ -97,11 +98,11 @@ class SmartArgumentParser(argparse.ArgumentParser):
         self.exit(2)
 
     def print_help(self, file=None):
-        if self._subparsers and hasattr(self._subparsers, "_choices_actions"):
-            orig = list(self._subparsers._choices_actions)
+        if self._subparsers_action and hasattr(self._subparsers_action, "_choices_actions"):
+            orig = list(self._subparsers_action._choices_actions)
             try:
                 # Hide explicitly hidden commands and commands whose help was suppressed.
-                self._subparsers._choices_actions = [
+                self._subparsers_action._choices_actions = [
                     a for a in orig
                     if (
                             getattr(a, "name", None) not in self.hidden_commands
@@ -110,7 +111,7 @@ class SmartArgumentParser(argparse.ArgumentParser):
                 ]
                 return super().print_help(file=file)
             finally:
-                self._subparsers._choices_actions = orig
+                self._subparsers_action._choices_actions = orig
         else:
             return super().print_help()
 
@@ -137,7 +138,7 @@ def str_to_bool(value):
 
 
 # Commands that do not require authentication
-COMMANDS_AUTH_EXEMPT = {"register"}
+COMMANDS_AUTH_EXEMPT = {"register", "url"}
 
 
 def main():
@@ -187,7 +188,9 @@ def main():
         :return: The created subparser.
         """
         # Create the subparser without the default help action
-        subparser = parser._subparsers.add_parser(
+        if parser._subparsers_action is None:
+            raise RuntimeError("Subparsers have not been initialized.")
+        subparser = parser._subparsers_action.add_parser(
             name,
             help=(argparse.SUPPRESS if hidden else help_text),
             add_help=False,  # Prevent the default -h/--help conflict
@@ -483,6 +486,182 @@ def main():
     run_parser = add_parser("run", "Submit calibration job")
     run_parser.add_argument("run_id", type=int, help="Calibration job ID")
     run_parser.set_defaults(func=lambda cmd_args: run_job(cmd_args.run_id))
+
+    url_parser = add_parser("url", "Manage saved ngenCerf server URLs")
+    url_subparsers = url_parser.add_subparsers(
+        dest="url_command",
+        title="url commands",
+        metavar="",
+        required=True
+    )
+
+    # ------------------------------------------------------------------
+    # ngencerf url add <url>
+    # ------------------------------------------------------------------
+    url_add_parser = url_subparsers.add_parser(
+        "add",
+        help="Add and select a server URL",
+        description="Add a server URL to the saved URL list and make it the active ngenCerf server."
+    )
+
+    def _handle_url_add(cmd_args):
+        """
+        Add a server URL to the saved URL list and make it active.
+
+        Setting a new active server also clears stored access and
+        refresh tokens because tokens are server-specific.
+
+        :param cmd_args: Parsed CLI arguments containing the server URL.
+        :return: Exit status code.
+        """
+        try:
+            saved_url = add_saved_server_url(cmd_args.url)
+            set_ngencerf_base_url(saved_url)
+        except ValueError as e:
+            print(f"Error: {e}")
+            return 1
+
+        print(f"Saved ngenCerf server URL: {saved_url}")
+        print(f"Current ngenCerf server: {get_ngencerf_base_url()}")
+        print("Existing access and refresh tokens were cleared.")
+        return 0
+
+    url_add_parser.add_argument(
+        "url",
+        help="Server URL, e.g. https://ngencerf.example.com",
+    )
+
+    url_add_parser.set_defaults(func=_handle_url_add)
+
+    # ------------------------------------------------------------------
+    # ngencerf url list
+    # ------------------------------------------------------------------
+    url_list_parser = url_subparsers.add_parser(
+        "list",
+        help="List saved server URLs",
+        description="List saved server URLs.",
+    )
+
+    def _handle_url_list(_cmd_args):
+        current_url = get_ngencerf_base_url()
+        saved_urls = load_saved_server_urls()
+
+        if not saved_urls:
+            print("No saved ngenCerf server URLs.")
+            print(f"Current ngenCerf server: {current_url}")
+            return 0
+
+        print("Saved ngenCerf server URLs:")
+        for i, url in enumerate(saved_urls, start=1):
+            marker = " *" if url == current_url else ""
+            print(f"  {i}. {url}{marker}")
+
+        print(f"\nCurrent ngenCerf server: {current_url}")
+        return 0
+
+    url_list_parser.set_defaults(func=_handle_url_list)
+
+    # ------------------------------------------------------------------
+    # ngencerf url current
+    # ------------------------------------------------------------------
+    url_current_parser = url_subparsers.add_parser(
+        "current",
+        help="Show the currently selected server URL",
+        description="Show the currently selected server URL.",
+    )
+
+    def _handle_url_current(_cmd_args):
+        print(f"Current ngenCerf server: {get_ngencerf_base_url()}")
+        return 0
+
+    url_current_parser.set_defaults(func=_handle_url_current)
+
+    # ------------------------------------------------------------------
+    # ngencerf url select
+    # ------------------------------------------------------------------
+    def _handle_url_select(_cmd_args):
+        saved_urls = load_saved_server_urls()
+
+        if not saved_urls:
+            print("No saved ngenCerf server URLs. Use 'ngencerf url add <url>' first.")
+            return 1
+
+        current_url = get_ngencerf_base_url()
+
+        print("Saved ngenCerf server URLs:")
+        for i, url in enumerate(saved_urls, start=1):
+            marker = " *" if url == current_url else ""
+            print(f"  {i}. {url}{marker}")
+
+        try:
+            selection = input("\nSelect server number: ").strip()
+            index = int(selection)
+        except ValueError:
+            print("Error: Selection must be a number.")
+            return 1
+
+        if index < 1 or index > len(saved_urls):
+            print(f"Error: Selection must be between 1 and {len(saved_urls)}.")
+            return 1
+
+        selected_url = saved_urls[index - 1]
+        set_ngencerf_base_url(selected_url)
+
+        print(f"ngenCerf server set to: {selected_url}")
+        print("Existing access and refresh tokens were cleared.")
+        return 0
+
+    url_subparsers.add_parser(
+        "select",
+        help="Select active server URL",
+        description="Select active server URL.",
+    ).set_defaults(func=_handle_url_select)
+
+    # ------------------------------------------------------------------
+    # ngencerf url delete
+    # ------------------------------------------------------------------
+    url_delete_parser = url_subparsers.add_parser(
+        "delete",
+        help="Delete a server URL from the saved URL list",
+        description="Delete a server URL from the saved URL list.",
+    )
+
+    def _handle_url_delete(_cmd_args):
+        saved_urls = load_saved_server_urls()
+
+        if not saved_urls:
+            print("No saved ngenCerf server URLs.")
+            return 0
+
+        current_url = get_ngencerf_base_url()
+
+        print("Saved ngenCerf server URLs:")
+        for i, url in enumerate(saved_urls, start=1):
+            marker = " *" if url == current_url else ""
+            print(f"  {i}. {url}{marker}")
+
+        try:
+            selection = input("\nDelete server number: ").strip()
+            index = int(selection)
+        except ValueError:
+            print("Error: Selection must be a number.")
+            return 1
+
+        if index < 1 or index > len(saved_urls):
+            print(f"Error: Selection must be between 1 and {len(saved_urls)}.")
+            return 1
+
+        deleted_url = saved_urls[index - 1]
+        delete_saved_server_url(deleted_url)
+
+        print(f"Deleted ngenCerf server URL: {deleted_url}")
+
+        if deleted_url == current_url:
+            print("Deleted URL was the current server. Use 'ngencerf url select' to choose another saved server.")
+
+        return 0
+
+    url_delete_parser.set_defaults(func=_handle_url_delete)
 
     show_parser = add_parser("show", "Display job details")
     show_parser.add_argument("run_id", type=int, help="Calibration job ID")

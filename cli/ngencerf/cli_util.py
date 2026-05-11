@@ -123,6 +123,11 @@ def check_http_error(http_status: int, response: str, content_type: str | None =
 
             return None, False
 
+        if http_status == 404:
+            print("Error: Server returned HTTP 404 Not Found.")
+            print("Check that the configured server URL is correct and points to an ngenCerf server.")
+            return None, False
+
         # Handle all other non-200 status codes
         try:
             print(f"Error: Server returned HTTP status code {http_status}. Response:")
