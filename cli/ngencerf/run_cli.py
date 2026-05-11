@@ -15,7 +15,6 @@ import yaml
 
 from ngencerf.calibration_sort_fields import CalibrationSortField
 
-
 from ngencerf.cli_functions import (
     import_job,
     update_job,

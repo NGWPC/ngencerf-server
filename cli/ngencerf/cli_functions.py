@@ -21,6 +21,7 @@ from ngencerf.cli_util import check_http_error
 
 API_BASE = "http://localhost:8000"
 
+
 def _get_bundled_cli_git_info() -> dict:
     """
     Return CLI git info bundled into the PyInstaller executable.
@@ -42,6 +43,7 @@ def _get_bundled_cli_git_info() -> dict:
                 "message": f"Unable to read embedded CLI git info: {e}",
             }
         }
+
 
 def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[requests.Response | dict | None, bool]:
     """
