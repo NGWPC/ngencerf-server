@@ -26,8 +26,7 @@ from calibration.views.calibration_secondary_data_views import should_generate_s
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data, \
     validate_parameter_rules
 from calibration.views.called_from import called_from
-from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction, \
-    map_path_to_container
+from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
 from calibration.views.data_services import get_observational_data_from_data_services
 from calibration.views.mpi_rules import get_mpi_nodes
 from cerfServer.settings import NGEN_ENVIRONMENT, NGEN_BMI_FORCING_WORK_DIR

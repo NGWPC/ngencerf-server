@@ -1,4 +1,4 @@
-Django~=5.2.13
+Django~=5.2.14
 djangorestframework~=3.17.1
 djangorestframework-simplejwt~=5.5.1
 django-redis~=6.0.0
@@ -10,8 +10,8 @@ toml~=0.10.2
 DateTimeRange~=2.3.2
 python-dotenv~=1.2.2
 django-currentuser~=0.10.0
-psycopg~=3.3.2
-django_dbconn_retry~=0.2.0
+psycopg~=3.3.4
+django_dbconn_retry~=0.3.1
 djoser~=2.3.3
 pyjwt~=2.12.1
 PyYAML~=6.0.3
