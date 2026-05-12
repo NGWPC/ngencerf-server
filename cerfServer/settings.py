@@ -177,7 +177,7 @@ TEMPLATES = [
 
 AUTHENTICATION_BACKENDS = [
     "calibration.auth.active_directory_backend.ActiveDirectoryBackend",
-    "calibration.auth.active_directory_backend.LocalAdminBackend",
+    "calibration.auth.active_directory_backend.LocalUserBackup",
 ]
 
 CACHES = {

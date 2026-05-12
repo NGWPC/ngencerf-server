@@ -8,17 +8,23 @@ Backends included:
 1. ActiveDirectoryBackend
    - Used when ACTIVE_DIRECTORY_ENABLED=True
    - Authenticates users against Active Directory
+   - Skips authentication for explicitly local-only users
    - Links existing Django users by ad_guid or email
    - Auto-creates Django users on first successful AD login
    - Synchronizes selected profile fields from AD
 
-2. LocalAdminBackend
-   - Preserves local Django password login for fallback superusers
+2. LocalUserBackend
+   - Allows local Django password authentication for:
+       - local-only users
+       - fallback local superusers
    - Blocks ordinary local-user password login while AD is enabled
+   - Blocks password login for AD-managed users
 
 Design goals:
-    - Active Directory remains the source of truth for credentials
+    - Active Directory remains the source of truth for AD-managed credentials
     - Django remains the source of truth for application data
+    - AD-managed users authenticate only through Active Directory
+    - Local-only users authenticate only with Django passwords
     - One local superuser can remain available for recovery/admin access
 """
 
@@ -46,7 +52,7 @@ class ActiveDirectoryBackend(ModelBackend):
     Authenticate normal users against Active Directory when AD authentication is enabled.
 
     This backend does not authenticate local Django users. Local fallback authentication
-    is handled separately by LocalAdminBackend.
+    is handled separately by LocalUserBackend.
     """
 
     def authenticate(self, request, username=None, password=None, **kwargs):
@@ -61,6 +67,17 @@ class ActiveDirectoryBackend(ModelBackend):
 
         email = username or kwargs.get("email")
         if not email or not password:
+            return None
+
+        User = get_user_model()
+        local_user = User.objects.filter(email__iexact=email).first()
+        local_user = cast(CustomUser | None, local_user)
+
+        if local_user and local_user.is_local_only:
+            logger.debug(
+                "Skipping AD auth for local-only user: email=%s",
+                email,
+            )
             return None
 
         try:
@@ -190,7 +207,7 @@ class ActiveDirectoryBackend(ModelBackend):
         return user
 
 
-class LocalAdminBackend(ModelBackend):
+class LocalUserBackup(ModelBackend):
     """
     Allow local Django superuser login as an emergency fallback.
 
@@ -223,6 +240,9 @@ class LocalAdminBackend(ModelBackend):
                 user.email,
             )
             return None
+
+        if user.is_local_only:
+            return user
 
         if user.is_superuser:
             return user

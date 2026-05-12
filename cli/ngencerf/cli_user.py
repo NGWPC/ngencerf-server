@@ -5,7 +5,8 @@ import qrcode
 import requests
 from qrcode.image.pil import PilImage
 
-from ngencerf.cli_config import ENV_FILE, get_ngencerf_base_url, load_ngencerf_env, save_to_env_file, decode_env_password, encode_env_password
+from ngencerf.cli_config import get_ngencerf_base_url, load_ngencerf_env, save_to_env_file, decode_env_password, encode_env_password, \
+    remove_from_env_file
 from ngencerf.cli_util import check_http_error
 
 
@@ -86,13 +87,15 @@ def perform_full_login(_retry: bool = False) -> bool:
     #   - If first attempt AND no saved password → allow optional override
     #   - If first attempt AND saved password exists → SKIP prompt entirely
     if not email:
+        remove_from_env_file({"NGEN_PASSWORD"})
         # Only prompt if email truly unknown
-        email = input("ngenCerf email: ")
+        email = input("ngenCerf email: ").strip()
     elif not _retry and "NGEN_PASSWORD" not in os.environ:
         # Only offer override on FIRST attempt
         entered = input(f"ngenCerf email [{email}]: ").strip()
         if entered:
             email = entered
+            remove_from_env_file({"NGEN_PASSWORD"})
     # else: email prompt is skipped entirely
 
     # PASSWORD STRATEGY:
@@ -100,8 +103,8 @@ def perform_full_login(_retry: bool = False) -> bool:
     #   - Retry attempt: always force prompt
     if _retry:
         print("Your saved credentials appear to be invalid. Please re-enter your password.")
+        remove_from_env_file({"NGEN_PASSWORD"})
         # On retry, always force prompt for new password
-        os.environ.pop("NGEN_PASSWORD", None)
         password = getpass.getpass("ngenCerf password: ")
     else:
         # Use stored password or prompt if missing
@@ -249,46 +252,140 @@ def perform_full_login(_retry: bool = False) -> bool:
     return False
 
 
+def create_local_user(optional_email: str | None = None) -> int:
+    """
+    Create a local-only user.
+
+    Requires the current CLI user to be authenticated and authorized as staff/admin.
+    """
+    email = optional_email or input("Local-only user email: ").strip()
+    first_name = input("First name: ").strip()
+    last_name = input("Last name: ").strip()
+
+    while True:
+        password = getpass.getpass("New local-only user password: ")
+        password_confirm = getpass.getpass("Confirm password: ")
+
+        if password == password_confirm:
+            break
+
+        print("Passwords do not match. Please try again.")
+
+    payload = {
+        "email": email,
+        "first_name": first_name,
+        "last_name": last_name,
+        "password": password,
+    }
+
+    headers = {
+        "Authorization": f"Bearer {os.environ.get('ACCESS_TOKEN', '')}",
+        "Content-Type": "application/json",
+    }
+
+    response = requests.post(
+        _endpoint("/auth/create_local_user/"),
+        headers=headers,
+        json=payload,
+    )
+
+    response_json, success = check_http_error(
+        response.status_code,
+        response.text,
+        response.headers.get("Content-Type"),
+    )
+
+    if not success:
+        return 1
+
+    if isinstance(response_json, dict):
+        print(response_json.get("message", "Local-only user created successfully."))
+
+    return 0
+
+
+def change_password(target_email: str | None = None) -> int:
+    """
+    Change a password.
+
+    If target_email is supplied, this is an admin reset for another user.
+    If target_email is omitted, this is a self-service password change.
+    """
+    if target_email:
+        print(f"Changing password for user: {target_email}")
+    else:
+        print("Changing password for current user.")
+
+    current_password = None
+    if not target_email:
+        current_password = getpass.getpass("Current password: ")
+
+    while True:
+        new_password = getpass.getpass("New password: ")
+        new_password_confirm = getpass.getpass("Confirm new password: ")
+
+        if new_password == new_password_confirm:
+            break
+
+        print("Passwords do not match. Please try again.")
+
+    payload = {
+        "new_password": new_password,
+    }
+
+    # Admin reset mode. Server determines whether the current user is allowed.
+    if target_email:
+        payload["email"] = target_email.strip().lower()
+    else:
+        payload["current_password"] = current_password
+
+    headers = {
+        "Authorization": f"Bearer {os.environ.get('ACCESS_TOKEN', '')}",
+        "Content-Type": "application/json",
+    }
+
+    response = requests.post(
+        _endpoint("/auth/change_password/"),
+        headers=headers,
+        json=payload,
+    )
+
+    response_json, success = check_http_error(
+        response.status_code,
+        response.text,
+        response.headers.get("Content-Type"),
+    )
+
+    if not success:
+        return 1
+
+    if isinstance(response_json, dict):
+        print(response_json.get("message", "Password changed successfully."))
+    else:
+        print("Password changed successfully.")
+
+    # If the current user's password changed, clear the saved password.
+    if not target_email:
+        _clear_saved_password()
+        print("Saved password cleared. Use the new password at next login.")
+
+    return 0
+
+
 def _clear_saved_password() -> None:
-    """Remove only the saved password so user is reprompted."""
+    """
+    Remove only the saved password so the user is reprompted.
+    """
     print("Clearing invalid saved password from ~/.ngencerf_env...")
-    os.environ.pop("NGEN_PASSWORD", None)
-
-    if not os.path.exists(ENV_FILE):
-        return
-
-    try:
-        with open(ENV_FILE, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
-        with open(ENV_FILE, "w", encoding="utf-8") as f:
-            for line in lines:
-                if not line.startswith("NGEN_PASSWORD="):
-                    f.write(line)
-    except Exception as e:
-        print(f"Failed to clear password: {e}")
+    remove_from_env_file({"NGEN_PASSWORD"})
 
 
 def _clear_auth_state() -> None:
-    """Remove tokens and stored password to ensure a clean retry."""
-    for key in ("ACCESS_TOKEN", "REFRESH_TOKEN", "NGEN_PASSWORD"):
-        os.environ.pop(key, None)
-
-    if not os.path.exists(ENV_FILE):
-        return
-
-    try:
-        with open(ENV_FILE, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
-        with open(ENV_FILE, "w", encoding="utf-8") as f:
-            for line in lines:
-                if not line.startswith(("ACCESS_TOKEN=", "REFRESH_TOKEN=", "NGEN_PASSWORD=")):
-                    f.write(line)
-
-        print("Cleared invalid tokens and password from ~/.ngencerf_env.")
-    except Exception as e:
-        print(f"Failed to clean invalid credentials: {e}")
+    """
+    Remove tokens and stored password to ensure a clean retry.
+    """
+    remove_from_env_file({"ACCESS_TOKEN", "REFRESH_TOKEN", "NGEN_PASSWORD"})
+    print("Cleared invalid tokens and password from ~/.ngencerf_env.")
 
 
 def refresh_access_token() -> bool:
@@ -359,7 +456,6 @@ def ngen_register(optional_email: str | None = None) -> int:
         return 0
 
     return 1
-
 
 
 def _save_tokens(access_token: str, refresh_token: str | None, email: str, password: str) -> None:
