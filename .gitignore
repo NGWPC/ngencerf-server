@@ -25,6 +25,7 @@ data
 .aws_credentials
 .gitlab_token
 postgres_db.override.env
+.env-override
 
 .load_static
 .load_gages
