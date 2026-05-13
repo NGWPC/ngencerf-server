@@ -775,11 +775,15 @@ class CheckTokenScope(BasePermission):
         # Ensure that the user is authenticated and has a valid token
         if not request.user or not request.auth:
             logger.debug(
-                f"No token or user provided - "
-                f"user_authenticated={getattr(request.user, 'is_authenticated', False)}, "
-                f"user_id={getattr(request.user, 'id', None)}, "
-                f"user_email={getattr(request.user, 'email', None)}, "
-                f"auth_provided={request.auth is not None}"
+                "No token or user provided - "
+                "user_authenticated=%s, "
+                "user_id=%s, "
+                "user_email=%s, "
+                "auth_provided=%s",
+                getattr(request.user, 'is_authenticated', False),
+                getattr(request.user, 'id', None),
+                getattr(request.user, 'email', None),
+                request.auth is not None,
             )
             return False
 
@@ -787,34 +791,35 @@ class CheckTokenScope(BasePermission):
         token = request.auth
 
         logger.debug(
-            f"Scope check token - "
-            f"type={type(token).__name__}, "
-            f"module={type(token).__module__}",
-            f"payload={getattr(token, 'payload', None)}"
+            "Scope check token - type=%s, module=%s, payload=%s",
+            type(token).__name__,
+            type(token).__module__,
+            getattr(token, "payload", None),
         )
 
         try:
             token_dict = cast(dict[str, Any], token)
             token_scope = str(token_dict.get('scope', '')).split()
         except AttributeError:
-            try:
-                token_dict = cast(dict[str, Any], token)
-                token_scope = str(token_dict.get('scope', '')).split()
-            except AttributeError:
-                logger.debug(
-                    f"Invalid token object for scope check - "
-                    f"type={type(token).__name__}, "
-                    f"payload={getattr(token, 'payload', None)}"
-                )
-                return False
+            logger.debug(
+                "Invalid token object for scope check - type=%s, payload=%s",
+                type(token).__name__,
+                getattr(token, "payload", None),
+            )
             return False
 
-        logger.debug(f"Validating token: Token scope: {token_scope}, Required scope: {self.required_scope}")
+        logger.debug(
+            "Validating token: Token scope: %s, Required scope: %s",
+            token_scope,
+            self.required_scope,
+        )
 
         # Make sure we have our custom scope
         if self.required_scope not in token_scope:
             logger.debug(
-                f"Permission denied: required scope '{self.required_scope}' not in token scope {token_scope}"
+                "Permission denied: required scope '%s' not in token scope %s",
+                self.required_scope,
+                token_scope,
             )
             return False
 
