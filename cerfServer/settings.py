@@ -109,6 +109,16 @@ MIDDLEWARE = [
 ]
 
 # Comma separated list in the env
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv(
+        'ALLOWED_HOSTS',
+        '.localhost,127.0.0.1'
+    ).split(',')
+    if host.strip()
+]
+
+# Comma separated list in the env
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
@@ -369,6 +379,28 @@ SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 # -----------------------------
 # Logging
 # -----------------------------
+VALID_LOG_LEVELS = {'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'}
+
+
+def get_log_level(env_var_name: str, default: str) -> str:
+    value = os.getenv(env_var_name, default).upper().strip()
+
+    if value not in VALID_LOG_LEVELS:
+        raise SystemExit(
+            f"Invalid log level for {env_var_name}: {value}. "
+            f"Must be one of {', '.join(sorted(VALID_LOG_LEVELS))}"
+        )
+
+    return value
+
+
+ROOT_LOG_LEVEL = get_log_level('NGENCERF_ROOT_LOG_LEVEL', 'INFO')
+DEFAULT_LOG_LEVEL = get_log_level('NGENCERF_LOG_LEVEL', 'DEBUG')
+DJANGO_LOG_LEVEL = get_log_level('NGENCERF_DJANGO_LOG_LEVEL', 'INFO')
+DJANGO_REQUEST_LOG_LEVEL = get_log_level('NGENCERF_DJANGO_REQUEST_LOG_LEVEL', DJANGO_LOG_LEVEL)
+DATABASE_LOG_LEVEL = get_log_level('NGENCERF_DATABASE_LOG_LEVEL', 'WARNING')
+NGENCERF__LOG_LEVEL = get_log_level('NGENCERF_CALIBRATION_LOG_LEVEL', DEFAULT_LOG_LEVEL)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -376,7 +408,7 @@ LOGGING = {
     # Root Logger: Sends everything to the console and file
     'root': {
         'handlers': ['console', 'file_dev'],
-        'level': 'DEBUG'
+        'level': ROOT_LOG_LEVEL
     },
 
     'formatters': {
@@ -394,19 +426,19 @@ LOGGING = {
 
     'handlers': {
         'console': {
-            'level': 'DEBUG',
+            'level': DEFAULT_LOG_LEVEL,
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
         },
         'file_dev': {
-            'level': 'DEBUG',
+            'level': DEFAULT_LOG_LEVEL,
             'class': 'logging.FileHandler',
             'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf.log'),
             'formatter': 'dev_format',
             'encoding': 'utf-8',
         },
         'file_db': {
-            'level': 'DEBUG',
+            'level': DATABASE_LOG_LEVEL,
             'class': 'logging.FileHandler',
             'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_db.log'),
             'formatter': 'dev_format',
@@ -417,33 +449,32 @@ LOGGING = {
     'loggers': {
         'django.db.backends': {
             'handlers': ['file_db'],
-            'level': 'DEBUG',
+            'level': DATABASE_LOG_LEVEL,
             'propagate': False  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'django': {
             'handlers': ['console', 'file_dev'],
-            'level': 'INFO',
+            'level': DJANGO_LOG_LEVEL,
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'djoser': {
             'handlers': ['console', 'file_dev'],
-            'level': 'INFO',
+            'level': DJANGO_LOG_LEVEL,
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'rest_framework_simplejwt': {
             'handlers': ['console', 'file_dev'],
-            'level': 'DEBUG',
+            'level': DJANGO_LOG_LEVEL,
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
-
         },
         'django.request': {
             'handlers': ['console', 'file_dev'],
-            'level': 'INFO',
+            'level': DJANGO_REQUEST_LOG_LEVEL,
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'django_dbconn_retry': {
             'handlers': ['console', 'file_dev'],
-            'level': 'DEBUG',
+            'level': DJANGO_LOG_LEVEL,
             'propagate': False,
         },
         # Add these loggers for 'requests' and 'urllib3'
@@ -459,21 +490,45 @@ LOGGING = {
         },
         'calibration': {
             'handlers': ['console', 'file_dev'],
-            'level': 'DEBUG',
+            'level': NGENCERF__LOG_LEVEL,
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'cerfServer': {
             'handlers': ['console', 'file_dev'],
-            'level': 'DEBUG',
+            'level': NGENCERF__LOG_LEVEL,
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         }
     }
 }
 
-# This needs to be at the end of settings.py
-try:
-    from .local_settings import *
+# -----------------------------
+# Database
+# -----------------------------
 
-    print("Loaded local_settings.py successfully.")
-except ImportError as e:
-    print('local_settings.py not found or could not be imported:', e)
+DATABASE_OPTIONS = {
+    'connect_timeout': int(os.getenv('CERF_SERVER_DATABASE_CONNECT_TIMEOUT', '10')),
+    'options': os.getenv(
+        'CERF_SERVER_DATABASE_OPTIONS',
+        '-c statement_timeout=10000ms'
+    ),
+    'sslmode': os.getenv('CERF_SERVER_DATABASE_SSLMODE', 'require'),
+}
+
+sslrootcert = os.getenv('CERF_SERVER_DATABASE_SSLROOTCERT')
+
+if sslrootcert:
+    DATABASE_OPTIONS['sslrootcert'] = sslrootcert
+
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('CERF_SERVER_DATABASE_NAME', 'postgres'),
+        'USER': os.getenv('CERF_SERVER_DATABASE_USER', 'postgres'),
+        'PASSWORD': os.getenv('CERF_SERVER_DATABASE_PASSWORD', 'postgres'),
+        'HOST': os.getenv('CERF_SERVER_DATABASE_HOST', 'localhost'),
+        'PORT': int(os.getenv('CERF_SERVER_DATABASE_PORT', '5432')),
+        'CONN_MAX_AGE': int(os.getenv('CERF_SERVER_DATABASE_CONN_MAX_AGE', '60')),
+        'OPTIONS': DATABASE_OPTIONS,
+    }
+}
