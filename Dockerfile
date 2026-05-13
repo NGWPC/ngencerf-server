@@ -2,7 +2,6 @@
 # Change/Verify these values when adopting this Dockerfile into another org:
 #   GH_ORG, IMAGE_NAMESPACE,
 #   DATA_ASSIMILATION_ORG, DATA_ASSIMILATION_REF,
-#   EWTS_ORG, EWTS_REF,
 #   MSW_MGR_ORG, MSW_MGR_REF,
 #   NGEN_FORCING_ORG, NGEN_FORCING_REF
 ############################################################################
@@ -22,7 +21,6 @@ ARG NGEN_FORCING_ORG=${GH_ORG}
 ARG NGEN_FORCING_REF=development
 ############################################################################
 
-# Image selection
 ARG BASE_REPO=rockylinux
 ARG BASE_TAG=8
 
@@ -101,17 +99,22 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     pip3 install -r requirements.txt && \
     rm -f requirements.txt
 
-# MPI binaries live in /usr/lib64/openmpi/bin/ on Rocky 8
-ENV PATH="${PATH}:/usr/lib64/openmpi/bin/"
-
-WORKDIR /ngencerf/ngencerf-server/
+# ── EWTS (Error and Warning Trapping System)
+ARG EWTS_CACHE_BUST=1
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+    echo "EWTS cache bust: ${EWTS_CACHE_BUST}" && \
+    set -eux && \
+    ewts_dir="$(mktemp -d)" && \
+    git clone "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" && \
+    cd "${ewts_dir}" && \
+    git checkout "${EWTS_REF}" && \
+    pip install "${ewts_dir}/runtime/python/ewts" && \
+    rm -rf "${ewts_dir}"
 
 ARG CACHE_BUST=1
-RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
-    set -eux && \
-    echo "$CACHE_BUST" && pip3 install "git+https://github.com/${EWTS_ORG}/nwm-ewts.git@${EWTS_REF}#subdirectory=runtime/python/ewts" && \
-    echo "$CACHE_BUST" && pip3 install "git+https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git@${MSW_MGR_REF}" && \
-    echo "$CACHE_BUST" && pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}" && \
+RUN set -eux && \
+    echo $CACHE_BUST && pip3 install "git+https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git@${MSW_MGR_REF}" && \
+    echo $CACHE_BUST && pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}" && \
     pip3 cache purge
 
 # Should parallel similar functionality in the run_cerf.sh
