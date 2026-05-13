@@ -16,16 +16,13 @@ pip install -r requirements.txt
 ```
 
 # Setup local configuration
-There are 2 files which need to be copied in order to provide custom settings for this installation.
-The `settings.py` file contains settings that are applicable to all environments and should normally not be changed.
+The `__env` file is a template for local environment settings.  Make a copy of it
 
-You should make copies of `__local_settings.py` and `__.env`. 
 ```
-cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_settings.py
 cp $cerfServer/cerfServer/__.env cerfServer/.env
 ```
-The 2 template files are suitable for development and no changes need to be made.
-Note that these files are not checked in to Git
+This template file is suitable for development and no changes need to be made.
+Note that the .env file is not checked in to Git
 
 # Install Redis
 Redis is used for the cache
