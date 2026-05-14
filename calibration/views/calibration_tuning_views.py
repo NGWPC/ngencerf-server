@@ -17,7 +17,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
+from calibration.enums import StatusEnum, ForcingSourceEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun
 from calibration.util import cloud_util
@@ -788,7 +788,8 @@ def validate_time_range_against_data(
     return None
 
 
-def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, datetime] | None, validation_times: dict[str, datetime] | None) -> str | None:
+def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, datetime] | None,
+                            validation_times: dict[str, datetime] | None) -> str | None:
     """
     Validates calibration and validation time ranges, ensuring they fall within the allowable data range.
     If valid, updates the `CalibrationRun` instance with the provided times.
@@ -1262,7 +1263,9 @@ def get_date_range_intersection(run: CalibrationRun) -> DateTimeRange | None:
     logger.debug(f"obs_range: {obs_range}")
 
     # Use fixed date range for the forcing data
-    forcing_range = settings.FORCING_BMI_DATE_RANGE
+    forcing_range = (settings.FORCING_AORC_BMI_DATE_RANGE
+                     if run.forcing_source == ForcingSourceEnum.AORC.db_instance
+                     else settings.FORCING_NWM_RETROSPECTIVE_BMI_DATE_RANGE)
     logger.debug(f"forcing_range: {forcing_range}")
 
     # Compute the intersection of the two ranges
