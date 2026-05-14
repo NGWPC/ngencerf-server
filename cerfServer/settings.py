@@ -220,21 +220,9 @@ ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = 'api/v1/streamflow_observations/{gag
 ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL')
 ENTERPRISE_DATA_ENV = os.getenv('ENTERPRISE_DATA_ENV')
 
-# Due to circular imports, can't use the enums as keys.  But the values must match exactly
-# FORCING_DATA_DIRS_AORC = {
-#     "AORC": 's3://ngwpc-forcing/aorc_2.2',
-#     "NWM Retrospective": 's3://ngwpc-forcing/retrospective_2.2'
-# }
-# FORCING_DATA_DIRS_RETRO = {
-#     "NWM Retrospective": 's3://ngwpc-forcing/retrospective_2.2'
-# }
-
 # Default time range for BMI forcing data
-FORCING_BMI_DATE_RANGE = DateTimeRange("1980-01-01T00:00:00+0000", "2024-12-31T23:59:59+0000")
-# USE_BMI_FORCING = str(os.getenv('USE_BMI_FORCING', 'true')).lower() == 'true'
-
-# Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
-# S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))
+FORCING_AORC_BMI_DATE_RANGE = DateTimeRange("1980-01-01T00:00:00+0000", "2024-12-31T23:59:59+0000")
+FORCING_NWM_RETROSPECTIVE_BMI_DATE_RANGE = DateTimeRange("1980-01-01T00:00:00+0000", "2023-01-31T23:59:59+0000")
 
 # Location of archive files
 NGENCERF_ARCHIVE_S3_PATH = os.getenv('NGENCERF_ARCHIVE_S3_PATH')
