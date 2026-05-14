@@ -431,11 +431,11 @@ def get_data_files_status(run: CalibrationRun) -> dict:
     :param run: The calibration run instance to check.
     :return: A dictionary with boolean values indicating the presence of observational, forcing, and geopackage files.
     """
-    forcing_path = True
-
     geopackage_path = get_geopackage_file_path(run)
 
     # TODO Talk to Richard about this.  Do we really need Obs status?
-    return {'observational': True,
-            'forcing': bool(forcing_path),
-            'geopackage': bool(geopackage_path)}
+    return {
+        'observational': True,
+        'forcing': True,
+        'geopackage': bool(geopackage_path)
+    }
