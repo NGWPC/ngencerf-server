@@ -236,22 +236,36 @@ def get_status(request: Request) -> Response:
     # ─────────────────────────────────────────────────────────────
     if needs_reconcile:
         assert run is not None
+
         logger.info(
             f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}) - "
-            f"applying Slurm reconciliation"
+            f"attempting Slurm reconciliation"
         )
 
         with transaction.atomic():
-            # Re-fetch the row outside readonly_transaction before mutating
+            # Re-fetch and lock the row before writing. The readonly copy may now be stale.
             reconciled_run: BaseRun = type(run).objects.select_for_update().get(id=run.id)
-            apply_slurm_reconciliation(reconciled_run, sacct_status)
-            # Update some fields that were placed by get_status_for_xxx
-            response["status"] = StatusEnum.SERVER_ERROR.value
-            response["message"] = (
-                f"{get_job_description(reconciled_run)} status updated to SERVER_ERROR "
-                f"due to Slurm inconsistency"
-            )
-            response["failure_messages"] = normalize_failure_messages(reconciled_run.failure_messages)
+
+            # Only reconcile if the run is still active after acquiring the lock.
+            if reconciled_run.status in {
+                StatusEnum.SUBMITTED.db_instance,
+                StatusEnum.RUNNING.db_instance,
+            }:
+                apply_slurm_reconciliation(reconciled_run, sacct_status)
+
+                # Reflect the DB update in the response that was built earlier.
+                response["status"] = StatusEnum.SERVER_ERROR.value
+                response["message"] = (
+                    f"{get_job_description(reconciled_run)} status updated to SERVER_ERROR "
+                    f"due to Slurm inconsistency"
+                )
+                response["failure_messages"] = normalize_failure_messages(reconciled_run.failure_messages)
+            else:
+                # Another request or callback already moved the run out of an active state.
+                logger.info(
+                    f"{get_job_description(reconciled_run)} (slurm_job_id: {reconciled_run.slurm_job_id}) - "
+                    f"skipping Slurm reconciliation because DB status is now {reconciled_run.status.name}"
+                )
 
     response_validator, error_response = validate_response(serializer_class, response)
     if error_response:
@@ -1678,22 +1692,37 @@ def apply_slurm_reconciliation(run: BaseRun, sacct_status: str | None) -> None:
     Mark a run as SERVER_ERROR due to a Slurm/database inconsistency.
 
     This is used when the database still shows the run as active
-    (RUNNING or SUBMITTED), but Slurm indicates the job is no longer active
-    and reconciliation has been deemed necessary.
+    (RUNNING or SUBMITTED), but Slurm indicates the job is no longer active.
 
-    The inconsistency is both:
+    The status check is repeated defensively because the run may have
+    changed between the read-only reconciliation check and the locked
+    write phase.
+
+    The reconciliation event is:
     - logged as an error, and
     - appended to failure_messages in structured form
 
-    so that it is visible in logs as well as persisted for later debugging
-    and API responses.
+    so that it is visible in logs and persisted for later debugging.
 
-    :param run: The run object to update. The caller is expected to re-fetch
-        it inside a write-capable transaction before calling this function.
+    :param run: The run object to update. The caller is expected to
+        re-fetch it inside a write-capable transaction before calling
+        this function.
     :param sacct_status: The Slurm status detail associated with the
         inconsistency.
     :return: None
     """
+    # Re-check the status after acquiring the row lock because another
+    # request or callback may already have updated the run.
+    if run.status not in {
+        StatusEnum.SUBMITTED.db_instance,
+        StatusEnum.RUNNING.db_instance,
+    }:
+        logger.info(
+            f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}) - "
+            f"skipping Slurm reconciliation because DB status is now {run.status.name}"
+        )
+        return
+
     original_status = run.status.name
 
     message = (
@@ -1701,11 +1730,11 @@ def apply_slurm_reconciliation(run: BaseRun, sacct_status: str | None) -> None:
         f"{original_status}; sacct_status={sacct_status}"
     )
 
-    # Record the reconciliation event in server logs
+    # Record the reconciliation event in the server logs.
     logger.error(f"{get_job_description(run)}: {message}")
 
-    # failure_messages is stored as text, so normalize it and append
-    # a structured reconciliation entry before re-serializing to JSON.
+    # failure_messages is stored as text, so normalize it first and
+    # append a structured reconciliation entry before re-serializing.
     existing = normalize_failure_messages(run.failure_messages)
 
     existing.append({
