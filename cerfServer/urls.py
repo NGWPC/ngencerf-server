@@ -46,31 +46,31 @@ urlpatterns = [
     path("admin/", admin.site.urls),
 
     # Custom auth endpoints must come before Djoser.
-    path("auth/login/", calibration_mfa_views.login, name="login"),
-    path("auth/create_local_user/", calibration_mfa_views.create_local_user, name="createLocalUser"),
-    path("auth/change_password/", calibration_mfa_views.change_password, name="changePassword"),
-    path("auth/config/", calibration_mfa_views.auth_config, name="authConfig"),
-    path("auth/mfa/setup/", calibration_mfa_views.setup_mfa, name="setupMfa"),
-    path("auth/mfa/setup/confirm/", calibration_mfa_views.confirm_setup_mfa, name="confirmSetupMfa"),
-    path("auth/mfa/verify/", calibration_mfa_views.verify_mfa, name="verifyMfa"),
+    path("api/auth/login/", calibration_mfa_views.login, name="login"),
+    path("api/auth/create_local_user/", calibration_mfa_views.create_local_user, name="createLocalUser"),
+    path("api/auth/change_password/", calibration_mfa_views.change_password, name="changePassword"),
+    path("api/auth/config/", calibration_mfa_views.auth_config, name="authConfig"),
+    path("api/auth/mfa/setup/", calibration_mfa_views.setup_mfa, name="setupMfa"),
+    path("api/auth/mfa/setup/confirm/", calibration_mfa_views.confirm_setup_mfa, name="confirmSetupMfa"),
+    path("api/auth/mfa/verify/", calibration_mfa_views.verify_mfa, name="verifyMfa"),
 
     # Always block Djoser's direct JWT login endpoint.
-    re_path(r"^auth/jwt/create.*$", jwt_create_disabled),
+    re_path(r"^api/auth/jwt/create.*$", jwt_create_disabled),
 
     # Always block Djoser's token-auth endpoints.
-    re_path(r"^auth/token/.*$", token_auth_disabled),
+    re_path(r"^api/auth/token/.*$", token_auth_disabled),
 ]
 
 # Block Djoser's public user endpoints only when AD is enabled.
 if settings.ACTIVE_DIRECTORY_ENABLED:
     urlpatterns += [
-        re_path(r"^auth/users/?.*$", users_disabled),
+        re_path(r"^api/auth/users/?.*$", users_disabled),
     ]
 
 urlpatterns += [
-    path("auth/", include("djoser.urls")),
-    path("auth/", include("djoser.urls.jwt")),
+    path("api/auth/", include("djoser.urls")),
+    path("api/auth/", include("djoser.urls.jwt")),
 
     # Keep this after auth routes.
-    path("", include("calibration.urls")),
+    path("api/", include("calibration.urls")),
 ]

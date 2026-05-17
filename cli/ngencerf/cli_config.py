@@ -3,7 +3,7 @@ import json
 import os
 
 ENV_FILE = os.path.join(os.path.expanduser("~"), ".ngencerf_env")
-DEFAULT_NGENCERF_BASE_URL = "http://localhost:8000"
+DEFAULT_NGENCERF_BASE_URL = "http://localhost:8000/api"
 NGENCERF_BASE_URL_KEY = "NGENCERF_BASE_URL"
 
 
