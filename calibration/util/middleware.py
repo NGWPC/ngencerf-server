@@ -8,8 +8,8 @@ from django.utils.deprecation import MiddlewareMixin
 
 logger = logging.getLogger(__name__)
 
-CALIBRATION_PREFIX = "/calibration/"
-AUTH_PREFIX = "/auth/"
+CALIBRATION_PREFIX = "/api/calibration/"
+AUTH_PREFIX = "/api/auth/"
 
 
 class TimingMiddleware:
