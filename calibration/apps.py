@@ -5,6 +5,7 @@ import sys
 from django.apps import AppConfig
 from django.conf import settings
 
+from calibration.auth.active_directory_config import validate_active_directory_settings
 from calibration.util.db_diagnostics import patch_ensure_connection_with_diagnostics
 from calibration.util.git_util import print_git_info_all
 from calibration.views.mpi_rules import log_mpi_rules
@@ -70,6 +71,9 @@ class CalibrationConfig(AppConfig):
 
         logger.info(f'Environment: {settings.NGEN_ENVIRONMENT_STR}')
         log_worker_info()
+
+        if running_dev_server or running_gunicorn:
+            validate_active_directory_settings()
 
         # ------------------------------------------------------------------
         # ALWAYS display Git, DB and environment info

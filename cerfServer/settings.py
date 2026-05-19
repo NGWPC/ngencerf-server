@@ -128,7 +128,34 @@ CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
-MFA_ENABLED = str(os.getenv('MFA_ENABLED', 'false')).lower() == 'true'
+MFA_ENABLED = str(os.getenv("MFA_ENABLED", "false")).lower() == "true"
+
+ACTIVE_DIRECTORY_ENABLED = str(os.getenv("ACTIVE_DIRECTORY_ENABLED", "false")).lower() == "true"
+
+# Active Directory / LDAP
+LDAP_DOMAIN = os.getenv("LDAP_DOMAIN", "nextgenwaterprediction.com").strip()
+
+# Use the AD DNS name, not a specific DC IP, so failover can work.
+LDAP_SERVER_URI = os.getenv("LDAP_SERVER_URI", f"ldap://{LDAP_DOMAIN}").strip()
+
+# Base DN derived from nextgenwaterprediction.com
+LDAP_USER_SEARCH_BASE_DN = os.getenv(
+    "LDAP_USER_SEARCH_BASE_DN",
+    "DC=nextgenwaterprediction,DC=com"
+).strip()
+
+LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", "").strip()
+LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
+
+# sssd is using AD auth without SSL shown here, so default to ldap:// / non-SSL.
+# Set LDAP_USE_SSL=true and LDAP_SERVER_URI=ldaps://... if LDAPS is configured later.
+LDAP_USE_SSL = str(os.getenv("LDAP_USE_SSL", "false")).lower() == "true"
+
+LDAP_TIMEOUT = int(os.getenv("LDAP_TIMEOUT", "10"))
+
+LDAP_SYSTEM_NAME = os.getenv("LDAP_SYSTEM_NAME", "local").strip().lower()
+LDAP_REQUIRED_GROUP_USERS = f"ngencerf-{LDAP_SYSTEM_NAME}-users"
+LDAP_ADMIN_GROUP = f"ngencerf-{LDAP_SYSTEM_NAME}-admins"
 
 ROOT_URLCONF = 'cerfServer.urls'
 
@@ -149,7 +176,8 @@ TEMPLATES = [
 ]
 
 AUTHENTICATION_BACKENDS = [
-    "django.contrib.auth.backends.ModelBackend",
+    "calibration.auth.active_directory_backend.ActiveDirectoryBackend",
+    "calibration.auth.active_directory_backend.LocalUserBackup",
 ]
 
 CACHES = {

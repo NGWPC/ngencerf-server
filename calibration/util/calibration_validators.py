@@ -1917,6 +1917,28 @@ class LoginRequestSerializer(BaseSerializer):
     password = serializers.CharField()
 
 
+class CreateLocalUserRequestSerializer(BaseSerializer):
+    email = serializers.EmailField(required=True)
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+    password = serializers.CharField(required=True, allow_blank=False)
+
+
+class CreateLocalUserResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    email = serializers.EmailField(required=True)
+
+
+class ChangePasswordRequestSerializer(BaseSerializer):
+    email = serializers.EmailField(required=False)
+    current_password = serializers.CharField(required=False, allow_blank=False)
+    new_password = serializers.CharField(required=True, allow_blank=False)
+
+
+class ChangePasswordResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+
+
 class MFAVerifySerializer(BaseSerializer):
     mfa_token = serializers.CharField(required=True, allow_blank=False)
     code = serializers.CharField(required=True, allow_blank=False, max_length=20)

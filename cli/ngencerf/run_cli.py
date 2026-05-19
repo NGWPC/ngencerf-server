@@ -24,7 +24,7 @@ from ngencerf.cli_functions import (
     list_jobs,
     download_zip, archive_job, unarchive_job, about, generate_regionalization_files, job_status, update_and_get_gage_status, lock_job, unlock_job,
 )
-from ngencerf.cli_user import ngen_login, ngen_register
+from ngencerf.cli_user import ngen_login, ngen_register, create_local_user, change_password
 from ngencerf.cli_config import get_ngencerf_base_url, set_ngencerf_base_url, add_saved_server_url, delete_saved_server_url, load_saved_server_urls
 
 
@@ -236,6 +236,18 @@ def main():
     cancel_parser = add_parser("cancel", "Cancel job")
     cancel_parser.add_argument("run_id", type=int, help="Calibration job ID")
     cancel_parser.set_defaults(func=lambda cmd_args: cancel_job(cmd_args.run_id))
+
+    create_local_user_parser = add_parser("create-local-user", "Create a local-only user")
+    create_local_user_parser.add_argument("email", nargs="?", help="Email address")
+    create_local_user_parser.set_defaults(func=lambda cmd_args: create_local_user(cmd_args.email))
+
+    change_password_parser = add_parser("change-password", "Change a password")
+    change_password_parser.add_argument(
+        "--email",
+        help="Target user email for admin password reset. Omit for self-service password change."
+    )
+    change_password_parser.set_defaults(func=lambda cmd_args: change_password(cmd_args.email))
+
 
     delete_parser = add_parser("delete", "Delete job")
     delete_parser.add_argument(

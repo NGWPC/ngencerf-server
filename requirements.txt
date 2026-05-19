@@ -23,6 +23,7 @@ pyogrio~=0.12.1
 tabulate~=0.10.0
 django-otp[qrcode]~=1.7.0
 Pillow~=12.2.0
+ldap3~=2.9.1
 
 # AWS stack - keep botocore pinned because aiobotocore 3.1.x caps botocore < 1.42.50; boto3 must match botocore’s patch level
 botocore==1.42.49
