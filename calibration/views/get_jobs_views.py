@@ -162,8 +162,8 @@ from rest_framework.response import Response
 
 from calibration.enums import GetValidationJobsScope, StatusEnum, ValidationType
 from calibration.enums_vanilla import CalibrationSortField, ForecastSortField, VerificationSortField, HindcastSortField
-from calibration.models import CalibrationFormulation, CalibrationRun, ValidationRun, VerificationRun, CustomUser, IterationParameter, ForecastRun, \
-    CalibrationStopCriteria, HindcastRun
+from calibration.models import CalibrationFormulation, CalibrationRun, ValidationRun, VerificationRun, CustomUser, \
+    IterationParameter, CalibrationStopCriteria, ColdStartRun, ForecastRun, HindcastRun
 from calibration.models.base_run import BaseRun
 from calibration.util.caching import get_cached_modules_by_id
 from calibration.util.calibration_validators import ErrorResponseSerializer, \
@@ -1229,8 +1229,85 @@ def annotate_combined_status(
         if include_status_lower:
             qs = qs.annotate(_status_lower=Lower("combined_status"))
     
+    elif isinstance(qs.model, ForecastRun) or isinstance(qs.model, HindcastRun):
+        # ─────────────────────────────────────────────────────────────
+        # Always annotate cold_start_status_id
+        # combined_status depends on this values, so it must be present.
+        #
+        # Note: these is the ColdStartRun.status_id value (int), not name.
+        # ─────────────────────────────────────────────────────────────
+        if isinstance(qs.model, ForecastRun):
+            qs = qs.annotate(
+                cold_start_status_id=Subquery(
+                    ColdStartRun.objects.filter(
+                        forecast_run_id=OuterRef("pk")
+                    ).values("status_id")[:1]
+                )
+            )
+        else:
+            qs = qs.annotate(
+                cold_start_status_id=Subquery(
+                    ColdStartRun.objects.filter(
+                        hindcast_run_id=OuterRef("pk")
+                    ).values("status_id")[:1]
+                )
+            )
+
+        # Rules:
+        #   • If cold start is not Done → combined = cold start status
+        #   • If cold start is Done or there is no cold start → combined = forecast/hindcast status
+        # ------------------------------------------------------------------
+        qs = qs.annotate(
+            combined_status=Case(
+                # Cold start done or no cold start → use forecast/hindcast status directly
+                When(Q(cold_start_status_id=DONE_ID) | Q(cold_start_status_id__isnull=True), then=F("status__name")),
+
+                # Cold start running
+                When(
+                    Q(status_id=DONE_ID)
+                    & Q(cold_start_status_id=RUNNING_ID),
+                    then=Value(StatusEnum.RUNNING.value)
+                ),
+
+                # Cold start server error
+                When(
+                    Q(status_id=DONE_ID)
+                    & Q(cold_start_status_id=SERVER_ERROR_ID),
+                    then=Value(StatusEnum.SERVER_ERROR.value)
+                ),
+
+                # Cold start failed
+                When(
+                    Q(status_id=DONE_ID)
+                    & Q(cold_start_status_id=FAILED_ID),
+                    then=Value(StatusEnum.FAILED.value)
+                ),
+
+                # Cold start cancelled
+                When(
+                    Q(status_id=DONE_ID)
+                    & Q(cold_start_status_id=CANCELLED_ID),
+                    then=Value(StatusEnum.CANCELLED.value)
+                ),
+
+                # Cold start cancesubmittedlled
+                When(
+                    Q(status_id=DONE_ID)
+                    & Q(cold_start_status_id=SUBMITTED_ID),
+                    then=Value(StatusEnum.SUBMITTED.value)
+                ),
+
+                # Fallback (covers any future status additions)
+                default=F("status__name"),
+                output_field=CharField(),
+            )
+        )
+
+        if include_status_lower:
+            qs = qs.annotate(_status_lower=Lower("combined_status"))
+    
     elif include_status_lower:
-      qs = qs.annotate(_status_lower=Lower(F("status__name")))
+        qs = qs.annotate(_status_lower=Lower(F("status__name")))
 
     return qs
 
