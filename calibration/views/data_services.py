@@ -344,8 +344,6 @@ def get_module_metadata_from_data_services(
         logger.info("No modules with use_edfs=True; skipping Data Services call.")
         return {}, []
 
-    logger.info("Fetching module metadata from Data Services")
-
     # -------------------------------------------------------
     # Resolve gage context (explicit args take precedence)
     # -------------------------------------------------------
