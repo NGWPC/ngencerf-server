@@ -709,7 +709,7 @@ class Command(BaseCommand):
                 "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48, "fcst_timestep": 0.25,
                 "availability_lag": 6,
                 "supports_hindcast": True,
-                "is_active": False
+                "is_active": True
             },
             {
                 "name": "Analysis and Assimilation (AnA) Puerto Rico", "internal_name": "standard_ana_puertorico", "order": 1,
