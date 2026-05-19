@@ -8,6 +8,7 @@ from typing import Any
 
 import toml
 from datetimerange import DateTimeRange
+from django.conf import settings
 from django.db import transaction
 from django.db.models import F
 from toml import TomlEncoder
@@ -29,7 +30,6 @@ from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
 from calibration.views.data_services import get_observational_data_from_data_services
 from calibration.views.mpi_rules import get_mpi_nodes
-from cerfServer.settings import NGEN_ENVIRONMENT, NGEN_BMI_FORCING_WORK_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,7 @@ CONFIG_TEMPLATE = {
         "calibration_run_id": 0,
         "ngen_cerf": True,  # Indicate that we came from the ngenCerf server - Always true
         "auth_token": "",
+        "ngencerf_base_url": settings.NGENCERF_BASE_URL,
         "optimization_algorithm": None,
         "swarm_size": 0,
         "c1": 0,
@@ -107,7 +108,7 @@ CONFIG_TEMPLATE = {
 
     "Forcing": {
         "forcing_provider": "",
-        "root_dir": NGEN_BMI_FORCING_WORK_DIR,
+        "root_dir": settings.NGEN_BMI_FORCING_WORK_DIR,
         "forcing_configuration": "",
         "forcing_dir": "",
         "forcing_static_dir": FORCING_STATIC_DIR,
@@ -584,7 +585,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
             calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
             write_parameter_files(params, calibration['calib_parameter_file'])
 
-        if build and NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        if build and settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
             if run.num_catchments is None:
                 # Handle old jobs which might not have saved num_catchments
                 geopackage_path = get_geopackage_file_path(run)
