@@ -5,7 +5,7 @@ Job Retrieval Endpoints for Calibration, Forecast, Hindcast, and Verification
 This module provides a unified interface for retrieving job records across the
 CERF workflow, including Calibration, Forecast, Hindcast, and Verification runs.
 
-All endpoints support:
+Job-list retrieval endpoints support:
   • Server-side filtering
   • Server-side sorting
   • Pagination with offset + limit
@@ -13,9 +13,9 @@ All endpoints support:
   • Read-only execution to reduce database contention
 
 Calibration retrieval is implemented by `get_jobs()`.
-Forecast, Hindcast, and Verification retrieval are implemented by
-`get_forecast_jobs_internal()`, `get_hindcast_jobs_internal()`, and
-`get_verification_jobs_internal()`.
+Forecast and Hindcast retrieval share `_get_forecast_or_hindcast_base_jobs_internal()`
+through `get_forecast_jobs_internal()` and `get_hindcast_jobs_internal()`.
+Verification retrieval is implemented by `get_verification_jobs_internal()`.
 
 Verification-specific query path resolution is centralized in
 `get_verification_parent_paths()`.
@@ -96,7 +96,6 @@ Date range example:
                 "start_date": "2025-01-01T00:00:00-05:00",
                 "end_date": "2025-02-01T23:59:59Z"
             }
-
         }
     }
 
@@ -115,16 +114,46 @@ Verification example:
 Key concepts
 ------------
 
-Status handling (Calibration only)
+Status handling
     Calibration jobs compute a deterministic `combined_status` derived from:
       - the calibration status, and
-      - the statuses of VALID_CONTROL and VALID_BEST validations (if present).
+      - the statuses of VALID_CONTROL and VALID_BEST validations, when present.
 
-    User-supplied status filters for calibration jobs apply to `combined_status`.
+    If the calibration run itself is not Done, `combined_status` is the raw
+    calibration status. If the calibration run is Done, validation statuses can
+    override the displayed status using the precedence defined in
+    `annotate_combined_status()`.
+
+    User-supplied status filters for Calibration jobs apply to `combined_status`,
+    not the raw CalibrationRun.status field. This keeps ids_only and full-detail
+    calibration retrieval aligned.
+
+    Forecast and Hindcast jobs can also compute a `combined_status` using the
+    related ColdStartRun status through `annotate_combined_status()`.
+
+    Combined status rules for Forecast/Hindcast:
+      - If no ColdStartRun exists, or the ColdStartRun is Done:
+            combined_status = Forecast/Hindcast status
+      - Otherwise:
+            combined_status = ColdStartRun status
+
+    Forecast and Hindcast list retrieval currently does NOT use this
+    derived combined_status value. User-supplied status filters and returned
+    status values for forecast/hindcast job endpoints currently use the raw
+    ForecastRun/HindcastRun status field.
+
+    Forecast/Hindcast combined_status is currently used by summary/count logic
+    (`get_jobs_summary()`), which means dashboard counts and job-list filtering
+    may not always reflect identical status semantics.
+
+    Verification jobs currently use their raw VerificationRun status.
 
 Filtering
     All job types support gage, domain, status, module membership, date, ID, and
     archive toggles.
+
+    Archive filtering for Forecast, Hindcast, and Verification jobs is based on
+    the parent CalibrationRun archive flag.
 
 Sorting
     Sorting uses server-approved fields defined in Enum classes
@@ -145,7 +174,7 @@ Range metadata
     restriction where applicable.
 
 Read-only execution
-    All retrieval runs inside a read-only transaction wrapper to reduce
+    Retrieval helpers run inside read-only transaction wrappers to reduce
     lock contention.
 """
 
@@ -921,19 +950,25 @@ def get_calibration_gages_for_evaluation(request: Request) -> Response:
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
         500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
     },
-    description="Get summary counts of Calibration jobs in Running / Ready / Saved status"
+    description="Get workflow dashboard summary counts"
 )
 @api_view(["POST", "GET"])
 @handle_exceptions
 def get_jobs_summary(request: Request) -> Response:
     """
-    Return counts of calibration jobs in:
-      - Running
-      - Ready
-      - Saved
+    Return summary counts used by the workflow dashboard:
+      - Calibration: Running, Ready, Saved
+      - Forecast: Running, Done
+      - Hindcast: Running, Done
+      - Verification: Done forecast-based, Done hindcast-based
 
-    Counts are based on the derived combined_status (same as get_jobs()).
-    Archived runs are excluded (consistent with default behavior elsewhere).
+    Calibration counts are based on derived combined_status.
+    Forecast and Hindcast counts are based on combined_status, including cold-start status.
+    Verification counts are based on raw verification status.
+
+    Archived calibration runs are excluded from Calibration counts.
+    Forecast, Hindcast, and Verification summary counts currently do not exclude
+    jobs whose parent CalibrationRun is archived.
     """
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
@@ -1082,12 +1117,14 @@ def annotate_combined_status(
     """
     Annotate a job queryset with the derived combined_status field.
 
-    This centralizes the combined-status semantics so that:
-      - job listing endpoints
-      - summary/count endpoints
-      - any future endpoints
+    This centralizes combined-status computation for the querysets that opt into it.
 
-    all compute combined_status identically and cannot drift.
+    Current usage:
+      - Calibration listing endpoints use combined_status for returned status values
+        and user-supplied status filters.
+      - Forecast/Hindcast summary counts use combined_status.
+      - Forecast/Hindcast listing endpoints currently use raw status, not combined_status.
+      - Verification currently uses raw status.
 
     include_status_lower: if True, also annotates `_status_lower = Lower("combined_status")` which is useful
     for case-insensitive filtering/count aggregations without repeating the annotation.
@@ -1281,7 +1318,7 @@ def annotate_combined_status(
                     then=Value(StatusEnum.CANCELLED.value)
                 ),
 
-                # Cold start cancesubmittedlled
+                # Cold start submitted
                 When(
                     Q(status_id=DONE_ID)
                     & Q(cold_start_status_id=SUBMITTED_ID),
