@@ -43,7 +43,7 @@ redis-cli ping
 
 # Create data directory
 
-Create a directory that will hold the data.  It can be anything, such as `~/ngwpc/data`.  But a symbolic link needs to be created to match the location in the ngen/cal-mgr Docker, 
+Create a directory that will hold the data.  It can be anything, such as `~/ngwpc/data`.  But a symbolic link needs to be created to match the location in the ngen/cal-mgr Docker,
 which is `/ngencerf/data`.
 This is defined in `settings.py` as the mount point.
 
@@ -55,12 +55,34 @@ sudo ln -s ~/ngwpc/data /ngencerf/data
 ```
 
 
+# Run the server in Docker (recommended for local dev)
+
+The dev stack (server + Postgres + Redis) runs via `compose.yaml`. All dev
+values are baked in as defaults, so **no `--env-file` is needed** — just make
+sure the `/ngencerf/data` symlink above exists and its `ngen-static-files`
+directory is populated (see [Static Files](#static-files)).
+
+```
+CACHE_BUST=$(date +%s) docker compose up --build ngencerf-services
+```
+
+The server comes up at http://localhost:8000 and Postgres at localhost:5432.
+
+> **Port conflict:** the `db` container binds host port **5432**. If you also run Postgres on the host (common if you switch between host and containerized Postgres), free the port first — e.g. `sudo systemctl stop postgresql` — or the `db` container won't start.
+
+- **Force a rebuild** (to pick up code changes): keep `--build`, or run `docker compose build --no-cache ngencerf-services`.
+- **Force a static-data reload:** static data loads once on first start, tracked by `../data/.ngencerf-init/.load_static`. Delete that file to reload on the next start.
+- **Shell into the running container:** `docker exec -it $(docker ps -qf name=ngencerf-services) bash`.
+
+> Production uses `production-pw.yaml` + `cerfServer/.env-override` and is launched via Parallel Works.
+
+
 # Access to AWS
 This needs to be done if you are running on AWS Workspace
 
 Some endpoints require access to AWS and therefore you must update your credentials.
 The credentials only last a few hours, so be prepared to refresh them at least once a day.
-Follow instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/Accessing+S3+Bucket+Programmatically+or+through+AWS+CLI, 
+Follow instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/Accessing+S3+Bucket+Programmatically+or+through+AWS+CLI,
 to get your credentials.
 Add them to your `~/.aws/credentials` file (create the file if it doesn't exist)
 You should manually add the region.  The file will look something like this
@@ -86,7 +108,7 @@ In AWS Workspace, you can use any directory that you have write access to.  For 
 Use your own directory. Do not share a directory with someone else
 
 For Parallel Works, you must use the directory corresponding to the cluster and for which you have read/write access.
-The bucket used is `s3://ngwpc-ngencerf-archive` for archiving and `s3://ngwpc-ngencerf-zips` for zip files, 
+The bucket used is `s3://ngwpc-ngencerf-archive` for archiving and `s3://ngwpc-ngencerf-zips` for zip files,
 and the directory will be unique for each cluster, e.g., `s3://ngwpc-ngencerf-archive/integration`
 ```
 `NGENCERF_ARCHIVE_S3_PATH=s3://ngwpc-ngencerf-archive/integration
@@ -111,9 +133,9 @@ printf "Do not delete.\nThis placeholder file ensures this S3 prefix is retained
 ```
 
 # Static Files
-There are some static files that are required for Ngen to run.  They should be in a directory under the data directory at `/ngencerf/data` called `ngen-static-files`.  
+There are some static files that are required for Ngen to run.  They should be in a directory under the data directory at `/ngencerf/data` called `ngen-static-files`.
 
-The data for the `ngen-static-files` directory is in several locations.  Execxute the following commands to copy everything 
+The data for the `ngen-static-files` directory is in several locations.  Execxute the following commands to copy everything
 to`/ngencerf/data/ngen-static-files` (dev) or `/ngencerf-app/data/ngen-cal-data/ngen-static-files` (prod)
 ```
 aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
@@ -122,7 +144,7 @@ aws s3 cp s3://ngwpc-hydrofabric/snow17_params_2.2.csv /ngencerf/data/ngen-stati
 aws s3 cp s3://ngwpc-dev/rte-test-data/esmf/ /ngencerf/data/ngen-static-files/forcing_static_dir/ --recursive
 ```
 
-In addition, copy the directory `module_parameter_files` and all its contents from 
+In addition, copy the directory `module_parameter_files` and all its contents from
 https://github.com/NGWPC/nwm-msw-mgr/tree/development/src/mswm/module_parameter_files to the `/ngencerf/data/ngen-static-files` directory.
 
 ```
@@ -135,7 +157,7 @@ mv src/mswm/module_parameter_files ../ && \
 cd .. && rm -rf tmp-nwm-msw-mgr
 ```
 
-Copy the directory `https://github.com/NGWPC/ngen-forcing/tree/development/NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates` 
+Copy the directory `https://github.com/NGWPC/ngen-forcing/tree/development/NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates`
 and all its contents to the `/ngencerf/data/ngen-static-files` directory as `bmi_forcing_templates`
 
 ```
@@ -148,7 +170,7 @@ mv NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates ../bmi_forci
 cd .. && rm -rf tmp-ngen-forcing
 ```
 
-From the directory `https://github.com/NGWPC/nwm-verf/tree/development/data/inputs`, 
+From the directory `https://github.com/NGWPC/nwm-verf/tree/development/data/inputs`,
 copy only the *.parquet files to the `/ngencerf/data/ngen-static-files/verfication_data` directory
 
 ```
@@ -200,7 +222,7 @@ Confirm that you can log in with the new password
 
 
 **_Important:_**
-During development, there might be times when the entire database needs to be initialized.  
+During development, there might be times when the entire database needs to be initialized.
 In that case, drop all existing tables in the database and run these initialize steps again.
 
 To drop all tables, you can use this script:
@@ -217,7 +239,7 @@ where `public` is the name of your schema.
 
 
 # Running the server
-To run the server, use `runCerf.sh`. 
+To run the server, use `runCerf.sh`.
 ```
 ./runCerf.sh
 ```
@@ -248,7 +270,7 @@ User creation only needs to be done once.
 
 To simulate a login, send the same payload, containing the email and password, to the endpoint `auth/awt/create`
 
-Extract the access token.  For all subsequent requests, you need to include an `Authorization` header of 
+Extract the access token.  For all subsequent requests, you need to include an `Authorization` header of
 type `Bearer token` that includes the access token.
 
 # Importing test data
@@ -257,7 +279,7 @@ type `Bearer token` that includes the access token.
 Note: Need to update to reference to new CLI
 ```
 
-The `cli` directory contains an `ngencerf.sh` command line script which will allow you to import data and create a calibration run job without having to go though the UI.  
+The `cli` directory contains an `ngencerf.sh` command line script which will allow you to import data and create a calibration run job without having to go though the UI.
 
 In the `import_test_data` directory, there are some sample import data files.  Set environment variables with your email and password (or put them in ~/.bashrc)
 ```
@@ -265,7 +287,7 @@ $ export NGEN_EMAIL="your_email"
 $ export NGEN_PASSWORD="your_password"
 ```
 
-You can then run the `ngencerf.sh` script with one of the sample input files.  Everytime you run `ngencerf.sh`, a new Calibration Run job will be created.  
+You can then run the `ngencerf.sh` script with one of the sample input files.  Everytime you run `ngencerf.sh`, a new Calibration Run job will be created.
 The error messages that you get from the import are intended to let you know which data is still required to make the job runnable and at this point, can be ignored.
 
 The metadata section is totally ignored on import and can be used to add your own comments, as long as it is in Json format.
@@ -283,7 +305,7 @@ NGEN_ENVIRONMENT = DOCKER
 
 1. LOCAL - ngen and cal-mgr, as well as ngen-fcst and ngen-forcing, must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/cal-mgr`
 Create a symbolic link to match the specifying in settings.py.
-All the repos should be installed in the same directory.  It can be anything, but a symbolic link needs to be created to match the location in the Docker containers, 
+All the repos should be installed in the same directory.  It can be anything, but a symbolic link needs to be created to match the location in the Docker containers,
 which is `/ngen-app`.
    ```
    sudo mkdir /ngen-app
@@ -293,7 +315,7 @@ which is `/ngen-app`.
 
 
 2. DOCKER - ngen and cal-mgr are installed in a docker container.  This is the easiest for running locally.
-Follow these steps to pull the latest docker containers. 
+Follow these steps to pull the latest docker containers.
 
    1. If you don't have Docker installed, follow the instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/AWS+Ubuntu+22.04+LTS+Workspace+for+Docker#AWSUbuntu22.04LTSWorkspaceforDocker-InstallDocker
    2. Follow the instructions here to 'Manage Docker as a non-root user': https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user
@@ -307,24 +329,24 @@ Follow these steps to pull the latest docker containers.
 
    **Note:** If you are developing and have updates to the repos that you want to include, use one of the following from the appropriate repo directory:
    ```
-  docker build --tag=nwm-cal-mgr . 
-  docker build --tag=nwm-fcst-mgr . 
-  docker build --file Dockerfile.bmi-forcings --tag=ngen-bmi-forcing . 
+  docker build --tag=nwm-cal-mgr .
+  docker build --tag=nwm-fcst-mgr .
+  docker build --file Dockerfile.bmi-forcings --tag=ngen-bmi-forcing .
    ```
- 
+
 3. PARALLEL_WORKS - The dockers containers are built for you and the server uses Slurm to communicate.
 
 
 
 # Directory structure
 
-By convention with the Docker images, the mount point is at `/ngencerf/data`.   This is defined in `settings.py` and should not change without proper coordination. 
+By convention with the Docker images, the mount point is at `/ngencerf/data`.   This is defined in `settings.py` and should not change without proper coordination.
 
 `/ngencerf/data` contains `ngen-static-files` and `ngen-cal-work`
 
 `ngen-cal-work/run_calib` contains the data for ngen and cal-mgr
 
-Files from Data Services are in `s3/ngwpc-dev/hyrofabric`.  This is an S3 bucket that is mounted as a file system.  This allows us not to have to worry about downloading files from S3. 
+Files from Data Services are in `s3/ngwpc-dev/hyrofabric`.  This is an S3 bucket that is mounted as a file system.  This allows us not to have to worry about downloading files from S3.
 This is a shared location, since these files can be re-used by different jobs for the same gage.
 
 Prior to running the job, the Observation and Forcing files from Data Services will be subsetted to conform to the time range of the job.
@@ -366,14 +388,14 @@ peter.a.kronenberg@U-12SMBYD5450YI:~$ tree /ngencerf -L 4 -n -A
 
 .
 └── s3
-    └── ngwpc-dev/hydrfabric  
+    └── ngwpc-dev/hydrfabric
 ```
 
 
 # Installing ngen and nwm-cal-mgr
 **Note:** This process is not recommended.  Run ngen and nwm-cal-mgr in a docker container as described in Runtime Environments
 
-Follow the instructions at https://confluence.nextgenwaterprediction.com/display/NGWPC/Build+ngen-cal+and+ngen+from+GitLab. 
+Build ngen-cal and ngen from source (NGWPC GitHub org).
 
 Use these recommended directory names to avoid having to change your settings.
 * It is recommended that you create a directory called `~/ngwpc/data/ngen-cal-work`
@@ -381,9 +403,9 @@ Use these recommended directory names to avoid having to change your settings.
 
 
 * Create the cal-mgr virtual environment.  This directory is defined in `settings.py` as `NGEN_CAL_VENV`.   Default location is `~/ngen-cal-work/venv-cal`
-* Clone cal-mgr from Gitlab.  This directory is defined in `settings.py` as `CAL_MGR__REPO_ROOT`.  Default location is `~/noaa-owp/cal-mgr`
+* Clone cal-mgr from the NGWPC GitHub org.  This directory is defined in `settings.py` as `CAL_MGR__REPO_ROOT`.  Default location is `~/noaa-owp/cal-mgr`
 * Follow instructions for installing cal-mgr
-* Clone ngen from Gitlab into `~/noaa-owp/ngen`
+* Clone ngen from the NGWPC GitHub org into `~/noaa-owp/ngen`
 * Follow instructions for installing ngen
 * It is **not** necessary to create the ROOT_DIR_RUN_NGEN_CAL directory or to run the script that creates symbolic links in that directory
 * Create the `NGEN_CAL_RUN_DIR` at `~/ngwpc/data/run_calib`

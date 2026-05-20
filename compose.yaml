@@ -22,11 +22,11 @@ services:
       - "5432:5432"
     volumes:
       - ../data/db:/var/lib/postgresql/data
-    env_file:
-      - path: ./postgres_db.env
-        required: true
-      - path: ./postgres_db.override.env
-        required: false
+    # Throwaway dev creds; overridable via shell env if ever needed.
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 10s
@@ -53,13 +53,15 @@ services:
       - "8000:8000"
     volumes:
       - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
-      - ${NGEN_CAL_DATA_PATH}:/ngencerf/data/
+      - ${NGEN_CAL_DATA_PATH:-/ngencerf/data/}:/ngencerf/data/
       - ../logs/ngencerf-server:/ngencerf/ngencerf-server/logs/
+    # NGEN_CAL_DATA_PATH defaults to the README's /ngencerf/data symlink;
+    # DB creds default to the throwaway dev postgres/postgres.
     environment:
-      - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH}
-      - CERF_SERVER_DATABASE_NAME=${POSTGRES_DB}
-      - CERF_SERVER_DATABASE_USER=${POSTGRES_USER}
-      - CERF_SERVER_DATABASE_PASSWORD=${POSTGRES_PASSWORD}
+      - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH:-/ngencerf/data/}
+      - CERF_SERVER_DATABASE_NAME=${POSTGRES_DB:-postgres}
+      - CERF_SERVER_DATABASE_USER=${POSTGRES_USER:-postgres}
+      - CERF_SERVER_DATABASE_PASSWORD=${POSTGRES_PASSWORD:-postgres}
     env_file:
       - path: cerfServer/.env-docker-dev
         required: true

@@ -36,9 +36,9 @@ services:
       - "8000:8000"
     volumes:
       - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
-      - ${NGEN_CAL_DATA_PATH}:/ngencerf/data/
+      - ${NGEN_CAL_DATA_PATH:-/ngencerf-app/data/ngen-cal-data/}:/ngencerf/data/
       - ../logs/ngencerf-server:/ngencerf/ngencerf-server/logs/
-      - ${CONTAINER_PATH}:/ngencerf/containers/
+      - ${CONTAINER_PATH:-/ngencerf-app/singularity}:/ngencerf/containers/
       - /var/run/docker.sock:/var/run/docker.sock
       - /ngencerf-app/aws:/root/.aws:ro
     environment:
