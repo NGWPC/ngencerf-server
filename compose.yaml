@@ -57,6 +57,9 @@ services:
       - ../logs/ngencerf-server:/ngencerf/ngencerf-server/logs/
     environment:
       - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH}
+      - CERF_SERVER_DATABASE_NAME=${POSTGRES_DB}
+      - CERF_SERVER_DATABASE_USER=${POSTGRES_USER}
+      - CERF_SERVER_DATABASE_PASSWORD=${POSTGRES_PASSWORD}
     env_file:
       - path: cerfServer/.env-docker-dev
         required: true
