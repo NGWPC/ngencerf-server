@@ -517,7 +517,7 @@ class ModuleMetadataStaticSerializer(BaseSerializer):
 # Landing page
 ##################################
 
-class GetCalibrationJobsSummaryResponseSerializer(BaseSerializer):
+class GetJobsSummaryResponseSerializer(BaseSerializer):
     running_calibration_count = serializers.IntegerField()
     ready_calibration_count = serializers.IntegerField()
     saved_calibration_count = serializers.IntegerField()

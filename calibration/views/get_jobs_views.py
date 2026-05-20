@@ -169,7 +169,7 @@ from calibration.util.caching import get_cached_modules_by_id
 from calibration.util.calibration_validators import ErrorResponseSerializer, \
     GetCalibrationJobsResponseSerializer, CalibrationPaginationSerializer, \
     GetCalibrationJobIDsResponseSerializer, EmptySerializer, \
-    GetGagesResponseSerializer, GetGagesRequestSerializer, GetCalibrationJobsSummaryResponseSerializer, GetValidationJobsResponseSerializer, \
+    GetGagesResponseSerializer, GetGagesRequestSerializer, GetJobsSummaryResponseSerializer, GetValidationJobsResponseSerializer, \
     CalibrationRunIdSerializer, ForecastPaginationSerializer, GetForecastJobsResponseSerializer, GetVerificationJobsResponseSerializer, \
     VerificationPaginationSerializer, GetHindcastJobsResponseSerializer, HindcastPaginationSerializer, GetVerificationGagesRequestSerializer
 from calibration.views.calibration_download_views import downloadable_statuses
@@ -917,7 +917,7 @@ def get_calibration_gages_for_evaluation(request: Request) -> Response:
 @extend_schema(
     request=EmptySerializer,
     responses={
-        200: GetCalibrationJobsSummaryResponseSerializer,
+        200: GetJobsSummaryResponseSerializer,
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
         500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
     },
@@ -925,7 +925,7 @@ def get_calibration_gages_for_evaluation(request: Request) -> Response:
 )
 @api_view(["POST", "GET"])
 @handle_exceptions
-def get_calibration_jobs_summary(request: Request) -> Response:
+def get_jobs_summary(request: Request) -> Response:
     """
     Return counts of calibration jobs in:
       - Running
@@ -948,14 +948,14 @@ def get_calibration_jobs_summary(request: Request) -> Response:
     done_lc = StatusEnum.DONE.value.lower()
 
     with readonly_transaction():
-        query1 = Q(owner=auth_user(request)) & Q(is_archived=False)
+        calibration_query = Q(owner=auth_user(request)) & Q(is_archived=False)
 
-        qs1 = annotate_combined_status(
-            CalibrationRun.objects.filter(query1),
+        calibration_qs = annotate_combined_status(
+            CalibrationRun.objects.filter(calibration_query),
             include_status_lower=True,
         )
 
-        agg1 = qs1.aggregate(
+        calibration_agg = calibration_qs.aggregate(
             running_calibration_count=Sum(
                 Case(
                     When(_status_lower=running_lc, then=Value(1)),
@@ -979,14 +979,14 @@ def get_calibration_jobs_summary(request: Request) -> Response:
             ),
         )
 
-        query2 = Q(calibration_run__owner=auth_user(request))
+        forecast_query = Q(calibration_run__owner=auth_user(request))
 
-        qs2 = annotate_combined_status(
-            ForecastRun.objects.filter(query2),
+        forecast_qs = annotate_combined_status(
+            ForecastRun.objects.filter(forecast_query),
             include_status_lower=True,
         )
 
-        agg2 = qs2.aggregate(
+        forecast_agg = forecast_qs.aggregate(
             running_forecast_count=Sum(
                 Case(
                     When(_status_lower=running_lc, then=Value(1)),
@@ -1003,14 +1003,14 @@ def get_calibration_jobs_summary(request: Request) -> Response:
             ),
         )
 
-        query3 = Q(calibration_run__owner=auth_user(request))
+        hindcast_query = Q(calibration_run__owner=auth_user(request))
 
-        qs3 = annotate_combined_status(
-            HindcastRun.objects.filter(query3),
+        hindcast_qs = annotate_combined_status(
+            HindcastRun.objects.filter(hindcast_query),
             include_status_lower=True,
         )
 
-        agg3 = qs3.aggregate(
+        hindcast_agg = hindcast_qs.aggregate(
             running_hindcast_count=Sum(
                 Case(
                     When(_status_lower=running_lc, then=Value(1)),
@@ -1027,14 +1027,14 @@ def get_calibration_jobs_summary(request: Request) -> Response:
             ),
         )
 
-        query4 = Q(forecast_run__calibration_run__owner=auth_user(request)) | Q(hindcast_run__calibration_run__owner=auth_user(request))
+        verification_query = Q(forecast_run__calibration_run__owner=auth_user(request)) | Q(hindcast_run__calibration_run__owner=auth_user(request))
 
-        qs4 = annotate_combined_status(
-            VerificationRun.objects.filter(query4),
+        verification_qs = annotate_combined_status(
+            VerificationRun.objects.filter(verification_query),
             include_status_lower=True,
-        )
+        ) 
 
-        agg4 = qs4.aggregate(
+        verification_agg = verification_qs.aggregate(
             done_forecast_verification_count=Sum(
                 Case(
                     When(_status_lower=done_lc, forecast_run_id__gt=0, then=Value(1)),
@@ -1052,18 +1052,18 @@ def get_calibration_jobs_summary(request: Request) -> Response:
         )
 
     response = {
-        "running_calibration_count": int(agg1["running_calibration_count"] or 0),
-        "ready_calibration_count": int(agg1["ready_calibration_count"] or 0),
-        "saved_calibration_count": int(agg1["saved_calibration_count"] or 0),
-        "running_forecast_count": int(agg2["running_forecast_count"] or 0),
-        "done_forecast_count": int(agg2["done_forecast_count"] or 0),
-        "done_forecast_verification_count": int(agg4["done_forecast_verification_count"] or 0),
-        "running_hindcast_count": int(agg3["running_hindcast_count"] or 0),
-        "done_hindcast_count": int(agg3["done_hindcast_count"] or 0),
-        "done_hindcast_verification_count": int(agg4["done_hindcast_verification_count"] or 0),
+        "running_calibration_count": int(calibration_agg["running_calibration_count"] or 0),
+        "ready_calibration_count": int(calibration_agg["ready_calibration_count"] or 0),
+        "saved_calibration_count": int(calibration_agg["saved_calibration_count"] or 0),
+        "running_forecast_count": int(forecast_agg["running_forecast_count"] or 0),
+        "done_forecast_count": int(forecast_agg["done_forecast_count"] or 0),
+        "done_forecast_verification_count": int(verification_agg["done_forecast_verification_count"] or 0),
+        "running_hindcast_count": int(hindcast_agg["running_hindcast_count"] or 0),
+        "done_hindcast_count": int(hindcast_agg["done_hindcast_count"] or 0),
+        "done_hindcast_verification_count": int(verification_agg["done_hindcast_verification_count"] or 0),
     }
 
-    response_validator, error_response = validate_response(GetCalibrationJobsSummaryResponseSerializer, response)
+    response_validator, error_response = validate_response(GetJobsSummaryResponseSerializer, response)
     if error_response:
         return error_response
 
@@ -1099,8 +1099,8 @@ def annotate_combined_status(
     FAILED_ID = StatusEnum.FAILED.db_instance.id
     CANCELLED_ID = StatusEnum.CANCELLED.db_instance.id
     SUBMITTED_ID = StatusEnum.SUBMITTED.db_instance.id
-
-    if isinstance(qs.model, CalibrationRun):
+    
+    if qs.model is CalibrationRun:
         # ─────────────────────────────────────────────────────────────
         # Always annotate validation_control_status_id + validation_best_status_id.
         # combined_status depends on these values, so they must be present
@@ -1229,29 +1229,20 @@ def annotate_combined_status(
         if include_status_lower:
             qs = qs.annotate(_status_lower=Lower("combined_status"))
     
-    elif isinstance(qs.model, ForecastRun) or isinstance(qs.model, HindcastRun):
+    elif qs.model is ForecastRun or qs.model is HindcastRun:
         # ─────────────────────────────────────────────────────────────
         # Always annotate cold_start_status_id
-        # combined_status depends on this values, so it must be present.
+        # combined_status depends on this value, so it must be present.
         #
         # Note: these is the ColdStartRun.status_id value (int), not name.
         # ─────────────────────────────────────────────────────────────
-        if isinstance(qs.model, ForecastRun):
-            qs = qs.annotate(
-                cold_start_status_id=Subquery(
-                    ColdStartRun.objects.filter(
-                        forecast_run_id=OuterRef("pk")
-                    ).values("status_id")[:1]
-                )
+        qs = qs.annotate(
+            cold_start_status_id=Subquery(
+                ColdStartRun.objects.filter(
+                    id=OuterRef("cold_start_run_id")
+                ).values("status_id")[:1]
             )
-        else:
-            qs = qs.annotate(
-                cold_start_status_id=Subquery(
-                    ColdStartRun.objects.filter(
-                        hindcast_run_id=OuterRef("pk")
-                    ).values("status_id")[:1]
-                )
-            )
+        )
 
         # Rules:
         #   • If cold start is not Done → combined = cold start status
