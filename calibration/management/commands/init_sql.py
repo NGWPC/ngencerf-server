@@ -707,7 +707,7 @@ class Command(BaseCommand):
                 "name": "Short Range Hawaii", "internal_name": "short_range_hawaii", "order": 1,
                 "data_sources": "tbd",
                 "domain": hawaii_domain,
-                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48, "fcst_timestep": 0.25,
+                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 6, "fcst_win": 48, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "supports_hindcast": True,
                 "is_active": True
