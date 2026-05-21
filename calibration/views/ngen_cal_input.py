@@ -207,7 +207,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
         datafile = config['DataFile']
         forcing = config['Forcing']
 
-        parallel ConfigSection = {
+        parallel: ConfigSection = {
             "parallel_ngen_exe": PARALLEL_NGEN_EXE,
             "partition_generator_exe": PARTITION_GENERATOR_EXE,
             "nprocs": None
