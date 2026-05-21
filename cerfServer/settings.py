@@ -334,65 +334,68 @@ FORCING_ENGINE_ENV = 'ngen_forcings_engine_bmi'
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
-# Directory containing the nwm-cal-mgr virtual environment
-# This is used only if we are running with NGEN_ENVIRONMENT=LOCAL and not in a separate container
-NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
-
-# Used when running in NGEN_ENVIRONMENT=DOCKER
-# --rm ensures containers are auto-removed after exit
-# Use {name} placeholder for the container name, which will be substituted at runtime
-CAL_MGR_DOCKER_CMD = f'docker run --rm --network host --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-cal-mgr'
-NGEN_FORECAST_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-fcst-mgr'
-NWM_EVAL_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-eval-mgr'
-
-# Used when running in NGEN_ENVIRONMENT=LOCAL
-CAL_MGR_SCRIPT = os.path.join(CAL_MGR_REPO_ROOT, 'docker', 'run-nwm-cal-mgr.sh')
-NGEN_FORECAST_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
-NGEN_COLD_START_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
-EVALUATION_SCRIPT = os.path.join(NWM_EVAL_REPO_ROOT, 'docker', 'run-nwm-eval-mgr.sh')
-
-RUNTIME_INFO = {
-    ScriptEnum.CALIBRATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
-    ScriptEnum.VALIDATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
-    ScriptEnum.VALIDATION_ITERATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
-    ScriptEnum.COLD_START: (NGEN_FORECAST_DOCKER_CMD, NGEN_COLD_START_SCRIPT),
-    ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
-    ScriptEnum.HINDCAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
-    ScriptEnum.VERIFICATION: (NWM_EVAL_DOCKER_CMD, EVALUATION_SCRIPT)
+    "hindcast": NGEN_FORECAST_DOCKER_CMD,
+    "verification": NWM_VERF_DOCKER_CMD,
 }
 
-# -----------------------------
-# Job Simulation Flags for use with NGEN_ENVIRONMENT=LOCAL or DOCKER
-# -----------------------------
-SIMULATE_FLAGS = {
-    JobType.CALIBRATION: False,
-    JobType.VALIDATION: False,
-    JobType.FORECAST: False,
-    JobType.VERIFICATION: False,
+# Singularity image paths used when JOB_EXECUTION_MODE=SLURM.
+NWM_CAL_MGR_SINGULARITY_CONTAINER_PATH = os.getenv(
+    "NWM_CAL_MGR_SINGULARITY_CONTAINER_PATH"
+)
+
+NWM_FCST_MGR_SINGULARITY_CONTAINER_PATH = os.getenv(
+    "NWM_FCST_MGR_SINGULARITY_CONTAINER_PATH"
+)
+
+NWM_VERF_SINGULARITY_CONTAINER_PATH = os.getenv(
+    "NWM_VERF_SINGULARITY_CONTAINER_PATH"
+)
+
+CAL_MGR_SINGULARITY_CMD = (
+    f"/usr/bin/time -v singularity run "
+    f"-B {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} "
+    f"{NWM_CAL_MGR_SINGULARITY_CONTAINER_PATH}"
+)
+
+NGEN_FORECAST_SINGULARITY_CMD = (
+    f"/usr/bin/time -v singularity run "
+    f"-B {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} "
+    f"{NWM_FCST_MGR_SINGULARITY_CONTAINER_PATH}"
+)
+
+NWM_VERF_SINGULARITY_CMD = (
+    f"/usr/bin/time -v singularity run "
+    f"-B {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} "
+    f"{NWM_VERF_SINGULARITY_CONTAINER_PATH}"
+)
+
+SINGULARITY_RUNTIME_INFO = {
+    "calibration": CAL_MGR_SINGULARITY_CMD,
+    "validation": CAL_MGR_SINGULARITY_CMD,
+    "validation_iteration": CAL_MGR_SINGULARITY_CMD,
+    "cold_start": NGEN_FORECAST_SINGULARITY_CMD,
+    "forecast": NGEN_FORECAST_SINGULARITY_CMD,
+    "hindcast": NGEN_FORECAST_SINGULARITY_CMD,
+    "verification": NWM_VERF_SINGULARITY_CMD,
 }
 
-NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
-try:
-    # noinspection PyTypeHints
-    NGEN_ENVIRONMENT = NgenEnvironmentEnum[NGEN_ENVIRONMENT_STR]
-except KeyError:
-    # noinspection PyUnresolvedReferences
-    raise SystemExit(
-        f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in NgenEnvironmentEnum])}")
+# Optional sacct columns collected after job completion.
+SLURM_JOB_METRICS = os.getenv("SLURM_JOB_METRICS")
 
-# -----------------------------
-# Slurm
-# -----------------------------
+NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'logs')
+print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
+os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
-SLURM_URL = os.getenv("SLURM_URL")
-SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT = 'submit-calibration-job'
-SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT = 'submit-validation-job'
-SLURM_SUBMIT_COLD_START_JOB_ENDPOINT = 'submit-cold-start-job'
-SLURM_SUBMIT_FORECAST_JOB_ENDPOINT = 'submit-forecast-job'
-SLURM_SUBMIT_HINDCAST_JOB_ENDPOINT = 'submit-hindcast-job'
-SLURM_SUBMIT_VERIFICATION_JOB_ENDPOINT = 'submit-verification-job'
-SLURM_JOB_STATUS_ENDPOINT = 'job-status'
-SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
+# Static and working directories
+NGEN_STATIC_DIR = os.path.join(CONTAINER_DATA_ROOT, 'ngen-static-files')
+NGEN_CAL_WORK_DIR = os.path.join(CONTAINER_DATA_ROOT, 'ngen-cal-work')
+NGEN_VERIFICATION_WORK_DIR = os.path.join(CONTAINER_DATA_ROOT, 'verification_work')
+
+# The NGEN_BMI_FORCING_WORK_DIR directory is owned by ngen-forcing.  It will be responsible for creating it
+NGEN_BMI_FORCING_WORK_DIR = os.path.join(CONTAINER_DATA_ROOT, 'bmi_forcing_work')
+
+# Directory where all the output runs are stored
+NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
 
 def validate_port(value: str, name: str = "PORT") -> int:
@@ -671,4 +674,4 @@ DATABASES = {
         'CONN_MAX_AGE': int(os.getenv('CERF_SERVER_DATABASE_CONN_MAX_AGE', '60')),
         'OPTIONS': DATABASE_OPTIONS,
     }
-}
+} 
