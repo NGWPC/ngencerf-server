@@ -707,11 +707,14 @@ def apply_forecast_filters(query: Q, filters: dict) -> Q:
     :param filters: Dictionary of filter parameters (gage_id, domain_name, status, modules, date_filter, id_filter, etc.).
     :return: Q object with forecast/hindcast-specific filters applied.
     """
+    # Make a shallow copy and remove 'status'
+    filters = {k: v for k, v in filters.items() if k != "status"}
+
     return _apply_shared_filters(
         query, filters,
         gage_prefix="calibration_run__gage__",
         module_prefix="calibration_run__calibrationformulation__",
-        status_field="status__in",
+        status_field="status__in",  # not used, since 'status' removed
         created_field="created_at",
         archived_field="calibration_run__is_archived",
         domain_field="calibration_run__gage__domain__name",
@@ -1292,36 +1295,31 @@ def annotate_combined_status(
 
                 # Cold start running
                 When(
-                    Q(status_id=DONE_ID)
-                    & Q(cold_start_status_id=RUNNING_ID),
+                    Q(cold_start_status_id=RUNNING_ID),
                     then=Value(StatusEnum.RUNNING.value)
                 ),
 
                 # Cold start server error
                 When(
-                    Q(status_id=DONE_ID)
-                    & Q(cold_start_status_id=SERVER_ERROR_ID),
+                    Q(cold_start_status_id=SERVER_ERROR_ID),
                     then=Value(StatusEnum.SERVER_ERROR.value)
                 ),
 
                 # Cold start failed
                 When(
-                    Q(status_id=DONE_ID)
-                    & Q(cold_start_status_id=FAILED_ID),
+                    Q(cold_start_status_id=FAILED_ID),
                     then=Value(StatusEnum.FAILED.value)
                 ),
 
                 # Cold start cancelled
                 When(
-                    Q(status_id=DONE_ID)
-                    & Q(cold_start_status_id=CANCELLED_ID),
+                    Q(cold_start_status_id=CANCELLED_ID),
                     then=Value(StatusEnum.CANCELLED.value)
                 ),
 
                 # Cold start submitted
                 When(
-                    Q(status_id=DONE_ID)
-                    & Q(cold_start_status_id=SUBMITTED_ID),
+                    Q(cold_start_status_id=SUBMITTED_ID),
                     then=Value(StatusEnum.SUBMITTED.value)
                 ),
 
@@ -2166,6 +2164,25 @@ def _get_forecast_or_hindcast_base_jobs_internal(
         query = apply_forecast_filters(query, filters_dict)
 
         base_qs = model.objects.filter(query)
+        
+        # Centralized combined_status annotation.
+        base_qs = annotate_combined_status(
+            base_qs,
+            include_status_lower=bool(filters_dict.get("status")),
+        )
+        
+        # ─────────────────────────────────────────────────────────────
+        # Apply user-supplied status filter LAST.
+        # Must come AFTER combined_status, because filtering is done on the
+        # derived combined_status value, not the raw forecast/hindcast status.
+        # This ensures ids_only and full-detail return the same job set.
+        # ─────────────────────────────────────────────────────────────
+        if "status" in filters_dict and filters_dict["status"]:
+            # Normalize to lowercase for case-insensitive matching
+            normalized_statuses = [s.strip().lower() for s in filters_dict["status"]]
+
+            # _status_lower already exists (include_status_lower=True above) when a status filter is present.
+            base_qs = base_qs.filter(_status_lower__in=normalized_statuses)
 
         # total_count must be BEFORE pagination
         total_count = base_qs.count()
