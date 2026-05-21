@@ -28,7 +28,6 @@ from calibration.views.calibration_tuning_views import get_full_evaluation_date_
 from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
 from calibration.views.data_services import get_observational_data_from_data_services
-from calibration.views.mpi_rules import get_mpi_nodes
 
 logger = logging.getLogger(__name__)
 
@@ -603,7 +602,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
             calibration['calib_parameter_file'] = calib_parameter_file
             write_parameter_files(params, calib_parameter_file)
 
-        if build and settings.JOB_EXECUTION_MODE == JobExecutionMode.SLURM:
+        if build and settings.JOB_EXECUTION_MODE in {JobExecutionMode.SLURM, JobExecutionMode.SLURM_MOCK}:
             if run.num_catchments is None:
                 # Handle old jobs which might not have saved num_catchments
                 # At this point validation should already have ensured that a geopackage path is available.
@@ -732,18 +731,41 @@ def is_missing(value: Any, label: str, report: ErrorReport, have_LSTM_flag: bool
     return False
 
 
-# Global table of node type rules.
-# Each pair represents [max_catchments, node_type]
-NODE_TYPE_RULES: list[tuple[int, str]] = [
-    (500, 'c5n-9xlarge'),
-    (-1, 'r8a-12xlarge')
-]
-
-
 def get_node_type(num_catchments: int) -> str:
-    for max_catchments, node_type in NODE_TYPE_RULES:
+    """
+    Select the Slurm partition/node type for a calibration job.
+
+    Rules are loaded from settings.SLURM_NODE_TYPE_RULES and evaluated in order.
+    The first rule whose max_catchments value is -1 or greater than/equal to
+    num_catchments is selected.
+
+    :param num_catchments: Number of catchments in the calibration domain.
+    :return: Configured Slurm partition/node type.
+    :raises ValueError: If no configured rule matches.
+    """
+    for max_catchments, node_type in settings.SLURM_NODE_TYPE_RULES:
         if max_catchments == -1 or num_catchments <= max_catchments:
             logger.info(f'{num_catchments} catchments using node type {node_type}')
             return node_type
 
     raise ValueError(f'No node type rule matched for {num_catchments} catchments')
+
+
+def get_mpi_nodes(num_catchments: int) -> int:
+    """
+    Select the MPI node count for a calibration job.
+
+    Rules are loaded from settings.MPI_NODE_RULES and evaluated in order.
+    The first rule whose max_catchments value is -1 or greater than/equal to
+    num_catchments is selected.
+
+    :param num_catchments: Number of catchments in the calibration domain.
+    :return: Configured MPI node/process count.
+    :raises ValueError: If no configured rule matches.
+    """
+    for max_catchments, mpi_nodes in settings.MPI_NODE_RULES:
+        if max_catchments == -1 or num_catchments <= max_catchments:
+            logger.info(f"{num_catchments} catchments using {mpi_nodes} nodes")
+            return mpi_nodes
+
+    raise ValueError(f"No MPI node rule matched for {num_catchments} catchments")
