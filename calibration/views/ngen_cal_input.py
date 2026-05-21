@@ -4,13 +4,13 @@ import logging
 import os
 from collections import defaultdict
 from datetime import datetime
-from typing import Any
+from typing import Any, TypeAlias
 
 import toml
 from datetimerange import DateTimeRange
+from django.conf import settings
 from django.db import transaction
 from django.db.models import F
-from toml import TomlEncoder
 
 from calibration.enums import StatusEnum, DataTypeEnum
 from calibration.enums_vanilla import NgenEnvironmentEnum
@@ -29,7 +29,6 @@ from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
 from calibration.views.data_services import get_observational_data_from_data_services
 from calibration.views.mpi_rules import get_mpi_nodes
-from cerfServer.settings import NGEN_ENVIRONMENT, NGEN_BMI_FORCING_WORK_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +59,7 @@ CONFIG_TEMPLATE = {
         "calibration_run_id": 0,
         "ngen_cerf": True,  # Indicate that we came from the ngenCerf server - Always true
         "auth_token": "",
+        "ngencerf_base_url": settings.NGENCERF_BASE_URL,
         "optimization_algorithm": None,
         "swarm_size": 0,
         "c1": 0,
@@ -107,7 +107,7 @@ CONFIG_TEMPLATE = {
 
     "Forcing": {
         "forcing_provider": "",
-        "root_dir": NGEN_BMI_FORCING_WORK_DIR,
+        "root_dir": settings.NGEN_BMI_FORCING_WORK_DIR,
         "forcing_configuration": "",
         "forcing_dir": "",
         "forcing_static_dir": FORCING_STATIC_DIR,
@@ -145,6 +145,10 @@ CONFIG_TEMPLATE = {
     }
 }
 
+ConfigValue: TypeAlias = str | int | float | bool | None
+ConfigSection: TypeAlias = dict[str, ConfigValue]
+Config: TypeAlias = dict[str, ConfigSection]
+
 
 def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport, str | None]:
     """
@@ -176,7 +180,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
     logger.info(called_from())
 
     error_object = ErrorReport()
-    config: dict[str, dict[str, str | int | float | bool]] = {}
+    config: Config = {}
     config_file: str | None = None
 
     # -----------------------------
@@ -195,7 +199,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
             return error_object, None
 
         # Deepcopy config template
-        config: dict[str, dict[str, str | int | float | bool]] = copy.deepcopy(CONFIG_TEMPLATE)
+        config: Config = copy.deepcopy(CONFIG_TEMPLATE)
 
         general = config['General']
         module_properties = config['ModuleProperties']
@@ -203,7 +207,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
         datafile = config['DataFile']
         forcing = config['Forcing']
 
-        parallel = {
+        parallel ConfigSection = {
             "parallel_ngen_exe": PARALLEL_NGEN_EXE,
             "partition_generator_exe": PARTITION_GENERATOR_EXE,
             "nprocs": None
@@ -478,22 +482,42 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
             if all_input_names:
                 error_object.add_warning(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
 
-        if not is_missing(run.save_plot_iteration_frequency, 'Plot iteration frequency', error_object, have_LSTM_flag=have_LSTM_flag):
-            calibration['save_plot_iter_freq'] = run.save_plot_iteration_frequency
+        save_plot_iteration_frequency: int | None = run.save_plot_iteration_frequency
+
+        if not is_missing(save_plot_iteration_frequency, 'Plot iteration frequency', error_object, have_LSTM_flag=have_LSTM_flag):
+            calibration['save_plot_iter_freq'] = save_plot_iteration_frequency
 
         # This field is not required from user
         calibration['save_output_iter'] = int(run.save_output_iteration or 0)
 
         calibration['restart'] = 0
 
-        stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
-        if not is_missing(stop_criteria, 'Stop criteria (number of iterations)', error_object, have_LSTM_flag=have_LSTM_flag):
-            # We're assuming there is only 1 stop criteria record for now
-            calibration['number_iteration'] = stop_criteria.value
+        stop_criteria = CalibrationStopCriteria.objects.filter(
+            calibration_run=run
+        ).first()
 
-        if stop_criteria and run.save_plot_iteration_frequency is not None and (stop_criteria.value < run.save_plot_iteration_frequency):
-            error_object.add_warning(
-                f"The plot iteration frequency, {run.save_plot_iteration_frequency}, must be <= the stop criteria (number of iteration) {stop_criteria.value}")
+        if stop_criteria:
+            number_iteration = stop_criteria.value
+            assert isinstance(number_iteration, int)
+
+            calibration['number_iteration'] = number_iteration
+
+            if (
+                    save_plot_iteration_frequency is not None
+                    and number_iteration < save_plot_iteration_frequency
+            ):
+                error_object.add_warning(
+                    f"The plot iteration frequency, {save_plot_iteration_frequency}, "
+                    f"must be <= the stop criteria (number of iteration) "
+                    f"{number_iteration}"
+                )
+        else:
+            is_missing(
+                stop_criteria,
+                'Stop criteria (number of iterations)',
+                error_object,
+                have_LSTM_flag=have_LSTM_flag
+            )
 
         calibration['start_iteration'] = 0
 
@@ -581,15 +605,21 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
         # Write parameter files when build is true and there were no param errors.
         # This intentionally allows writing with an empty params list (e.g., LSTM jobs),
         if not param_error and build:
-            calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
-            write_parameter_files(params, calibration['calib_parameter_file'])
+            calib_parameter_file = os.path.join(job_data_dir, 'calib_parameter_dir')
+            calibration['calib_parameter_file'] = calib_parameter_file
+            write_parameter_files(params, calib_parameter_file)
 
-        if build and NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        if build and settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
             if run.num_catchments is None:
                 # Handle old jobs which might not have saved num_catchments
+                # At this point validation should already have ensured that a geopackage path is available.
                 geopackage_path = get_geopackage_file_path(run)
+                assert isinstance(geopackage_path, str)
+
                 catchments = list(get_geometry_from_gpkg(geopackage_path)['catchments'].keys())
                 run.num_catchments = len(catchments)
+
+            assert isinstance(run.num_catchments, int)
 
             config['Parallel'] = parallel
             run.mpi_nprocs = get_mpi_nodes(run.num_catchments)
@@ -655,7 +685,7 @@ def write_parameter_files(params: list[dict[str, str | float]], parameter_dir: s
         logger.info(f'CSV parameter file for model {model} saved to {parameter_file}')
 
 
-class CustomTomlEncoder(TomlEncoder):
+class CustomTomlEncoder(toml.TomlEncoder):
     def __init__(self):
         super().__init__()
         self._dict = dict  # Ensure TOML dictionaries serialize properly

@@ -12,7 +12,7 @@
     },
     "run_after_import": false,
     "gage_id": "01123000",
-    "forcing_source": "NWM",
+    "forcing_source": "AORC",
     "observational_source": "Historical",
     "geopackage_source": "Hydrofabric",
     "modules": [

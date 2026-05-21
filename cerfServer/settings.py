@@ -392,6 +392,9 @@ SLURM_SUBMIT_VERIFICATION_JOB_ENDPOINT = 'submit-verification-job'
 SLURM_JOB_STATUS_ENDPOINT = 'job-status'
 SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 
+# Used for Slurm and cal-mgr callback
+NGENCERF_BASE_URL = os.getenv("NGENCERF_BASE_URL", "http://localhost:8000").rstrip("/")
+
 # -----------------------------
 # Logging
 # -----------------------------
