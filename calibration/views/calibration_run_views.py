@@ -1,8 +1,6 @@
 import json
 import logging
 
-import requests
-from django.conf import settings
 from django.db import transaction
 from django.forms import model_to_dict
 from drf_spectacular.types import OpenApiTypes
@@ -17,6 +15,7 @@ from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
+from calibration.run_util.job_executor_slurm import get_slurm_status
 from calibration.run_util.job_lifecycle import launch_job, cancel_job_common, handle_job_event
 from calibration.util.calibration_validators import GenericResponseSerializer, \
     ErrorResponseSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
@@ -138,7 +137,7 @@ def get_status(request: Request) -> Response:
     calibration_run: CalibrationRun | None = None
     run: BaseRun | None = None
     needs_reconcile = False
-    sacct_status = None
+    slurm_status = None
 
     # ─────────────────────────────────────────────────────────────
     # READ-ONLY PHASE
@@ -158,10 +157,10 @@ def get_status(request: Request) -> Response:
                 f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}) - "
                 f"calling check_slurm_reconciliation"
             )
-            needs_reconcile, sacct_status = check_slurm_reconciliation(run)
+            needs_reconcile, slurm_status = check_slurm_reconciliation(run)
             logger.info(
                 f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}) - "
-                f"needs_reconcile={needs_reconcile}, sacct_status={sacct_status}"
+                f"needs_reconcile={needs_reconcile}, slurm_status={slurm_status}"
             )
 
             response = get_status_for_calibration(calibration_run, include_performance_metrics)
@@ -175,7 +174,7 @@ def get_status(request: Request) -> Response:
             assert validation_run is not None
 
             run = validation_run
-            needs_reconcile, sacct_status = check_slurm_reconciliation(validation_run)
+            needs_reconcile, slurm_status = check_slurm_reconciliation(validation_run)
             response = get_status_for_validation(validation_run, include_performance_metrics)
 
         elif forecast_run_id:
@@ -188,7 +187,7 @@ def get_status(request: Request) -> Response:
             assert forecast_run is not None
 
             run = forecast_run
-            needs_reconcile, sacct_status = check_slurm_reconciliation(forecast_run)
+            needs_reconcile, slurm_status = check_slurm_reconciliation(forecast_run)
             response = get_status_for_forecast(forecast_run, include_performance_metrics)
 
         elif hindcast_run_id:
@@ -201,7 +200,7 @@ def get_status(request: Request) -> Response:
             assert hindcast_run is not None
 
             run = hindcast_run
-            needs_reconcile, sacct_status = check_slurm_reconciliation(hindcast_run)
+            needs_reconcile, slurm_status = check_slurm_reconciliation(hindcast_run)
             response = get_status_for_hindcast(hindcast_run, include_performance_metrics)
 
         else:
@@ -213,7 +212,7 @@ def get_status(request: Request) -> Response:
             assert verification_run is not None
 
             run = verification_run
-            needs_reconcile, sacct_status = check_slurm_reconciliation(verification_run)
+            needs_reconcile, slurm_status = check_slurm_reconciliation(verification_run)
             response = get_status_for_verification(verification_run, include_performance_metrics)
 
     # TODO Can we combine these?
@@ -249,7 +248,7 @@ def get_status(request: Request) -> Response:
                 StatusEnum.SUBMITTED.db_instance,
                 StatusEnum.RUNNING.db_instance,
             }:
-                apply_slurm_reconciliation(reconciled_run, sacct_status)
+                apply_slurm_reconciliation(reconciled_run, slurm_status)
 
                 # Reflect the DB update in the response that was built earlier.
                 response["status"] = StatusEnum.SERVER_ERROR.value
@@ -1640,11 +1639,11 @@ def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:
     readonly transaction.
 
     :param run: The run object to inspect. Must inherit from BaseRun.
-    :return: Tuple (needs_reconciliation, sacct_status)
+    :return: Tuple (needs_reconciliation, slurm_status)
         - needs_reconciliation: True if the database indicates the run is still
           active but Slurm indicates it is no longer active, excluding the
           COMPLETED callback-wait case.
-        - sacct_status: The status detail returned by get_slurm_status(), used
+        - slurm_status: The status detail returned by get_slurm_status(), used
           for logging and reconciliation messaging.
     """
     if not run.slurm_job_id:
@@ -1656,33 +1655,34 @@ def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:
     }:
         return False, None
 
-    slurm_is_active, sacct_status = get_slurm_status(run.slurm_job_id)
+    slurm_is_active, slurm_status = get_slurm_status(run.slurm_job_id)
 
     logger.debug(
         f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}): "
-        f"Slurm active={slurm_is_active}, sacct_status={sacct_status}"
+        f"Slurm active={slurm_is_active}, slurm_status={slurm_status}"
     )
 
     # Race-condition exception:
-    if not slurm_is_active and sacct_status == "COMPLETED":
+    if not slurm_is_active and slurm_status == "COMPLETED":
         logger.info(
             f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}): "
-            f"slurm inactive but sacct_status=COMPLETED; "
+            f"slurm inactive but slurm_status=COMPLETED; "
             f"skipping reconciliation (awaiting callback)"
         )
-        return False, sacct_status
+        return False, slurm_status
 
     if not slurm_is_active:
         logger.warning(
             f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id}): "
-            f"reconciliation needed; DB status={run.status.name}, sacct_status={sacct_status}"
+            f"reconciliation needed; DB status={run.status.name}, "
+            f"slurm_status={slurm_status}"
         )
-        return True, sacct_status
+        return True, slurm_status
 
     return False, None
 
 
-def apply_slurm_reconciliation(run: BaseRun, sacct_status: str | None) -> None:
+def apply_slurm_reconciliation(run: BaseRun, slurm_status: str | None) -> None:
     """
     Mark a run as SERVER_ERROR due to a Slurm/database inconsistency.
 
@@ -1702,8 +1702,9 @@ def apply_slurm_reconciliation(run: BaseRun, sacct_status: str | None) -> None:
     :param run: The run object to update. The caller is expected to
         re-fetch it inside a write-capable transaction before calling
         this function.
-    :param sacct_status: The Slurm status detail associated with the
-        inconsistency.
+    :param slurm_status: The normalized status returned by
+        get_slurm_status(), which may originate from sacct,
+        squeue, or synthesized fallback logic.
     :return: None
     """
     # Re-check the status after acquiring the row lock because another
@@ -1722,7 +1723,7 @@ def apply_slurm_reconciliation(run: BaseRun, sacct_status: str | None) -> None:
 
     message = (
         f"Slurm job {run.slurm_job_id} not active while DB status was "
-        f"{original_status}; sacct_status={sacct_status}"
+        f"{original_status}; slurm_status={slurm_status}"
     )
 
     # Record the reconciliation event in the server logs.
@@ -1735,7 +1736,7 @@ def apply_slurm_reconciliation(run: BaseRun, sacct_status: str | None) -> None:
     existing.append({
         "source": "slurm",
         "type": "reconciliation",
-        "sacct_status": sacct_status,
+        "slurm_status": slurm_status,
         "message": message,
     })
 
@@ -1744,85 +1745,3 @@ def apply_slurm_reconciliation(run: BaseRun, sacct_status: str | None) -> None:
 
     run.save(update_fields=["status", "failure_messages"])
 
-
-def get_slurm_status(slurm_id: int) -> tuple[bool, str | None]:
-    """
-    Query the Slurm status service for the current status of a job.
-
-    Semantics:
-    - If squeue is empty, the job is no longer active.
-    - If squeue reports COMPLETING, the job is in teardown/cleanup rather than normal execution.
-      In that case, if sacct already reports a terminal state, treat the job as inactive and use sacct.
-      Otherwise, treat it as still active and allow time for callback/accounting to settle.
-    - For any other non-empty squeue state, treat the job as active.
-    - If the response is unusable (non-200, invalid JSON, or missing fields), treat the job as not active
-      with status "UNKNOWN".
-
-    :param slurm_id: Slurm job ID to query.
-    :return: Tuple (is_active, status_detail)
-        - is_active: True if the job is considered active, False otherwise.
-        - status_detail: A relevant Slurm status string, or "UNKNOWN" if indeterminate.
-    """
-    # ----------------------------------
-    # TODO Get rid of this debug code
-    FORCE_SLURM_INACTIVE = False
-    if FORCE_SLURM_INACTIVE:
-        logger.warning(
-            f"FORCE_SLURM_INACTIVE enabled — treating Slurm job {slurm_id} as inactive"
-        )
-        return False, "FORCED_ERROR"
-    # ------------------------------------
-
-    base_url = f"{settings.SLURM_URL.rstrip('/')}/{settings.SLURM_JOB_STATUS_ENDPOINT.lstrip('/')}"
-
-    # Query Slurm for the live job status
-    url = f"{base_url}?slurm_job_id={slurm_id}"
-
-    try:
-        resp = requests.get(url, timeout=10)
-
-        # Non-200 HTTP responses (including 404) are treated as unknown
-        if resp.status_code != 200:
-            logger.error(
-                f"Non-200 response from Slurm for job {slurm_id}: "
-                f"{resp.status_code}\n{resp.text}"
-            )
-            return False, "UNKNOWN"
-
-        # Try to parse JSON response
-        try:
-            data = resp.json()
-        except ValueError:
-            # Log the entire response text when not JSON
-            logger.error(
-                f"Invalid JSON response from Slurm for job {slurm_id}:\n{resp.text}"
-            )
-            return False, "UNKNOWN"
-
-        squeue_status = data.get("squeue")
-        sacct_status = data.get("sacct")
-
-        if isinstance(squeue_status, str):
-            squeue_status = squeue_status.strip().upper()
-
-        if isinstance(sacct_status, str):
-            sacct_status = sacct_status.strip().upper()
-
-        # No squeue entry -> job is no longer active; use sacct if available.
-        if not squeue_status:
-            return False, sacct_status or "UNKNOWN"
-
-        # COMPLETING is a cleanup/teardown state. If sacct already reports a terminal
-        # outcome, trust sacct; otherwise keep treating the job as active for now.
-        if squeue_status == "COMPLETING":
-            if sacct_status and sacct_status != "COMPLETED":
-                return False, sacct_status
-            return True, "COMPLETING"
-
-        # Any other visible squeue state is treated as active.
-        return True, squeue_status
-
-    except Exception as ex:
-        logger.exception(f"Error querying Slurm status for job {slurm_id}: {ex}")
-        # Safest assumption: job is gone, status indeterminate
-        return False, "UNKNOWN"

@@ -567,15 +567,6 @@ NGEN_BMI_FORCING_WORK_DIR = os.path.join(CONTAINER_DATA_ROOT, 'bmi_forcing_work'
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
-# -----------------------------
-# Slurm
-# -----------------------------
-# These remain in Django because the server still performs
-# status reconciliation and cancel operations against Slurm.
-# SLURM_URL = os.getenv("SLURM_URL")
-# SLURM_JOB_STATUS_ENDPOINT = 'job-status'
-# SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
-
 
 def validate_port(value: str, name: str = "PORT") -> int:
     """

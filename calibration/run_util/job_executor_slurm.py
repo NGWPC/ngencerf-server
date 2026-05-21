@@ -7,19 +7,20 @@ Responsibilities:
 - Generating Slurm batch scripts
 - Submitting jobs with sbatch
 - Cancelling jobs with scancel
+- Querying job status with squeue/sacct
 - Sending lifecycle callbacks to Django
 
 Deployment usage:
 
 - Used primarily in deployed AWS PCS / HPC environments
 - Requires the Django runtime to be configured as a Slurm submit client
-- Requires sbatch/scancel on the Django runtime PATH
+- Requires sbatch/scancel/squeue/sacct on the Django runtime PATH
 - Requires shared filesystem access between Django and Slurm compute nodes
 - Job execution occurs asynchronously on Slurm compute resources
 
 This module answers:
 
-    "How does Slurm execute this job?"
+    "How does Slurm execute and report this job?"
 """
 
 import logging
@@ -138,7 +139,7 @@ def get_callback_url(job_type: str) -> str:
         "cold_start": "/calibration/cold_start_job_slurm_callback/",
         "forecast": "/calibration/forecast_job_slurm_callback/",
         "hindcast": "/calibration/hindcast_job_slurm_callback/",
-        "verification": "/calibration/verification_jobslurm_callback/",
+        "verification": "/calibration/verification_job_slurm_callback/",
     }
 
     try:
@@ -525,3 +526,129 @@ def cancel_slurm_job(
     )
 
     return True
+
+
+def _run_slurm_command(command: list[str]) -> tuple[bool, str]:
+    """
+    Run a Slurm CLI command and return whether it succeeded.
+
+    :param command: Command and arguments to execute.
+    :return: Tuple of (success, stdout_or_stderr).
+    """
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        return False, result.stderr.strip()
+
+    return True, result.stdout.strip()
+
+
+def _parse_sacct_status(slurm_id: int, sacct_output: str) -> str | None:
+    """
+    Parse sacct state output for a Slurm job.
+
+    sacct may return rows for the top-level job and its steps. Prefer the
+    top-level job row and ignore step rows such as .batch and .extern.
+
+    :param slurm_id: Slurm job id being queried.
+    :param sacct_output: Raw stdout from sacct.
+    :return: Normalized top-level Slurm state, or None if unavailable.
+    """
+    slurm_id_str = str(slurm_id)
+
+    for line in sacct_output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        parts = line.split("|")
+        if len(parts) < 2:
+            continue
+
+        job_id = parts[0].strip()
+        state = parts[1].strip().upper()
+
+        if job_id != slurm_id_str:
+            continue
+
+        if state:
+            return state.split()[0]
+
+    return None
+
+
+def get_slurm_status(slurm_id: int) -> tuple[bool, str | None]:
+    """
+    Query Slurm directly for the current status of a job.
+
+    Semantics:
+    - If squeue is empty, the job is no longer active.
+    - If squeue reports COMPLETING, the job is in teardown/cleanup rather than
+      normal execution. In that case, if sacct already reports a terminal
+      state other than COMPLETED, treat the job as inactive and use sacct.
+      Otherwise, treat it as still active and allow time for callback/accounting
+      to settle.
+    - For any other non-empty squeue state, treat the job as active.
+    - If Slurm commands fail or return unusable output, treat the job as not
+      active with status UNKNOWN.
+
+    :param slurm_id: Slurm job id to query.
+    :return: Tuple (is_active, status_detail)
+        - is_active: True if the job is considered active, False otherwise.
+        - status_detail: A relevant Slurm status string, or UNKNOWN if indeterminate.
+    """
+    squeue_success, squeue_output = _run_slurm_command([
+        "squeue",
+        "--job",
+        str(slurm_id),
+        "--noheader",
+        "--format=%T",
+    ])
+
+    if not squeue_success:
+        logger.error(
+            "Error querying squeue for Slurm job %s: %s",
+            slurm_id,
+            squeue_output,
+        )
+        return False, "UNKNOWN"
+
+    squeue_status = (
+        squeue_output.splitlines()[0].strip().upper()
+        if squeue_output
+        else None
+    )
+
+    sacct_success, sacct_output = _run_slurm_command([
+        "sacct",
+        "--jobs",
+        str(slurm_id),
+        "--noheader",
+        "--parsable2",
+        "--format=JobID,State",
+    ])
+
+    if not sacct_success:
+        logger.warning(
+            "Error querying sacct for Slurm job %s: %s",
+            slurm_id,
+            sacct_output,
+        )
+        sacct_status = None
+    else:
+        sacct_status = _parse_sacct_status(slurm_id, sacct_output)
+
+    if not squeue_status:
+        return False, sacct_status or "UNKNOWN"
+
+    if squeue_status == "COMPLETING":
+        if sacct_status and sacct_status != "COMPLETED":
+            return False, sacct_status
+        return True, "COMPLETING"
+
+    return True, squeue_status
