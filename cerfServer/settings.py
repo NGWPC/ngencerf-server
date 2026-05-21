@@ -7,6 +7,7 @@ https://docs.djangoproject.com/en/5.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
+import json
 import os
 from datetime import timedelta, datetime, timezone
 from enum import StrEnum, auto
@@ -239,7 +240,6 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-
 # -----------------------------
 # Enterprise Data
 # -----------------------------
@@ -298,6 +298,182 @@ NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
 # sudo ln -s ~/your/data/dir /ngencerf/data
 CONTAINER_DATA_ROOT = '/ngencerf/data'
 HOST_DATA_ROOT = os.getenv('HOST_DATA_ROOT', CONTAINER_DATA_ROOT)
+
+# Used only by get_git_info when running in Slurm mode with singularities
+SINGULARITY_DIR = '/ngencerf/containers'
+
+# -----------------------------
+# Slurm partition / node rules
+# -----------------------------
+# Format:
+#   [[max_catchments, partition], [max_catchments, partition]]
+#
+# Example:
+#   SLURM_NODE_TYPE_RULES='[[500, "c5n-9xlarge"], [-1, "r8a-12xlarge"]]'
+#
+# - max_catchments is an integer upper bound.
+# - partition is the Slurm partition/node type to use.
+# - -1 means fallback/default for anything larger.
+_SLURM_NODE_TYPE_RULES_STR = os.getenv(
+    "SLURM_NODE_TYPE_RULES",
+    '[[500, "c5n-9xlarge"], [-1, "r8a-12xlarge"]]',
+)
+
+
+def parse_slurm_node_type_rules(value: str) -> list[tuple[int, str]]:
+    """
+    Parse SLURM_NODE_TYPE_RULES into ordered catchment-to-partition rules.
+
+    Expected format:
+
+        [[max_catchments, partition], [max_catchments, partition]]
+
+    Example:
+
+        [[500, "c5n-9xlarge"], [-1, "r8a-12xlarge"]]
+
+    The final rule must use -1 as the fallback.
+
+    :param value: JSON-encoded rule string from the environment.
+    :return: Ordered list of (max_catchments, partition) tuples.
+    :raises RuntimeError: If no rules are configured or the fallback rule is missing.
+    :raises ValueError: If the rule string is invalid JSON or contains invalid values.
+    """
+    try:
+        raw_rules = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid SLURM_NODE_TYPE_RULES JSON: {exc}") from exc
+
+    if not isinstance(raw_rules, list) or not raw_rules:
+        raise RuntimeError("SLURM_NODE_TYPE_RULES must define at least one rule")
+
+    rules: list[tuple[int, str]] = []
+
+    for index, item in enumerate(raw_rules):
+        if (
+                not isinstance(item, list)
+                or len(item) != 2
+                or not isinstance(item[0], int)
+                or not isinstance(item[1], str)
+                or not item[1].strip()
+        ):
+            raise ValueError(
+                f"SLURM_NODE_TYPE_RULES item {index} must be "
+                f"[int max_catchments, str partition]; got: {item!r}"
+            )
+
+        max_catchments, partition = item
+        rules.append((max_catchments, partition.strip()))
+
+    if rules[-1][0] != -1:
+        raise RuntimeError("SLURM_NODE_TYPE_RULES must end with a -1 fallback rule")
+
+    return rules
+
+
+SLURM_NODE_TYPE_RULES = parse_slurm_node_type_rules(_SLURM_NODE_TYPE_RULES_STR)
+
+# Allowed Slurm partitions are derived from the node type rules.
+SLURM_PARTITIONS = [
+    partition
+    for _, partition in SLURM_NODE_TYPE_RULES
+]
+
+# -----------------------------
+# MPI node rules
+# -----------------------------
+# Format:
+#   [[max_catchments, num_nodes], [max_catchments, num_nodes]]
+#
+# Example:
+#   MPI_NODE_RULES='[[15, 1], [50, 2], [250, 4], [500, 6], [1000, 10], [1500, 12], [-1, 18]]'
+#
+# - max_catchments is an integer upper bound.
+# - num_nodes is the number of MPI processes/nodes to use.
+# - -1 means fallback/default for anything larger.
+_MPI_NODE_RULES_STR = os.getenv(
+    "MPI_NODE_RULES",
+    "[[15, 1], [50, 2], [250, 4], [500, 6], [1000, 10], [1500, 12], [-1, 18]]",
+)
+
+
+def parse_mpi_node_rules(value: str) -> list[tuple[int, int]]:
+    """
+    Parse MPI_NODE_RULES into ordered catchment-to-node-count rules.
+
+    Expected format:
+
+        [[max_catchments, num_nodes], [max_catchments, num_nodes]]
+
+    Example:
+
+        [[15, 1], [50, 2], [250, 4], [500, 6], [1000, 10], [1500, 12], [-1, 18]]
+
+    The final rule must use -1 as the fallback.
+
+    :param value: JSON-encoded rule string from the environment.
+    :return: Ordered list of (max_catchments, num_nodes) tuples.
+    :raises RuntimeError: If no rules are configured or the fallback rule is missing.
+    :raises ValueError: If the rule string is invalid JSON or contains invalid values.
+    """
+    try:
+        raw_rules = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid MPI_NODE_RULES JSON: {exc}") from exc
+
+    if not isinstance(raw_rules, list) or not raw_rules:
+        raise RuntimeError("MPI_NODE_RULES must define at least one rule")
+
+    rules: list[tuple[int, int]] = []
+
+    for index, item in enumerate(raw_rules):
+        if (
+                not isinstance(item, list)
+                or len(item) != 2
+                or not isinstance(item[0], int)
+                or not isinstance(item[1], int)
+        ):
+            raise ValueError(
+                f"MPI_NODE_RULES item {index} must be "
+                f"[int max_catchments, int num_nodes]; got: {item!r}"
+            )
+
+        max_catchments, num_nodes = item
+
+        if num_nodes <= 0:
+            raise ValueError(
+                f"MPI_NODE_RULES item {index} has invalid num_nodes={num_nodes}; "
+                "must be greater than 0"
+            )
+
+        rules.append((max_catchments, num_nodes))
+
+    if rules[-1][0] != -1:
+        raise RuntimeError("MPI_NODE_RULES must end with a -1 fallback rule")
+
+    return rules
+
+
+MPI_NODE_RULES = parse_mpi_node_rules(_MPI_NODE_RULES_STR)
+
+
+# -----------------------------
+# Execution mode
+# -----------------------------
+_JOB_EXECUTION_MODE_STR = os.getenv('JOB_EXECUTION_MODE', JobExecutionMode.DOCKER.name)
+
+try:
+    # noinspection PyTypeHints
+    JOB_EXECUTION_MODE = JobExecutionMode[_JOB_EXECUTION_MODE_STR]
+except KeyError:
+    # noinspection PyUnresolvedReferences
+    raise SystemExit(
+        f"Invalid environment value for JOB_EXECUTION_MODE: {_JOB_EXECUTION_MODE_STR}. "
+        f"Must be one of {', '.join([e.name for e in JobExecutionMode])}"
+    )
+
+if JOB_EXECUTION_MODE == JobExecutionMode.SLURM_MOCK and not DEBUG:
+    raise RuntimeError("SLURM_MOCK is only allowed when DJANGO_DEBUG=true")
 
 # ------------------------------------------------------------
 # Runtime commands
@@ -373,13 +549,6 @@ SINGULARITY_RUNTIME_INFO = {
     "verification": NWM_VERF_SINGULARITY_CMD,
 }
 
-# Comma-separated list of allowed Slurm partitions.
-PARTITIONS = [
-    partition.strip()
-    for partition in os.getenv("PARTITIONS", "").split(",")
-    if partition.strip()
-]
-
 # Optional sacct columns collected after job completion.
 SLURM_JOB_METRICS = os.getenv("SLURM_JOB_METRICS")
 
@@ -398,23 +567,14 @@ NGEN_BMI_FORCING_WORK_DIR = os.path.join(CONTAINER_DATA_ROOT, 'bmi_forcing_work'
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
-JOB_EXECUTION_MODE_STR = os.getenv('JOB_EXECUTION_MODE', JobExecutionMode.DOCKER.name)
-try:
-    # noinspection PyTypeHints
-    JOB_EXECUTION_MODE = JobExecutionMode[JOB_EXECUTION_MODE_STR]
-except KeyError:
-    # noinspection PyUnresolvedReferences
-    raise SystemExit(
-        f"Invalid environment value for JOB_EXECUTION_MODE: {JOB_EXECUTION_MODE_STR}.  Must be one of {', '.join([e.name for e in JobExecutionMode])}")
-
 # -----------------------------
 # Slurm
 # -----------------------------
 # These remain in Django because the server still performs
 # status reconciliation and cancel operations against Slurm.
-SLURM_URL = os.getenv("SLURM_URL")
-SLURM_JOB_STATUS_ENDPOINT = 'job-status'
-SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
+# SLURM_URL = os.getenv("SLURM_URL")
+# SLURM_JOB_STATUS_ENDPOINT = 'job-status'
+# SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 
 
 def validate_port(value: str, name: str = "PORT") -> int:
@@ -604,13 +764,6 @@ LOGGING = {
             'level': DATABASE_LOG_LEVEL,
             'class': 'logging.FileHandler',
             'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_db.log'),
-            'formatter': 'dev_format',
-            'encoding': 'utf-8',
-        },
-        'rabbitmq_event_consumer_file': {
-            'level': 'INFO',
-            'class': 'logging.handlers.WatchedFileHandler',
-            'filename': os.path.join(NGEN_LOGGING_DIR, 'rabbitmq_event_consumer.log'),
             'formatter': 'dev_format',
             'encoding': 'utf-8',
         },

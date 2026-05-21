@@ -56,7 +56,7 @@ def submit_job_request(
     job_type = get_job_type(run)
     payload = build_job_submit_payload(run, arguments, stdout_file, job_type)
 
-    if JOB_EXECUTION_MODE == JobExecutionMode.SLURM:
+    if JOB_EXECUTION_MODE in {JobExecutionMode.SLURM, JobExecutionMode.SLURM_MOCK}:
         payload["auth_token"] = generate_custom_token(
             get_run_owner(run),
             TOKEN_SLURM_SCOPE,
@@ -90,6 +90,16 @@ def cancel_job_request(run: BaseRun) -> bool:
             raise ValueError(f"Cannot cancel {job_type.value} run {run.id} without slurm_job_id")
 
         return cancel_slurm_job(job_type.value, run.id, run.slurm_job_id)
+
+    if JOB_EXECUTION_MODE == JobExecutionMode.SLURM_MOCK:
+        logger.warning(
+            "SLURM_MOCK mode enabled; treating cancel request as successful "
+            "without calling scancel for job_type=%s run_id=%s slurm_job_id=%s",
+            job_type.value,
+            run.id,
+            run.slurm_job_id,
+        )
+        return True
 
     raise ValueError(f"Unsupported JOB_EXECUTION_MODE: {JOB_EXECUTION_MODE}")
 

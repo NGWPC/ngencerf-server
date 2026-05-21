@@ -30,17 +30,11 @@ from typing import Any
 from django.conf import settings
 
 from calibration.enums import SlurmCallbackStatusEnum
+from calibration.enums_vanilla import JobExecutionMode
 from calibration.run_util.job_lifecycle import handle_job_event
 from calibration.run_util.job_runtime_mapping import get_job_runtime_details
-from cerfServer.settings import SINGULARITY_RUNTIME_INFO, HOST_DATA_ROOT, CONTAINER_DATA_ROOT
 
 logger = logging.getLogger(__name__)
-
-# Comma-separated list of allowed Slurm partitions.
-PARTITIONS_STR = os.environ.get('PARTITIONS', "")
-
-# Parsed partition names with whitespace removed.
-PARTITIONS = [p.strip() for p in PARTITIONS_STR.split(",") if p.strip()]
 
 # Optional sacct columns collected after job completion (depends on Slurm version)
 SLURM_JOB_METRICS = os.environ.get('SLURM_JOB_METRICS')
@@ -79,21 +73,23 @@ def build_slurm_command(
         payload: dict[str, Any],
 ) -> tuple[str, str, str, str | None, int | str]:
     """
-    Build the Singularity command and return Slurm submission details.
+    Build the Singularity command and Slurm submission metadata.
 
-    Slurm uses the same job argument mapping as Docker, but wraps those
+    Slurm uses the same runtime argument mapping as Docker, but wraps those
     arguments in a Singularity command instead of a Docker command.
 
-    :param job_type: Normalized job type string
-    :param payload: Job-specific execution payload
-    :return: singularity_run_cmd, input_file, stdout_file, node_type, nprocs
+    :param job_type: Normalized job type string.
+    :param payload: Job-specific execution payload.
+    :return: Tuple of singularity_run_cmd, input_file, stdout_file, node_type, and nprocs.
+    :raises KeyError: If required payload fields are missing.
+    :raises ValueError: If job_type is unsupported.
     """
     script_name, payload_values, input_file, stdout_file, node_type, nprocs = get_job_runtime_details(
         job_type,
         payload
     )
 
-    template = SINGULARITY_RUNTIME_INFO[script_name]
+    template = settings.SINGULARITY_RUNTIME_INFO[script_name]
     singularity_run_cmd = " ".join([template, script_name, *payload_values])
 
     return singularity_run_cmd, input_file, stdout_file, node_type, nprocs
@@ -137,12 +133,12 @@ def get_callback_url(job_type: str) -> str:
     :raises ValueError: If job_type is unsupported.
     """
     callback_paths = {
-        "calibration": "/calibration/slurm_callback/",
-        "validation": "/validation/slurm_callback/",
-        "cold_start": "/cold_start/slurm_callback/",
-        "forecast": "/forecast/slurm_callback/",
-        "hindcast": "/hindcast/slurm_callback/",
-        "verification": "/verification/slurm_callback/",
+        "calibration": "/calibration/calibration_job_slurm_callback/",
+        "validation": "/calibration/validation_job_slurm_callback/",
+        "cold_start": "/calibration/cold_start_job_slurm_callback/",
+        "forecast": "/calibration/forecast_job_slurm_callback/",
+        "hindcast": "/calibration/hindcast_job_slurm_callback/",
+        "verification": "/calibration/verification_jobslurm_callback/",
     }
 
     try:
@@ -199,8 +195,8 @@ def write_slurm_script(
     callback_token = auth_token
 
     # Ensure script/log files are writable by the current user
-    ensure_file_owned(job_script)
-    ensure_file_owned(output_file_local)
+    # ensure_file_owned(job_script)
+    # ensure_file_owned(output_file_local)
 
     with open(job_script, "w") as script:
         script.write("#!/bin/bash\n")
@@ -351,21 +347,23 @@ def submit_job(
     Submit a prepared job to Slurm.
 
     Resolves the Singularity command, converts container paths to host/shared
-    filesystem paths, writes the Slurm script, submits it with sbatch, and
-    returns the Slurm job ID.
+    filesystem paths, validates the selected Slurm partition, writes the Slurm
+    script, submits it with sbatch, and returns the Slurm job id.
 
-    :param job_type: Normalized job type string
-    :param run_id: Run identifier
-    :param payload: Job-specific execution payload
-    :return: Slurm job ID
-    :raises RuntimeError: If validation, script generation, or sbatch fails
-    :raises ValueError: If node_type is not an allowed Slurm partition
+    In SLURM_MOCK mode, the script is written but sbatch is skipped.
+
+    :param job_type: Normalized job type string.
+    :param run_id: Run identifier.
+    :param payload: Job-specific execution payload. Must include auth_token.
+    :return: Slurm job id as a string. In SLURM_MOCK mode, returns "-1".
+    :raises RuntimeError: If validation, script generation, or sbatch fails.
+    :raises ValueError: If node_type is not an allowed Slurm partition.
     """
     logger.info("Starting Slurm job submission for job_type=%s run_id=%s", job_type, run_id)
 
-    if not HOST_DATA_ROOT:
+    if not settings.HOST_DATA_ROOT:
         raise RuntimeError("HOST_DATA_ROOT is not configured")
-    if not CONTAINER_DATA_ROOT:
+    if not settings.CONTAINER_DATA_ROOT:
         raise RuntimeError("CONTAINER_DATA_ROOT is not configured")
 
     singularity_run_cmd, input_file, output_file, node_type, nprocs = build_slurm_command(
@@ -373,20 +371,21 @@ def submit_job(
         payload,
     )
 
-    input_file_local = input_file.replace(CONTAINER_DATA_ROOT, HOST_DATA_ROOT)
-    output_file_local = output_file.replace(CONTAINER_DATA_ROOT, HOST_DATA_ROOT)
+    input_file_local = input_file.replace(settings.CONTAINER_DATA_ROOT, settings.HOST_DATA_ROOT)
+    output_file_local = output_file.replace(settings.CONTAINER_DATA_ROOT, settings.HOST_DATA_ROOT)
 
     if not os.path.exists(input_file_local):
         error_msg = (
             f"File path '{input_file_local}' does not exist on the shared "
-            f"filesystem under {HOST_DATA_ROOT}."
+            f"filesystem under {settings.HOST_DATA_ROOT}."
         )
-        logger.exception(error_msg)
+        logger.error(error_msg)
         raise RuntimeError(error_msg)
 
-    if node_type and node_type not in PARTITIONS:
+    if node_type and node_type not in settings.SLURM_PARTITIONS:
         raise ValueError(
-            f"node_type {node_type} provided does not match any partitions {PARTITIONS_STR}"
+            f"node_type {node_type} does not match any configured Slurm partitions: "
+            f"{settings.SLURM_PARTITIONS}"
         )
 
     try:
@@ -407,7 +406,18 @@ def submit_job(
             auth_token=auth_token,
             nprocs=nprocs,
         )
+
         logger.info("Job script written to: %s", job_script)
+
+        if settings.JOB_EXECUTION_MODE == JobExecutionMode.SLURM_MOCK:
+            logger.warning(
+                "SLURM_MOCK mode enabled; skipping sbatch submission for "
+                "job_type=%s run_id=%s. Generated script: %s",
+                job_type,
+                run_id,
+                job_script,
+            )
+            return "-1"
 
         slurm_job_id, error = _run_sbatch(job_script, partition=node_type)
         if error:

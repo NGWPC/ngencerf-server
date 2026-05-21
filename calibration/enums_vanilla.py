@@ -1,4 +1,4 @@
-from enum import StrEnum, Enum
+from enum import StrEnum, Enum, auto
 from typing import Self, Any
 
 
@@ -6,8 +6,9 @@ from typing import Self, Any
 
 
 class JobExecutionMode(StrEnum):
-    SLURM = "SLURM"
-    DOCKER = "DOCKER"
+    SLURM = auto()
+    SLURM_MOCK = auto()
+    DOCKER = auto()
 
 
 class SecondaryDataEnum(StrEnum):
