@@ -132,19 +132,26 @@ Status handling
     related ColdStartRun status through `annotate_combined_status()`.
 
     Combined status rules for Forecast/Hindcast:
-      - If no ColdStartRun exists, or the ColdStartRun is Done:
+      - If there is no ColdStartRun:
             combined_status = Forecast/Hindcast status
-      - Otherwise:
+      - If the ColdStartRun is not Done:
             combined_status = ColdStartRun status
+      - If the ColdStartRun is Done:
+            combined_status = Forecast/Hindcast status
 
-    Forecast and Hindcast list retrieval currently does NOT use this
-    derived combined_status value. User-supplied status filters and returned
-    status values for forecast/hindcast job endpoints currently use the raw
-    ForecastRun/HindcastRun status field.
+    This matches the execution order: Cold Start runs first, and the
+    Forecast/Hindcast job starts only after Cold Start completes.
 
-    Forecast/Hindcast combined_status is currently used by summary/count logic
-    (`get_jobs_summary()`), which means dashboard counts and job-list filtering
-    may not always reflect identical status semantics.
+    Forecast and Hindcast list retrieval uses `combined_status` for
+    user-supplied status filters, but returns the individual status fields:
+      - forecast_status / hindcast_status
+      - cold_start.cold_start_status
+
+    The UI uses those individual fields to display labels such as
+    "Forecast Running" or "Cold Start Running".
+
+    Forecast/Hindcast summary counts also use `combined_status`, so dashboard
+    counts treat a job as Running when the currently active phase is Running.
 
     Verification jobs currently use their raw VerificationRun status.
 
@@ -1125,8 +1132,10 @@ def annotate_combined_status(
     Current usage:
       - Calibration listing endpoints use combined_status for returned status values
         and user-supplied status filters.
+      - Forecast/Hindcast listing endpoints use combined_status for user-supplied
+        status filters, but return separate Forecast/Hindcast and ColdStartRun
+        status fields.
       - Forecast/Hindcast summary counts use combined_status.
-      - Forecast/Hindcast listing endpoints currently use raw status, not combined_status.
       - Verification currently uses raw status.
 
     include_status_lower: if True, also annotates `_status_lower = Lower("combined_status")` which is useful
@@ -2125,6 +2134,11 @@ def _get_forecast_or_hindcast_base_jobs_internal(
     Shared internal helper to retrieve ForecastRun or HindcastRun rows for a user
     with optional filtering, sorting, and pagination.
 
+    Forecast/Hindcast status filtering is applied against combined_status, not
+    the raw ForecastRun/HindcastRun status. The response still returns separate
+    Forecast/Hindcast and ColdStartRun status fields so the UI can identify the
+    active phase.
+
     Runs in READ ONLY mode to reduce contention.
 
     :param model: ForecastRun or HindcastRun model class.
@@ -2165,17 +2179,45 @@ def _get_forecast_or_hindcast_base_jobs_internal(
 
         base_qs = model.objects.filter(query)
         
-        # Centralized combined_status annotation.
+        # ─────────────────────────────────────────────────────────────
+        # Compute combined_status before applying user status filters.
+        #
+        # Forecast/Hindcast jobs execute in sequential phases:
+        #
+        #     ColdStart → Forecast/Hindcast
+        #
+        # These phases never run simultaneously. If Forecast/Hindcast is
+        # running, ColdStart has already completed.
+        #
+        # combined_status represents the currently active phase:
+        #   • ColdStart not Done → use ColdStart status
+        #   • ColdStart Done (or absent) → use Forecast/Hindcast status
+        #
+        # This allows status filters and summary counts to reflect the
+        # effective workflow state rather than only the raw job status.
+        #
+        # Example:
+        #   ColdStart = Running
+        #   Forecast  = Submitted
+        #   combined  = Running
+        #
+        # The API response still returns the individual status fields:
+        #   • forecast_status / hindcast_status
+        #   • cold_start.cold_start_status
+        #
+        # so the UI can distinguish which phase is active.
+        # ─────────────────────────────────────────────────────────────
         base_qs = annotate_combined_status(
             base_qs,
             include_status_lower=bool(filters_dict.get("status")),
         )
         
         # ─────────────────────────────────────────────────────────────
-        # Apply user-supplied status filter LAST.
-        # Must come AFTER combined_status, because filtering is done on the
-        # derived combined_status value, not the raw forecast/hindcast status.
-        # This ensures ids_only and full-detail return the same job set.
+        # Apply user status filtering against combined_status rather
+        # than the raw Forecast/Hindcast status so filtering reflects
+        # the currently active workflow phase.
+        #
+        # Must occur after combined_status has been annotated.
         # ─────────────────────────────────────────────────────────────
         if "status" in filters_dict and filters_dict["status"]:
             # Normalize to lowercase for case-insensitive matching
