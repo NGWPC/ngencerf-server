@@ -701,7 +701,7 @@ class Command(BaseCommand):
                 "cycle_start": 3, "cycle_end": 21, "cycle_freq": 6, "fcst_win": 45, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "supports_hindcast": True,
-                "is_active": True
+                "is_active": False
             },
             {
                 "name": "Short Range Hawaii", "internal_name": "short_range_hawaii", "order": 1,
