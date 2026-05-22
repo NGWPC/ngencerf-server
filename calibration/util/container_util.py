@@ -9,7 +9,7 @@ import uuid
 from django.conf import settings
 from django.core.cache import cache
 
-from calibration.enums_vanilla import NgenEnvironmentEnum
+from calibration.enums_vanilla import JobExecutionMode
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +239,7 @@ def copy_file_from_image(image_name: str, container_name: str, container_file_na
         return cached  # Return cached success status
 
     # Perform the copy operation based on the environment.
-    if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+    if settings.JOB_EXECUTION_MODE == JobExecutionMode.SLURM:
         success = copy_file_from_singularity_image(
             os.path.join(settings.SINGULARITY_DIR, f'{image_name}.sif'),
             container_file_name,

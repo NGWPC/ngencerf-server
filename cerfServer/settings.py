@@ -7,9 +7,7 @@ https://docs.djangoproject.com/en/5.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
-import codecs
 import os
-import re
 from datetime import timedelta, datetime, timezone
 from enum import StrEnum, auto
 from urllib.parse import urlparse, urlunparse
@@ -220,10 +218,6 @@ SIMPLE_JWT = {
 
 WSGI_APPLICATION = 'cerfServer.wsgi.application'
 
-# Password validation
-# https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
-
-
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -232,22 +226,19 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Internationalization
-# https://docs.djangoproject.com/en/5.0/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.0/howto/static-files/
-
 STATIC_URL = 'static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 
 # -----------------------------
 # Enterprise Data
@@ -272,6 +263,7 @@ NGENCERF_ARCHIVE_S3_PATH = os.getenv('NGENCERF_ARCHIVE_S3_PATH')
 
 # Location of download zip files on S3
 NGENCERF_ZIPS_S3_PATH = os.getenv('NGENCERF_ZIPS_S3_PATH')
+
 # AWS Profile to use for r/w buckets (.e.g, for archives and zips)
 # Use None for AWS Dev (uses default profile)
 NGENCERF_RW_PROFILE = os.getenv('NGENCERF_RW_PROFILE') or None
@@ -287,113 +279,140 @@ ZIP_DOWNLOAD_URL_TTL_SECONDS = 300
 ZIP_RETENTION_SECONDS = 3600
 
 # -----------------------------
-# ngen/nwm-cal-mgr Locations
+# Data / working directories
 # -----------------------------
-
-# Locations for running nwm-cal-mgr
-
 # Must match the repo root used in the docker container.
 # It is not necessary for you to have local copies of the ngen and nwm-cal-mgr repos if you are using Docker
 # But these directories still need to be set to reflect the directory of the repos in the docker container.
 REPO_ROOT = '/ngen-app'
-# Directory that Ngen is cloned into
 NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
-# directory that nwm-cal-mgr is cloned into
-CAL_MGR_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-cal-mgr')
-NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-fcst-mgr')
-NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
-NWM_VERF_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-verf')
 
-# This must match the data location in the ngen/nwm-cal-mgr docker
-# Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data
+# This must match the shared data mount path expected inside the runtime containers.
+# Do not change this location unless all runtime containers and Slurm bindings
+# are updated consistently.
+#
+# You may store the actual data elsewhere on the host filesystem and create
+# a symbolic link to /ngencerf/data:
+#
 # sudo mkdir /ngencerf
 # sudo ln -s ~/your/data/dir /ngencerf/data
-NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
-NGEN_CAL_DATA_PATH = os.getenv('NGEN_CAL_DATA_PATH', NGEN_CAL_MOUNT_POINT)
+CONTAINER_DATA_ROOT = '/ngencerf/data'
+HOST_DATA_ROOT = os.getenv('HOST_DATA_ROOT', CONTAINER_DATA_ROOT)
 
-# Used only by get_git_info when running on PW
-SINGULARITY_DIR = '/ngencerf/containers'
+# ------------------------------------------------------------
+# Runtime commands
+# ------------------------------------------------------------
+
+# Docker command templates used when JOB_EXECUTION_MODE=DOCKER.
+# Use {name} placeholder for the Docker container name.
+# --rm ensures containers are auto-removed after exit.
+
+CAL_MGR_DOCKER_CMD = (
+    f"docker run --rm --network host --name {{name}} "
+    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-cal-mgr"
+)
+
+NGEN_FORECAST_DOCKER_CMD = (
+    f"docker run --rm --name {{name}} "
+    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-fcst-mgr"
+)
+
+NWM_VERF_DOCKER_CMD = (
+    f"docker run --rm --name {{name}} "
+    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-verf"
+)
+
+DOCKER_RUNTIME_INFO = {
+    "calibration": CAL_MGR_DOCKER_CMD,
+    "validation": CAL_MGR_DOCKER_CMD,
+    "validation_iteration": CAL_MGR_DOCKER_CMD,
+    "cold_start": NGEN_FORECAST_DOCKER_CMD,
+    "forecast": NGEN_FORECAST_DOCKER_CMD,
+    "hindcast": NGEN_FORECAST_DOCKER_CMD,
+    "verification": NWM_VERF_DOCKER_CMD,
+}
+
+# Singularity image paths used when JOB_EXECUTION_MODE=SLURM.
+NWM_CAL_MGR_SINGULARITY_CONTAINER_PATH = os.getenv(
+    "NWM_CAL_MGR_SINGULARITY_CONTAINER_PATH"
+)
+
+NWM_FCST_MGR_SINGULARITY_CONTAINER_PATH = os.getenv(
+    "NWM_FCST_MGR_SINGULARITY_CONTAINER_PATH"
+)
+
+NWM_VERF_SINGULARITY_CONTAINER_PATH = os.getenv(
+    "NWM_VERF_SINGULARITY_CONTAINER_PATH"
+)
+
+CAL_MGR_SINGULARITY_CMD = (
+    f"/usr/bin/time -v singularity run "
+    f"-B {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} "
+    f"{NWM_CAL_MGR_SINGULARITY_CONTAINER_PATH}"
+)
+
+NGEN_FORECAST_SINGULARITY_CMD = (
+    f"/usr/bin/time -v singularity run "
+    f"-B {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} "
+    f"{NWM_FCST_MGR_SINGULARITY_CONTAINER_PATH}"
+)
+
+NWM_VERF_SINGULARITY_CMD = (
+    f"/usr/bin/time -v singularity run "
+    f"-B {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} "
+    f"{NWM_VERF_SINGULARITY_CONTAINER_PATH}"
+)
+
+SINGULARITY_RUNTIME_INFO = {
+    "calibration": CAL_MGR_SINGULARITY_CMD,
+    "validation": CAL_MGR_SINGULARITY_CMD,
+    "validation_iteration": CAL_MGR_SINGULARITY_CMD,
+    "cold_start": NGEN_FORECAST_SINGULARITY_CMD,
+    "forecast": NGEN_FORECAST_SINGULARITY_CMD,
+    "hindcast": NGEN_FORECAST_SINGULARITY_CMD,
+    "verification": NWM_VERF_SINGULARITY_CMD,
+}
+
+# Comma-separated list of allowed Slurm partitions.
+PARTITIONS = [
+    partition.strip()
+    for partition in os.getenv("PARTITIONS", "").split(",")
+    if partition.strip()
+]
+
+# Optional sacct columns collected after job completion.
+SLURM_JOB_METRICS = os.getenv("SLURM_JOB_METRICS")
 
 NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'logs')
 print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
 os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
-NGEN_STATIC_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-static-files')
-NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
-NGEN_VERIFICATION_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'verification_work')
-# The NGEN_BMI_FORCING_WORK_DIR directory is owned by ngen-forcing.  It will be responsible for creating it
-NGEN_BMI_FORCING_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'bmi_forcing_work')
+# Static and working directories
+NGEN_STATIC_DIR = os.path.join(CONTAINER_DATA_ROOT, 'ngen-static-files')
+NGEN_CAL_WORK_DIR = os.path.join(CONTAINER_DATA_ROOT, 'ngen-cal-work')
+NGEN_VERIFICATION_WORK_DIR = os.path.join(CONTAINER_DATA_ROOT, 'verification_work')
 
-# -----------------------------
-# Forcing environments
-# -----------------------------
-FORCING_MESH_ENV = 'ngen_esmf_mesh_domain'
-FORCING_EXTRACT_ENV = 'ngen_forcing_extraction'
-FORCING_ENGINE_ENV = 'ngen_forcings_engine_bmi'
+# The NGEN_BMI_FORCING_WORK_DIR directory is owned by ngen-forcing.  It will be responsible for creating it
+NGEN_BMI_FORCING_WORK_DIR = os.path.join(CONTAINER_DATA_ROOT, 'bmi_forcing_work')
 
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
-# Directory where verification runs are stored
-NWM_VERF_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_verif')
-
-# Directory containing the nwm-cal-mgr virtual environment
-# This is used only if we are running with NGEN_ENVIRONMENT=LOCAL and not in a separate container
-NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
-
-# Used when running in NGEN_ENVIRONMENT=DOCKER
-# --rm ensures containers are auto-removed after exit
-# Use {name} placeholder for the container name, which will be substituted at runtime
-CAL_MGR_DOCKER_CMD = f'docker run --rm --network host --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-cal-mgr'
-NGEN_FORECAST_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-fcst-mgr'
-NWM_VERF_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-verf'
-
-# Used when running in NGEN_ENVIRONMENT=LOCAL
-CAL_MGR_SCRIPT = os.path.join(CAL_MGR_REPO_ROOT, 'docker', 'run-nwm-cal-mgr.sh')
-NGEN_FORECAST_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
-NGEN_COLD_START_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
-VERIFICATION_SCRIPT = os.path.join(NWM_VERF_REPO_ROOT, 'docker', 'run-nwm-verf.sh')
-
-RUNTIME_INFO = {
-    ScriptEnum.CALIBRATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
-    ScriptEnum.VALIDATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
-    ScriptEnum.VALIDATION_ITERATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
-    ScriptEnum.COLD_START: (NGEN_FORECAST_DOCKER_CMD, NGEN_COLD_START_SCRIPT),
-    ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
-    ScriptEnum.HINDCAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
-    ScriptEnum.VERIFICATION: (NWM_VERF_DOCKER_CMD, VERIFICATION_SCRIPT)
-}
-
-# -----------------------------
-# Job Simulation Flags for use with NGEN_ENVIRONMENT=LOCAL or DOCKER
-# -----------------------------
-SIMULATE_FLAGS = {
-    JobType.CALIBRATION: False,
-    JobType.VALIDATION: False,
-    JobType.FORECAST: False,
-    JobType.VERIFICATION: False,
-}
-
-NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
+JOB_EXECUTION_MODE_STR = os.getenv('JOB_EXECUTION_MODE', JobExecutionMode.DOCKER.name)
 try:
     # noinspection PyTypeHints
-    NGEN_ENVIRONMENT = NgenEnvironmentEnum[NGEN_ENVIRONMENT_STR]
+    JOB_EXECUTION_MODE = JobExecutionMode[JOB_EXECUTION_MODE_STR]
 except KeyError:
     # noinspection PyUnresolvedReferences
     raise SystemExit(
-        f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in NgenEnvironmentEnum])}")
+        f"Invalid environment value for JOB_EXECUTION_MODE: {JOB_EXECUTION_MODE_STR}.  Must be one of {', '.join([e.name for e in JobExecutionMode])}")
 
 # -----------------------------
 # Slurm
 # -----------------------------
-
+# These remain in Django because the server still performs
+# status reconciliation and cancel operations against Slurm.
 SLURM_URL = os.getenv("SLURM_URL")
-SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT = 'submit-calibration-job'
-SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT = 'submit-validation-job'
-SLURM_SUBMIT_COLD_START_JOB_ENDPOINT = 'submit-cold-start-job'
-SLURM_SUBMIT_FORECAST_JOB_ENDPOINT = 'submit-forecast-job'
-SLURM_SUBMIT_HINDCAST_JOB_ENDPOINT = 'submit-hindcast-job'
-SLURM_SUBMIT_VERIFICATION_JOB_ENDPOINT = 'submit-verification-job'
 SLURM_JOB_STATUS_ENDPOINT = 'job-status'
 SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 
@@ -588,6 +607,13 @@ LOGGING = {
             'formatter': 'dev_format',
             'encoding': 'utf-8',
         },
+        'rabbitmq_event_consumer_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.WatchedFileHandler',
+            'filename': os.path.join(NGEN_LOGGING_DIR, 'rabbitmq_event_consumer.log'),
+            'formatter': 'dev_format',
+            'encoding': 'utf-8',
+        },
     },
 
     'loggers': {
@@ -641,7 +667,7 @@ LOGGING = {
             'handlers': ['console', 'file_dev'],
             'level': NGENCERF__LOG_LEVEL,
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
-        }
+        },
     }
 }
 

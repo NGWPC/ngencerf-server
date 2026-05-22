@@ -871,6 +871,7 @@ if [ $status -ne 0 ]; then
 fi
 
 echo
+echo --------------------------------------------------------
 echo "Starting server"
 
 ASGI_FLAG="${CERF_ASGI:-}" # explicit override

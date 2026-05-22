@@ -42,7 +42,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /ngencerf-app/aws:/root/.aws:ro
     environment:
-      - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH:-/ngencerf-app/data/ngen-cal-data/}
+      - HOST_DATA_ROOT=${HOST_DATA_ROOT:-/ngencerf-app/data/ngen-cal-data/}
       - NGENCERF_UI_TAG=${NGENCERF_UI_TAG:-latest}
       - NGENCERF_BASE_URL=${HOSTNAME}
     env_file:
