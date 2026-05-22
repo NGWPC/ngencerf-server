@@ -32,7 +32,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request, truncate_large_fields, get_user_email, generate_ngen_logging_config, get_elapsed_str, readonly_transaction, \
-    format_datetime, map_path_to_host
+    format_datetime
 from calibration.views.data_services import DataServicesException, get_geopackage_from_data_services, \
     get_module_metadata_from_data_services, update_parameters
 
@@ -522,7 +522,7 @@ def load_calibration_run_data(
             'last_updated_on': format_datetime(run.updated_at),
             'source_status': run.status.name,
             'time_range': serialized_time_range,
-            'job_data_dir': map_path_to_host(run.job_data_dir),
+            'job_data_dir': run.job_data_dir,
             'num_catchments': run.num_catchments,
             'calibration_times': serialized_calibration_times,
             'validation_times': serialized_validation_times,
@@ -546,7 +546,7 @@ def load_calibration_run_data(
     # UI Display Mode (Non-Export)
     #############################
     else:
-        calibration_run_data['job_data_dir'] = map_path_to_host(run.job_data_dir)
+        calibration_run_data['job_data_dir'] = run.job_data_dir
 
         calibration_run_data['last_updated_on'] = run.updated_at
 

@@ -1439,16 +1439,16 @@ def map_path_to_host(path: str) -> str:
         Host:      /ngencerf-app/data/ngen-cal-data/foo/bar
 
     Controlled by settings:
-        NGEN_CAL_MOUNT_POINT = container root (e.g. /ngencerf/data)
-        NGEN_CAL_DATA_PATH   = host root (e.g. /ngencerf-app/data/ngen-cal-data)
+        CONTAINER_DATA_ROOT = container root (e.g. /ngencerf/data)
+        HOST_DATA_ROOT      = host root (e.g. /ngencerf-app/data/ngen-cal-data)
 
     Behavior:
     - If the roots differ, replace the container root with the host root.
     - If they are the same, return the path unchanged.
-    - Fail fast if the input path is invalid or outside the expected root.
+    - Fail fast if the input path is invalid or outside the expected container root.
 
-    :param path: Absolute container path under NGEN_CAL_MOUNT_POINT
-    :return: Corresponding host path
+    :param path: Absolute container path under CONTAINER_DATA_ROOT
+    :return: Corresponding host path under HOST_DATA_ROOT
     :raises ValueError:
         - If the path is not absolute
         - If the path does not start with the expected container root
@@ -1456,8 +1456,8 @@ def map_path_to_host(path: str) -> str:
     if not path:
         return path
 
-    container_root = os.path.normpath(settings.NGEN_CAL_MOUNT_POINT)
-    host_root = os.path.normpath(settings.NGEN_CAL_DATA_PATH)
+    host_root = os.path.normpath(settings.HOST_DATA_ROOT)
+    container_root = os.path.normpath(settings.CONTAINER_DATA_ROOT)
     path = os.path.normpath(path)
 
     # Only translate if the roots are actually different
@@ -1484,26 +1484,26 @@ def map_path_to_container(path: str) -> str:
     Translate a host filesystem path into the corresponding container path.
 
     This is used when:
-    - The Django app (running on the host) constructs a path, but that path
-      needs to be passed into a containerized process (e.g., Slurm job).
-    - The host and container see the same data through a bind mount, but
-      at different root paths.
+    - The Django app constructs or stores a host path, but that path needs to be
+      passed into a containerized process.
+    - The host and container see the same data through a bind mount, but at
+      different root paths.
 
     Example mapping:
         Host:      /ngencerf-app/data/ngen-cal-data/foo/bar
         Container: /ngencerf/data/foo/bar
 
     Controlled by settings:
-        NGEN_CAL_MOUNT_POINT = container root (e.g. /ngencerf/data)
-        NGEN_CAL_DATA_PATH   = host root (e.g. /ngencerf-app/data/ngen-cal-data)
+        HOST_DATA_ROOT      = host root (e.g. /ngencerf-app/data/ngen-cal-data)
+        CONTAINER_DATA_ROOT = container root (e.g. /ngencerf/data)
 
     Behavior:
     - If the roots differ, replace the host root with the container root.
     - If they are the same, return the path unchanged.
-    - Fail fast if the input path is invalid or outside the expected root.
+    - Fail fast if the input path is invalid or outside the expected host root.
 
-    :param path: Absolute host path under NGEN_CAL_DATA_PATH
-    :return: Corresponding container path
+    :param path: Absolute host path under HOST_DATA_ROOT
+    :return: Corresponding container path under CONTAINER_DATA_ROOT
     :raises ValueError:
         - If the path is not absolute
         - If the path does not start with the expected host root
@@ -1511,8 +1511,8 @@ def map_path_to_container(path: str) -> str:
     if not path:
         return path
 
-    container_root = os.path.normpath(settings.NGEN_CAL_MOUNT_POINT)
-    host_root = os.path.normpath(settings.NGEN_CAL_DATA_PATH)
+    container_root = os.path.normpath(settings.CONTAINER_DATA_ROOT)
+    host_root = os.path.normpath(settings.HOST_DATA_ROOT)
     path = os.path.normpath(path)
 
     # Only translate if the roots are actually different

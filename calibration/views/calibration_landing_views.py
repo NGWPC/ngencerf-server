@@ -18,7 +18,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, JobGenesis
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun
-from calibration.run_util.run_common import submit_job
+from calibration.run_util.job_lifecycle import launch_job
 from calibration.util.calibration_validators import FooterResponseSerializer, \
     ErrorResponseSerializer, ImportResponseSerializer, \
     EmptySerializer, ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
@@ -784,7 +784,7 @@ def import_job(request: Request) -> Response:
             not error_object.warnings and
             not error_object.errors
     ):
-        error_response = submit_job(run)
+        error_response = launch_job(run)
         if error_response:
             return error_response
         imported_and_submitted = f"{imported_and_submitted} and submitted"

@@ -11,7 +11,7 @@ from rest_framework.response import Response
 
 from calibration.enums import ForecastConfigEnum, StatusEnum, HindcastConfigEnum
 from calibration.models import ColdStartRun
-from calibration.run_util.run_common import submit_job
+from calibration.run_util.job_lifecycle import launch_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, LoadForecastTabResponseSerializer, \
     ForecastRunIdSerializer, CreateAndRunForecastResponseSerializer, DeleteForecastRunResponseSerializer, ForecastRunDataResponseSerializer, \
     LoadForecastTabRequestSerializer, HindcastRunIdSerializer, CreateAndRunHindcastResponseSerializer, \
@@ -167,7 +167,7 @@ def clone_and_run_forecast_job(request: Request) -> Response:
         run.configuration,
         run.cycle_date
     )
-    submit_job(new_forecast_run)
+    launch_job(new_forecast_run)
 
     response = {
         'message': f'Forecast Job {new_forecast_run.id} cloned from Job {run.id} and submitted for Calibration Job {new_forecast_run.calibration_run.id}',
@@ -233,7 +233,7 @@ def clone_and_run_hindcast_job(request: Request) -> Response:
         run.num_iterations,
         run.created_new_cold_start
     )
-    submit_job(new_hindcast_run)
+    launch_job(new_hindcast_run)
 
     response = {
         'message': f'Hindcast Job {new_hindcast_run.id} cloned from Job {run.id} and submitted for Calibration Job {new_hindcast_run.calibration_run.id}',

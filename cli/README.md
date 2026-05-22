@@ -28,7 +28,7 @@ The `ngenCerf` CLI provides a command-line interface to interact with the ngenCe
 ## Building
 
 ```
-NOte: This step is not necessary when running on Parallel Works
+NOte: This step is not necessary when running in Slurm mode
 ```
 Before using the CLI, it must be built from the source code. Run the following script, located in the `cli` directory to build the executable:
 
