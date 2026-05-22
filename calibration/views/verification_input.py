@@ -188,7 +188,7 @@ def create_verification_input(run: VerificationRun) -> str:
 
         metrics['lead_times'] = metrics_lead_times
         plots['time_series']['lead_times'] = time_series_lead_times
-        plots['metric_table']['lead_times'] = time_series_lead_times  # Use same as time_series
+        plots['metric_table']['lead_times'] = bar_chart_lead_times  # Use same as bar chart
         plots['barchart']['lead_times'] = bar_chart_lead_times
         plots['barchart']['metric_subset'] = ['KGE', 'NSE', 'CORR', 'NNSE', 'PBIAS']
     else:
