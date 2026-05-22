@@ -9,7 +9,6 @@ from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.hindcast_run import HindcastRun
 from calibration.util.file_util import get_single_file
-from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +40,6 @@ files = [
 
 
 def check_files():
-    # If we are running locally,then ngen and ngen-cal files must be on our machine
-    if NGEN_ENVIRONMENT == NGEN_ENVIRONMENT.LOCAL:
-        for file in files:
-            if not os.path.isfile(file):
-                logger.warning(f'{file} does not exist')
-
     for directory in static_dirs:
         if not os.path.isdir(directory):
             logger.warning(f'{directory} does not exist')

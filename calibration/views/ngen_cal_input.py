@@ -13,7 +13,7 @@ from django.db import transaction
 from django.db.models import F
 
 from calibration.enums import StatusEnum, DataTypeEnum
-from calibration.enums_vanilla import NgenEnvironmentEnum
+from calibration.enums_vanilla import JobExecutionMode
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun, CalibrationModulePropertyValue
 from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, get_cached_modules_by_id, get_cached_module_properties
@@ -603,7 +603,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
             calibration['calib_parameter_file'] = calib_parameter_file
             write_parameter_files(params, calib_parameter_file)
 
-        if build and settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        if build and settings.JOB_EXECUTION_MODE == JobExecutionMode.SLURM:
             if run.num_catchments is None:
                 # Handle old jobs which might not have saved num_catchments
                 # At this point validation should already have ensured that a geopackage path is available.

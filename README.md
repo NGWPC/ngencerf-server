@@ -220,9 +220,9 @@ To run the server, use `runCerf.sh`.
 ./runCerf.sh
 ```
 
-**Note:** If running with NGEN_ENVIRONMENT=LOCAL or DOCKER, then it is important to run `pre_start.py` from `manage.py` before the
+**Note:** If running with JOB_EXECUTION_MODE=OCKER, then it is important to run `pre_start.py` from `manage.py` before the
 server starts in order to clean up any Calibrations or Validations that were running at the time the server went down.
-This is not necessary when running on Parallel Works
+This is not necessary when running in Slurm mode.
 
 
 # Run the server in Docker
@@ -294,45 +294,35 @@ See [NgenCERF Command Line Interface (CLI)](https://confluence.nextgenwaterpredi
 
 # Runtime environments
 
-There are 3 environments that ngen/ngen-cerf can run in, defined by `settings.NGEN_ENVIRONMENT` in .env
+There are 2 environments that ngen/ngen-cerf can run in, defined by `settings.JOB_EXECUTION_MODE` in .env
 
 ```
-NGEN_ENVIRONMENT = DOCKER
+JOB_EXECUTION_MODE = DOCKER
 ```
 
 
-1. LOCAL - ngen and cal-mgr, as well as ngen-fcst and ngen-forcing, must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/cal-mgr`
-Create a symbolic link to match the specifying in settings.py.
-All the repos should be installed in the same directory.  It can be anything, but a symbolic link needs to be created to match the location in the Docker containers,
-which is `/ngen-app`.
-   ```
-   sudo mkdir /ngen-app
-   sudo ln -s ~/noaa-owp /ngen-app
-   ```
-   This environment is the hardest to set up because of the steps involved in installing ngen and cal-mgr, and is not recommended.
-
-
-2. DOCKER - ngen and cal-mgr are installed in a docker container.  This is the easiest for running locally.
-Follow these steps to pull the latest docker containers.
+1. DOCKER - ngen and cal-mgr are installed in a docker container.  This is the easiest for running locally.
+Follow these steps to pull the latest docker containers. 
 
    1. If you don't have Docker installed, follow the instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/AWS+Ubuntu+22.04+LTS+Workspace+for+Docker#AWSUbuntu22.04LTSWorkspaceforDocker-InstallDocker
    2. Follow the instructions here to 'Manage Docker as a non-root user': https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user
    3. (Use your AWS credentials to login)
-   ```
 
+   ```
    docker pull ghcr.io/ngwpc/nwm-cal-mgr:latest && docker tag ghcr.io/ngwpc/nwm-cal-mgr nwm-cal-mgr
    docker pull ghcr.io/ngwpc/nwm-fcst-mgr:latest && docker tag ghcr.io/ngwpc/nwm-fcst-mgr:latest nwm-fcst-mgr
    docker pull ghcr.io/ngwpc/ngen-bmi-forcing:latest && docker tag ghcr.io/ngwpc/ngen-bmi-forcing:latest ngen-bmi-forcing
    ```
 
    **Note:** If you are developing and have updates to the repos that you want to include, use one of the following from the appropriate repo directory:
-   ```
-  docker build --tag=nwm-cal-mgr .
-  docker build --tag=nwm-fcst-mgr .
-  docker build --file Dockerfile.bmi-forcings --tag=ngen-bmi-forcing .
-   ```
 
-3. PARALLEL_WORKS - The dockers containers are built for you and the server uses Slurm to communicate.
+    ```
+    docker build --tag=nwm-cal-mgr . 
+    docker build --tag=nwm-fcst-mgr . 
+    docker build --file Dockerfile.bmi-forcings --tag=ngen-bmi-forcing .
+    ```
+ 
+2. SLURM - The docker/singularity containers are built for you and the server uses Slurm to communicate.
 
 
 

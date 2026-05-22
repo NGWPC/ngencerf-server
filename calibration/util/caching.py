@@ -30,8 +30,7 @@ import yaml
 from django.conf import settings
 from django.core.cache import cache
 
-from calibration.enums import PlotDefinitionsEnum, ForecastConfigEnum, HindcastConfigEnum
-from calibration.enums_vanilla import JobType
+from calibration.enums import PlotDefinitionsEnum, ForecastConfigEnum, JobType, HindcastConfigEnum
 from calibration.models import Module, ModuleGroup, Gage, CalibrationRun, ValidationRun, CalibrationFormulation, OptimizationInput, \
     ModulePropertyChoice, ModuleProperty
 from calibration.views.cache_prefix import CACHE_PREFIX

@@ -1,6 +1,5 @@
 import json
 import logging
-from datetime import datetime, timezone
 
 import requests
 from django.conf import settings
@@ -13,31 +12,30 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType
-from calibration.enums_vanilla import JobType, SecondaryDataEnum
+from calibration.enums import StatusEnum, ValidationType, JobType, SlurmCallbackStatusEnum
+from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
-from calibration.run_util.run_common import cancel_job_common, submit_job
-from calibration.run_util.run_ngen_cal_pw import SlurmCallbackStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
-    run_forecast_job_callback_pw, run_cold_start_job_callback_pw, run_verification_job_callback_pw, run_hindcast_job_callback_pw
-from calibration.util.calibration_validators import CalibrationRunIdSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
-    CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
+from calibration.run_util.job_lifecycle import launch_job, cancel_job_common, handle_job_event
+from calibration.util.calibration_validators import GenericResponseSerializer, \
+    ErrorResponseSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     GetStatusForCalibrationResponseSerializer, GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
-    CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunIdSerializer, ForecastJobSlurmCallbackRequestSerializer, \
     CancelJobResponseSerializer, \
-    ValidationRunIdSerializer, GenericResponseSerializerWithValidator, RunCalibrationJob, ColdStartJobSlurmCallbackRequestSerializer, \
-    VerificationJobSlurmCallbackRequestSerializer, GetStatusForValidationResponseSerializer, \
-    GetStatusForForecastResponseSerializer, GetStatusForVerificationResponseSerializer, GetStatusRequestSerializer, \
-    HindcastJobSlurmCallbackRequestSerializer, GetStatusForHindcastResponseSerializer
+    GenericResponseSerializerWithValidator, RunCalibrationJob, \
+    GetStatusForValidationResponseSerializer, GetStatusForForecastResponseSerializer, GetStatusForVerificationResponseSerializer, \
+    GetStatusRequestSerializer, GetStatusForHindcastResponseSerializer, CalibrationRunIdSerializer, \
+    CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunIdSerializer, ValidationRunIdSerializer, \
+    CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, ColdStartJobSlurmCallbackRequestSerializer, \
+    ForecastJobSlurmCallbackRequestSerializer, HindcastJobSlurmCallbackRequestSerializer, VerificationJobSlurmCallbackRequestSerializer, \
+    ReportIterationSerializer, EmptySerializer
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_secondary_data_views import generate_secondary_ts_data
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
-    generate_custom_token, TOKEN_SLURM_SCOPE, get_validation_run, get_forecast_run, get_user_email, \
-    get_job_description, get_elapsed_str, readonly_transaction, auth_scope_required, get_cold_start_run, get_verification_run, \
-    join_with_or, get_calibration_runs_bulk, get_hindcast_run
+    get_validation_run, get_forecast_run, get_user_email, \
+    get_job_description, get_elapsed_str, readonly_transaction, get_verification_run, \
+    join_with_or, get_calibration_runs_bulk, get_hindcast_run, auth_scope_required, TOKEN_SLURM_SCOPE, generate_custom_token
 from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -808,7 +806,7 @@ def run_calibration(request: Request) -> Response:
         return error_return
     assert run is not None
 
-    error_response = submit_job(run, logging_config=logging_config)
+    error_response = launch_job(run, logging_config=logging_config)
     if error_response:
         return error_response
 
@@ -1257,8 +1255,7 @@ def cancel_job(request: Request) -> Response:
     if not cancel_job_common(run):
         return ResponseError(f"Unable to cancel {run_type.capitalize()} Job {run.id}")
 
-    run.status = StatusEnum.CANCELLED.db_instance
-    run.save(update_fields=['status'])
+    run.refresh_from_db(fields=["status"])
 
     response = {
         'message': f"{get_job_description(run)} has been canceled",
@@ -1359,10 +1356,10 @@ def calibration_job_slurm_callback(request: Request) -> Response:
     :return: HTTP 202 response indicating the callback was processed.
     """
     return handle_slurm_callback(
-        request,
-        CalibrationJobSlurmCallbackRequestSerializer,
-        get_calibration_run,
-        run_calibration_job_callback_pw
+        request=request,
+        serializer_class=CalibrationJobSlurmCallbackRequestSerializer,
+        job_type=JobType.CALIBRATION.value,
+        run_id_field="calibration_run_id"
     )
 
 
@@ -1394,8 +1391,8 @@ def validation_job_slurm_callback(request: Request) -> Response:
     return handle_slurm_callback(
         request,
         ValidationJobSlurmCallbackRequestSerializer,
-        get_validation_run,
-        run_validation_job_callback_pw
+        JobType.VALIDATION.value,
+        "validation_run_id",
     )
 
 
@@ -1427,8 +1424,8 @@ def cold_start_job_slurm_callback(request: Request) -> Response:
     return handle_slurm_callback(
         request,
         ColdStartJobSlurmCallbackRequestSerializer,
-        get_cold_start_run,
-        run_cold_start_job_callback_pw
+        JobType.COLD_START.value,
+        "cold_start_run_id",
     )
 
 
@@ -1460,8 +1457,8 @@ def forecast_job_slurm_callback(request: Request) -> Response:
     return handle_slurm_callback(
         request,
         ForecastJobSlurmCallbackRequestSerializer,
-        get_forecast_run,
-        run_forecast_job_callback_pw
+        JobType.FORECAST.value,
+        "forecast_run_id",
     )
 
 
@@ -1493,8 +1490,8 @@ def hindcast_job_slurm_callback(request: Request) -> Response:
     return handle_slurm_callback(
         request,
         HindcastJobSlurmCallbackRequestSerializer,
-        get_hindcast_run,
-        run_hindcast_job_callback_pw
+        JobType.HINDCAST.value,
+        "hindcast_run_id",
     )
 
 
@@ -1526,20 +1523,29 @@ def verification_job_slurm_callback(request: Request) -> Response:
     return handle_slurm_callback(
         request,
         VerificationJobSlurmCallbackRequestSerializer,
-        get_verification_run,
-        run_verification_job_callback_pw
+        JobType.VERIFICATION.value,
+        "verification_run_id",
     )
 
 
-def handle_slurm_callback(request: Request, serializer_class, get_run_fn, job_end_callback_fn) -> Response:
+def handle_slurm_callback(
+        request: Request,
+        serializer_class,
+        job_type: str,
+        run_id_field: str,
+) -> Response:
     """
-    Common handler for Slurm callback endpoints for any run type that inherits from BaseRun.
+    Common handler for Slurm callback endpoints.
+
+    The endpoint validates the callback payload and delegates state transitions
+    to job_lifecycle.handle_job_event(), which enforces expected status transitions
+    and ignores duplicate/out-of-order callbacks.
 
     :param request: The incoming HTTP request.
-    :param serializer_class: The serializer used for validating the incoming data.
-    :param get_run_fn: A function that returns the correct run object given its ID.
-    :param job_end_callback_fn: A function that handles the job completion logic.
-    :return: HTTP 202 Response or error Response.
+    :param serializer_class: Serializer used to validate the callback payload.
+    :param job_type: Normalized job type string.
+    :param run_id_field: Serializer field containing the run id.
+    :return: HTTP 202 Response or validation error Response.
     """
     data = request.data
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -1548,32 +1554,21 @@ def handle_slurm_callback(request: Request, serializer_class, get_run_fn, job_en
     if error_return:
         return error_return
 
-    run_id = validator.get(next(k for k in validator.keys() if k.endswith("_id")))
+    run_id = validator.get(run_id_field)
     job_status = validator.get("job_status")
-    slurm_status = SlurmCallbackStatusEnum(job_status)
+    slurm_job_id = validator.get("slurm_job_id")
 
-    # If Slurm is reporting that the job is now starting, we expect to be in Submitted status
-    # For any other status changes, we should be Running or Submitted.  We allow Submitted just in case
-    #  1) The job doesn't properly transition to Running
-    #  2) To allow a submitted job to be canceled
-    expected_status = [StatusEnum.SUBMITTED] if slurm_status == SlurmCallbackStatusEnum.STARTING else [StatusEnum.RUNNING, StatusEnum.SUBMITTED]
+    # State validation and duplicate callback protection are centralized there.
+    handle_job_event(
+        job_type=job_type,
+        run_id=run_id,
+        job_status=SlurmCallbackStatusEnum(job_status),
+        slurm_job_id=slurm_job_id,
+    )
 
-    run, error_return = get_run_fn(run_id, None, run_status=expected_status)
-    if error_return:
-        return error_return
-
-    job_description = f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id})"
-    if slurm_status == SlurmCallbackStatusEnum.STARTING:
-        logger.info(f'{job_description} is starting')
-        run.status = StatusEnum.RUNNING.db_instance
-        run.run_start = datetime.now(timezone.utc)
-        run.save(update_fields=["status", "run_start"])
-    else:
-        # Job has ended
-        logger.info(f'{job_description} is ending')
-        job_end_callback_fn(run, slurm_status)
-
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}')
+    logger.debug(
+        f"Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}"
+    )
     return Response(status=status.HTTP_202_ACCEPTED)
 
 

@@ -6,7 +6,7 @@ from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
     OptimizationEnum, GeopackageSourceEnum, SlurmCallbackStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastConfigEnum, LogCategory, \
-    NgenLogging, HindcastConfigEnum
+    NgenLogging, JobType, HindcastConfigEnum
 from calibration.enums_vanilla import CalibrationSortField, VerificationSortField, ForecastSortField, HindcastSortField
 from calibration.util.caching import get_cached_modules_with_groups
 
