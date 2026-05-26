@@ -116,10 +116,13 @@ printf "Do not delete.\nThis placeholder file ensures this S3 prefix is retained
 # Static Files
 There are some static files that are required for Ngen to run.  They should be in a directory under the data directory at `/ngencerf/data` called `ngen-static-files`.  
 
-The data for the `ngen-static-files` directory is in 2 locations.  Copy everything from  `s3://ngwpc-dev/ngen-static-files/` to
-`/ngencerf/data/ngen-static-files` or `/ngencerf-app/data/ngen-cal-data/ngen-static-files`
+The data for the `ngen-static-files` directory is in several locations.  Execxute the following commands to copy everything 
+to`/ngencerf/data/ngen-static-files` (dev) or `/ngencerf-app/data/ngen-cal-data/ngen-static-files` (prod)
 ```
 aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
+aws s3 cp s3://ngwpc-hydrofabric/sac_sma_params_2.2.csv /ngencerf/data/ngen-static-files/module_parameter_files/sac-sma/
+aws s3 cp s3://ngwpc-hydrofabric/snow17_params_2.2.csv /ngencerf/data/ngen-static-files/module_parameter_files/snow-17/
+aws s3 cp s3://ngwpc-dev/rte-test-data/esmf/ /ngencerf/data/ngen-static-files/forcing_static_dir/ --recursive
 ```
 
 In addition, copy the directory `module_parameter_files` and all its contents from 
@@ -171,8 +174,7 @@ ngen-static-files/
 │  ├── lasam
 │  ├── noah-owp-modular
 │  └── ueb
-├── nwm_retrospective
-└── parquet
+└── nwm_retrospective
 
 
 
@@ -357,8 +359,6 @@ peter.a.kronenberg@U-12SMBYD5450YI:~$ tree /ngencerf -L 4 -n -A
         │       ├── GENPARM.TBL
         │       ├── MPTABLE.TBL
         │       └── SOILPARM.TBL
-        ├── parquet
-        │   └── conus_model_attributes.parquet
         └── nwm_retrospective
             ├── 01118000.csv
             ├── 01121000.csv

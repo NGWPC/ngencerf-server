@@ -10,7 +10,7 @@ storage (S3, GCS, Azure Blob/ADLS, etc.). It includes helpers for:
   Ensures that bare paths are converted into proper URLs so that fsspec can
   operate consistently across providers.
 
-- File operations (`path_exists`, `is_dir`, `list_files`):
+- File operations (`is_dir`, `list_files`):
   Cloud/local agnostic wrappers that mimic Python’s built-in file and os.path
   utilities but work transparently with remote storage.
 
@@ -321,6 +321,8 @@ def copy_tree(src_url: str,
 
     Manifest rules:
       • LOCAL → CLOUD with verify=True: manifest.json is CREATED on cloud.
+        Hashes are computed from the LOCAL source only and stored for later
+        restore-time verification. The uploaded cloud object is not read back.
       • CLOUD → LOCAL with verify=True: manifest.json is USED but NOT RESTORED.
       • Symlinks are preserved: stored as metadata in manifest and recreated on restore.
 
@@ -410,12 +412,13 @@ def copy_tree(src_url: str,
     :param verify:
         When True:
           • LOCAL → CLOUD:
-                - SHA256 both sides (src + dst)
-                - Manifest is written at the cloud destination (_manifest.json)
+                - compute SHA256 of source file only
+                - write manifest at the cloud destination (_manifest.json)
+                - do NOT read back and hash uploaded cloud objects
           • CLOUD → LOCAL:
-                - Manifest must already exist at source
-                - Each file’s SHA256 is checked against manifest entries
-                - _manifest.json is copied but skipped during verification
+                - manifest must already exist at source
+                - each restored local file is hashed and checked against manifest
+                - _manifest.json is not restored
     :param profile_name:
         Optional AWS profile name used for S3 source/destination URLs.
         If omitted, the default credential chain is used.
@@ -449,10 +452,11 @@ def copy_tree(src_url: str,
 
     # Used ONLY during local→cloud verification.
     # manifest_entries collects file hash entries for writing new manifest.json.
-    manifest_entries = [] if verify and dst_scheme != "file" else None
+    manifest_entries = [] if verify and src_scheme == "file" and dst_scheme != "file" else None
 
-    # Symlink metadata (stored only during local→cloud to recreate symlinks on restore)
-    manifest_symlinks = [] if verify and dst_scheme != "file" else None
+    # Symlink metadata is stored only during local→cloud so symlinks
+    # can be recreated later during cloud→local restore.
+    manifest_symlinks = [] if verify and src_scheme == "file" and dst_scheme != "file" else None
 
     # ------------------------------------------------------------
     # Helper to compute SHA256 when verify=True
@@ -484,17 +488,22 @@ def copy_tree(src_url: str,
                     for entry in source_manifest_raw.get("files", [])
                 }
 
-                logger.info(f"Loaded manifest for cloud→local verify: {manifest_url}{_format_profile_suffix(profile_name)}")
+                logger.info(
+                    f"Loaded manifest for cloud→local verify: "
+                    f"{manifest_url}{_format_profile_suffix(profile_name)}"
+                )
 
             except Exception as e:
-                logger.error(f"Failed to load manifest.json at {manifest_url}{_format_profile_suffix(profile_name)}: {e}")
-                source_manifest_dict = None
+                logger.error(
+                    f"Failed to load manifest.json at "
+                    f"{manifest_url}{_format_profile_suffix(profile_name)}: {e}"
+                )
+                raise
         else:
-            logger.warning(
+            raise RuntimeError(
                 f"Verification enabled, but no manifest.json found on source cloud directory: "
                 f"{manifest_url}{_format_profile_suffix(profile_name)}"
             )
-            source_manifest_dict = None
 
     # ------------------------------------------------------------
     # STEP 1 — Generate the file list correctly
@@ -704,16 +713,12 @@ def copy_tree(src_url: str,
             throughput = ""
 
         # ------------------------------------------------------------
-        # Verification - ensure copy is accurate
+        # Verification / integrity tracking
         # ------------------------------------------------------------
         if verify:
-            # Skip verification for manifest on restore
-            if rel_path == "_manifest.json":
-                logger.info(f"{base_msg}{throughput} — skipped manifest verification")
-                return dst_full, dt, size_bytes
-
-            # CLOUD → LOCAL verification (use manifest for hash lookup)
-            if source_manifest_dict and src_scheme != "file":
+            # CLOUD → LOCAL restore verification:
+            # verify restored local file against manifest hash
+            if source_manifest_dict is not None and src_scheme != "file":
                 expected = source_manifest_dict.get(rel_path)  # O(1) lookup
                 if expected is None:
                     raise RuntimeError(f"No manifest entry for {rel_path}")
@@ -722,21 +727,19 @@ def copy_tree(src_url: str,
                 dst_hash = compute_sha256(dst_fs, dst_full)
 
                 if expected != dst_hash:
-                    raise RuntimeError(f"Verification FAILED for {rel_path}: {expected} != {dst_hash}")
+                    raise RuntimeError(
+                        f"Verification FAILED for {rel_path}: {expected} != {dst_hash}"
+                    )
 
             else:
-                # LOCAL → CLOUD verification (hash both)
-                src_hash = compute_sha256(src_fs, abs_src)
-                dst_hash = compute_sha256(dst_fs, dst_full)
-
-                if src_hash != dst_hash:
-                    raise RuntimeError(f"Verification FAILED for {rel_path}: {src_hash} != {dst_hash}")
-
-                # Store manifest entry ONLY for local→cloud case
-                if dst_scheme != "file" and manifest_entries is not None:
+                # LOCAL → CLOUD archive verification:
+                # compute hash ONLY from source file and store it in the manifest.
+                # Do not read back the uploaded cloud object.
+                if src_scheme == "file" and dst_scheme != "file" and manifest_entries is not None:
+                    src_hash = compute_sha256(src_fs, abs_src)
                     manifest_entries.append({
                         "relative": rel_path,
-                        "sha256": dst_hash,
+                        "sha256": src_hash,
                         "size": size_bytes if size_bytes > 0 else None
                     })
 
@@ -744,11 +747,11 @@ def copy_tree(src_url: str,
         # UNIFIED LOG LINE
         # ----------------------------
         if verify:
-            logger.info(f"{base_msg}{throughput} — verified OK")
+            logger.debug(f"{base_msg}{throughput} - verified OK")
 
         else:
             # Unified no-verify line
-            logger.info(f"{base_msg}{throughput}")
+            logger.debug(f"{base_msg}{throughput}")
 
         return dst_full, dt, size_bytes
 
@@ -787,12 +790,12 @@ def copy_tree(src_url: str,
     # ------------------------------------------------------------
     # Write manifest.json ONLY when verify=True AND destination is cloud
     # ------------------------------------------------------------
-    if verify and dst_scheme != "file" and manifest_entries:
+    if verify and src_scheme == "file" and dst_scheme != "file":
         manifest_path = join_url(dst_base, dst_prefix, "_manifest.json")
         try:
             with dst_fs.open(manifest_path, "w") as mf:
                 mf.write(json.dumps({
-                    "files": manifest_entries,
+                    "files": manifest_entries or [],
                     "symlinks": manifest_symlinks or [],
                 }, indent=2))
             logger.info(f"Wrote manifest: {manifest_path}{_format_profile_suffix(profile_name)}")
@@ -828,63 +831,6 @@ def copy_tree(src_url: str,
 # ----------------------------------------------------------------------
 # File operations
 # ----------------------------------------------------------------------
-
-def path_exists(path: str, *, profile_name: str | None = None) -> bool:
-    """
-    Note: Need to remove uses of this function on EFS.  Then we can get rid of this
-    Still needed for forcing data
-
-    Cloud/local agnostic exists() check.
-    Works for file://, s3://, gcs://, az://, etc.
-    Raises S3CredentialsExpired if AWS credentials are expired.
-    Raises S3ProfileError if an explicit AWS profile is missing or invalid.
-
-    :param path: URL or local filesystem path.
-    :param profile_name: Optional AWS profile name used for S3 paths only.
-    :return: True if path exists, False otherwise.
-    """
-    if not path:
-        return False
-
-    parsed = urlparse(path)
-    scheme = parsed.scheme or "file"
-
-    if scheme == "file":
-        return os.path.exists(parsed.path or path)
-
-    try:
-        fs, norm_path = get_filesystem(path, profile_name=profile_name)
-
-        if scheme == "s3":
-            # For S3, force a real backend operation so auth failures do not
-            # get silently turned into False by fs.exists(). This works well
-            # for our S3 "directory" prefixes because they always contain
-            # at least one object (for example, a .keep file).
-            return len(fs.ls(norm_path, detail=False)) > 0
-
-        return fs.exists(norm_path)
-
-    except S3ProfileError:
-        raise
-    except FileNotFoundError:
-        return False
-    except botocore.exceptions.ClientError as e:
-        code = e.response.get("Error", {}).get("Code")
-        if code in ("ExpiredToken", "InvalidAccessKeyId", "InvalidClientTokenId"):
-            raise S3CredentialsExpired(
-                _expired_credentials_message("path_exists", path, profile_name)
-            ) from e
-        raise
-    except PermissionError as e:
-        if "expired" in str(e).lower():
-            raise S3CredentialsExpired(
-                _expired_credentials_message("path_exists", path, profile_name)
-            ) from e
-        raise PermissionError(f"{e}{_format_profile_suffix(profile_name)}") from e
-    except Exception as e:
-        _raise_if_s3_profile_error(e, profile_name=profile_name)
-        return False
-
 
 def is_dir(path: str, *, profile_name: str | None = None) -> bool:
     """
@@ -1858,6 +1804,8 @@ def get_s3_client(*, profile_name: str | None = None) -> botocore.client.BaseCli
 
 def check_aws_credentials(*, timeout_seconds: int = 3) -> None:
     """
+    This function is not used anymore
+
     Fast sanity check that AWS credentials are present and valid.
 
     Raises S3CredentialsExpired if credentials are missing, expired,
