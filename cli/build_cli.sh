@@ -82,4 +82,9 @@ if ! pyinstaller --onefile \
   exit 1
 fi
 
-echo "==> Build complete. Executable located at: dist/$APP_NAME"
+mkdir -p ../downloads/latest/linux
+
+cp "dist/$APP_NAME" \
+   "../downloads/latest/linux/$APP_NAME"
+
+echo "==> Build complete. Executable located at: ../downloads/latest/linux/$APP_NAME"

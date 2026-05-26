@@ -80,7 +80,15 @@ try {
         --add-data "ngencerf/git_info.json;ngencerf" `
         $ENTRY_POINT
 
-    Write-Host "==> Build complete. Executable located at: dist\$APP_NAME.exe"
+    New-Item -ItemType Directory `
+        -Force `
+        -Path "../downloads/latest/windows" | Out-Null
+
+    Copy-Item `
+        "dist/$APP_NAME.exe" `
+        "../downloads/latest/windows/$APP_NAME.exe"
+
+    Write-Host "==> Build complete. Executable located at: ../downloads/latest/windows/$APP_NAME.exe"
 }
 catch {
     Write-Host "Build failed."
