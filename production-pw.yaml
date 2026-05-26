@@ -44,6 +44,7 @@ services:
     environment:
       - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH:-/ngencerf-app/data/ngen-cal-data/}
       - NGENCERF_UI_TAG=${NGENCERF_UI_TAG:-latest}
+      - NGENCERF_BASE_URL=${HOSTNAME}
     env_file:
       - path: ./cerfServer/.env-docker-prod
         required: true
