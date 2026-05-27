@@ -12,6 +12,7 @@ import os
 import re
 from datetime import timedelta, datetime, timezone
 from enum import StrEnum, auto
+from urllib.parse import urlparse, urlunparse
 
 from datetimerange import DateTimeRange
 from dotenv import load_dotenv
@@ -392,8 +393,128 @@ SLURM_SUBMIT_VERIFICATION_JOB_ENDPOINT = 'submit-verification-job'
 SLURM_JOB_STATUS_ENDPOINT = 'job-status'
 SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 
+
+def validate_port(value: str, name: str = "PORT") -> int:
+    """
+    Validate a port value and return it as an integer.
+
+    Examples of valid values:
+        8000
+        443
+        65535
+
+    Examples of invalid values:
+        ""
+        abc
+        0
+        65536
+    """
+    try:
+        port = int(value)
+    except ValueError:
+        raise SystemExit(
+            f"Invalid {name} value: '{value}'"
+        )
+
+    if not (1 <= port <= 65535):
+        raise SystemExit(
+            f"{name} out of range: '{value}'"
+        )
+
+    return port
+
+
+def normalize_base_url(url: str, port: int) -> str:
+    """
+    Normalize NGENCERF_BASE_URL.
+
+    Rules:
+      - Add http:// if the scheme is missing
+      - Add PORT if no explicit port is present
+      - Preserve an explicitly configured port
+      - Strip trailing slash
+
+    Examples:
+        localhost                  -> http://localhost:8000
+        myserver.com               -> http://myserver.com:8000
+        https://myserver.com       -> https://myserver.com:8000
+        https://myserver.com:8443  -> https://myserver.com:8443
+        http://localhost:9000      -> http://localhost:9000
+    """
+    url = url.strip()
+
+    if not url.startswith(("http://", "https://")):
+        url = f"http://{url}"
+
+    parsed = urlparse(url)
+
+    if not parsed.hostname:
+        raise SystemExit(
+            f"Invalid NGENCERF_BASE_URL: missing hostname: '{url}'"
+        )
+
+    try:
+        explicit_port = parsed.port
+    except ValueError:
+        raise SystemExit(
+            f"Invalid NGENCERF_BASE_URL: invalid port in URL: '{url}'"
+        )
+
+    if explicit_port is None:
+        netloc = f"{parsed.hostname}:{port}"
+
+        # Preserve username/password if ever used
+        if parsed.username:
+            auth = parsed.username
+            if parsed.password:
+                auth += f":{parsed.password}"
+            netloc = f"{auth}@{netloc}"
+
+        parsed = parsed._replace(netloc=netloc)
+
+    return str(urlunparse(parsed)).rstrip("/")
+
+
+def validate_url(url: str, name: str) -> None:
+    """
+    Validate that a normalized URL contains:
+      - an HTTP/HTTPS scheme
+      - a hostname
+
+    Examples of valid normalized values:
+        http://localhost:8000
+        http://myserver.com:8000
+        https://myserver.com:8443
+        https://myserver.com:8000/api
+
+    Examples of invalid values:
+        ""
+        http:///api/foo
+        ftp://myserver.com
+    """
+    parsed = urlparse(url)
+
+    if parsed.scheme not in {"http", "https"}:
+        raise SystemExit(
+            f"Invalid {name}: unsupported URL scheme: '{url}'. "
+            f"Expected http:// or https://"
+        )
+
+    if not parsed.hostname:
+        raise SystemExit(
+            f"Invalid {name}: missing hostname: '{url}'"
+        )
+
+
 # Used for Slurm and cal-mgr callback
-NGENCERF_BASE_URL = os.getenv("NGENCERF_BASE_URL", "http://localhost:8000").rstrip("/")
+PORT = validate_port(os.getenv("PORT", "8000"))
+
+NGENCERF_BASE_URL = normalize_base_url(
+    os.getenv("NGENCERF_BASE_URL", "localhost"),
+    PORT,
+)
+
+validate_url(NGENCERF_BASE_URL, "NGENCERF_BASE_URL")
 
 # -----------------------------
 # Logging
@@ -537,7 +658,6 @@ sslrootcert = os.getenv('CERF_SERVER_DATABASE_SSLROOTCERT')
 
 if sslrootcert:
     DATABASE_OPTIONS['sslrootcert'] = sslrootcert
-
 
 DATABASES = {
     'default': {
