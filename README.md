@@ -55,28 +55,6 @@ sudo ln -s ~/ngwpc/data /ngencerf/data
 ```
 
 
-# Run the server in Docker (recommended for local dev)
-
-The dev stack (server + Postgres + Redis) runs via `compose.yaml`. All dev
-values are baked in as defaults, so **no `--env-file` is needed** — just make
-sure the `/ngencerf/data` symlink above exists and its `ngen-static-files`
-directory is populated (see [Static Files](#static-files)).
-
-```
-CACHE_BUST=$(date +%s) docker compose up --build ngencerf-services
-```
-
-The server comes up at http://localhost:8000 and Postgres at localhost:5432.
-
-> **Port conflict:** the `db` container binds host port **5432**. If you also run Postgres on the host (common if you switch between host and containerized Postgres), free the port first — e.g. `sudo systemctl stop postgresql` — or the `db` container won't start.
-
-- **Force a rebuild** (to pick up code changes): keep `--build`, or run `docker compose build --no-cache ngencerf-services`.
-- **Force a static-data reload:** static data loads once on first start, tracked by `../data/.ngencerf-init/.load_static`. Delete that file to reload on the next start.
-- **Shell into the running container:** `docker exec -it $(docker ps -qf name=ngencerf-services) bash`.
-
-> Production uses `production-pw.yaml` + `cerfServer/.env-override` and is launched via Parallel Works.
-
-
 # Access to AWS
 This needs to be done if you are running on AWS Workspace
 
@@ -247,6 +225,28 @@ To run the server, use `runCerf.sh`.
 **Note:** If running with NGEN_ENVIRONMENT=LOCAL or DOCKER, then it is important to run `pre_start.py` from `manage.py` before the
 server starts in order to clean up any Calibrations or Validations that were running at the time the server went down.
 This is not necessary when running on Parallel Works
+
+
+# Run the server in Docker
+
+The dev stack (server + Postgres + Redis) runs via `compose.yaml`. All dev
+values are baked in as defaults, so **no `--env-file` is needed** — just make
+sure the `/ngencerf/data` symlink (see [Create data directory](#create-data-directory)) exists and its `ngen-static-files`
+directory is populated (see [Static Files](#static-files)).
+
+```
+CACHE_BUST=$(date +%s) docker compose up --build ngencerf-services
+```
+
+The server comes up at http://localhost:8000 and Postgres at localhost:5432.
+
+> **Port conflict:** the `db` container binds host port **5432**. If you also run Postgres on the host (common if you switch between host and containerized Postgres), free the port first — e.g. `sudo systemctl stop postgresql` — or the `db` container won't start.
+
+- **Force a rebuild** (to pick up code changes): keep `--build`, or run `docker compose build --no-cache ngencerf-services`.
+- **Force a static-data reload:** static data loads once on first start, tracked by `../data/.ngencerf-init/.load_static`. Delete that file to reload on the next start.
+- **Shell into the running container:** `docker exec -it $(docker ps -qf name=ngencerf-services) bash`.
+
+> Production uses `production-pw.yaml` + `cerfServer/.env-override` and is launched via Parallel Works.
 
 
 # User Authentication
