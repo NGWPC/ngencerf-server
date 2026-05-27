@@ -688,6 +688,12 @@ formulation_validations: dict[str, Any] = {
                     "requires_any_of": ["Noah-OWP-Modular"],
                     "fatal": True
                 }
+            ],
+            "TopModel": [
+                {
+                    "requires_any_of": ["Noah-OWP-Modular", "PET"],
+                    "fatal": True
+                }
             ]
         }
     }
