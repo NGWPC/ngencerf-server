@@ -39,6 +39,11 @@ set -a
 source "$SCRIPT_DIR/cerfserver.env"
 set +a
 
+if [ -z "${PORT}" ]; then
+    echo "ERROR: PORT is not set in cerfserver.env"
+    exit 1
+fi
+
 IN_DOCKER=false
 if [ "${CERF_VENV}" = "Docker" ]; then
     IN_DOCKER=true
@@ -864,7 +869,7 @@ if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
     )}
 
     TIMEOUT=${GUNICORN_TIMEOUT:-120}
-    BIND_ADDR=${GUNICORN_BIND:-0.0.0.0:8000}
+    BIND_ADDR="${GUNICORN_BIND:-0.0.0.0:${PORT}}"
     # --graceful-timeout extra time to finish in-flight requests on restart
     exec gunicorn cerfServer.asgi:application \
             --name ngencerf \
@@ -882,10 +887,10 @@ else
 
     if [ "$AUTO_RELOAD" = true ]; then
         echo "Auto-reload ENABLED"
-        python "$cerfServer"/manage.py runserver 0.0.0.0:8000
+        python "$cerfServer"/manage.py runserver "0.0.0.0:${PORT}"
     else
         echo "Auto-reload DISABLED (--noreload)"
-        python "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
+        python "$cerfServer"/manage.py runserver "0.0.0.0:${PORT}" --noreload
     fi
 fi
 
