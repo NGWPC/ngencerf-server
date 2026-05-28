@@ -303,6 +303,9 @@ def get_module_metadata_from_data_services(
     ----------
     - The input `modules` is the full set of module names for the run.
     - Only modules where Module.use_edfs == True are sent to Data Services.
+    - SFT is handled dynamically: SFT is sent only when LASAM is also included in
+      the run's modules. In that case, SFT is treated as requiring EDFS metadata.
+      Otherwise, SFT is not sent.
     - Module definitions are resolved from the shared Redis-backed module cache (no DB queries).
     - If no modules require EDFS, no HTTP request is made and ({}, []) is returned.
     - Unknown module names that are not present in the cache are ignored.
@@ -333,15 +336,29 @@ def get_module_metadata_from_data_services(
     # -------------------------------------------------------
     cached_modules = get_cached_modules_with_groups()  # {module_name -> Module ORM instance}
 
-    edfs_modules = sorted(
-        name
-        for name in modules
-        if name in cached_modules and getattr(cached_modules[name], "use_edfs", True)
-    )
+    edfs_modules: list[str] = []
+
+    for name in modules:
+        if name not in cached_modules:
+            continue
+
+        module = cached_modules[name]
+
+        # Default behavior comes from the module definition.
+        use_edfs = getattr(module, "use_edfs", True)
+
+        # SFT only requires EDFS metadata when LASAM is also selected.
+        if name == "SFT":
+            use_edfs = "LASAM" in modules
+
+        if use_edfs:
+            edfs_modules.append(name)
+
+    edfs_modules = sorted(edfs_modules)
 
     # If nothing requires EDFS, skip the external call entirely.
     if not edfs_modules:
-        logger.info("No modules with use_edfs=True; skipping Data Services call.")
+        logger.info("No modules require EDFS metadata; skipping Data Services call.")
         return {}, []
 
     # -------------------------------------------------------

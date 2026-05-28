@@ -275,7 +275,6 @@ class Command(BaseCommand):
                 "name": "PET",
                 "description": "PET handles potential evapotranspiration functions: Aerodynamic method, Combination method, Energy balance method, Penman Monteith method and Priestly Taylor method.",
                 "groups": ["Evapotranspiration"],
-                "is_active": True,
                 "use_edfs": False
             },
             {
