@@ -5,16 +5,16 @@ Responsibilities:
 
 - Building Singularity commands
 - Generating Slurm batch scripts
-- Submitting jobs with sbatch
-- Cancelling jobs with scancel
-- Querying job status with squeue/sacct
+- Submitting, cancelling, and querying jobs over the Slurm REST API (slurmrestd)
 - Sending lifecycle callbacks to Django
 
 Deployment usage:
 
 - Used primarily in deployed AWS PCS / HPC environments
-- Requires the Django runtime to be configured as a Slurm submit client
-- Requires sbatch/scancel/squeue/sacct on the Django runtime PATH
+- Submits to slurmrestd over HTTP with a JWT instead of the sbatch/scancel/squeue
+  CLIs, so the Django runtime needs no Slurm client binaries or munge
+- Requires network access to slurmrestd (port 6820) and read access to the
+  cluster's JWT signing key in AWS Secrets Manager
 - Requires shared filesystem access between Django and Slurm compute nodes
 - Job execution occurs asynchronously on Slurm compute resources
 
@@ -23,11 +23,17 @@ This module answers:
     "How does Slurm execute and report this job?"
 """
 
+import base64
 import logging
 import os
 import subprocess
+import time
+from functools import lru_cache
 from typing import Any
 
+import boto3
+import jwt
+import requests
 from django.conf import settings
 
 from calibration.enums import SlurmCallbackStatusEnum
@@ -39,6 +45,15 @@ logger = logging.getLogger(__name__)
 
 # Optional sacct columns collected after job completion (depends on Slurm version)
 SLURM_JOB_METRICS = os.environ.get('SLURM_JOB_METRICS')
+
+# Timeout (seconds) for every slurmrestd HTTP request.
+_REQUEST_TIMEOUT = 30
+
+# Slurm job states that mean the job has stopped running (no longer active).
+_SLURM_TERMINAL_STATES = frozenset({
+    "COMPLETED", "FAILED", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY",
+    "NODE_FAIL", "BOOT_FAIL", "DEADLINE", "PREEMPTED", "REVOKED", "SPECIAL_EXIT",
+})
 
 
 def ensure_file_owned(file_path: str) -> dict[str, bool | str]:
@@ -304,37 +319,194 @@ def write_slurm_script(
     return job_script
 
 
-def _run_sbatch(
+@lru_cache(maxsize=1)
+def _slurm_jwt_signing_key() -> bytes:
+    """
+    Fetch and decode the cluster's JWT signing key from AWS Secrets Manager.
+
+    AWS PCS stores the key as a base64-encoded SecretString; it must be decoded
+    to the raw bytes Slurm signs with. Cached for the life of the process because
+    the key is stable for a given cluster.
+
+    :return: Raw HS256 signing key bytes.
+    :raises RuntimeError: If SLURM_JWT_SECRET_ARN is not configured.
+    """
+    if not settings.SLURM_JWT_SECRET_ARN:
+        raise RuntimeError("SLURM_JWT_SECRET_ARN is not configured")
+
+    secret_string = boto3.client("secretsmanager").get_secret_value(
+        SecretId=settings.SLURM_JWT_SECRET_ARN
+    )["SecretString"]
+
+    return base64.b64decode(secret_string.strip())
+
+
+def _slurm_jwt() -> str:
+    """
+    Mint a short-lived, enriched JWT for the Slurm REST API.
+
+    AWS PCS rejects tokens that lack POSIX identity claims
+    (disable_jwt_without_identity_claims), so the token carries uid/gid and the
+    id{} object in addition to the username (sun) claim.
+
+    :return: Signed HS256 JWT.
+    """
+    now = int(time.time())
+    user = settings.SLURM_REST_USER
+    gid = settings.SLURM_REST_GID
+    home = "/root" if user == "root" else f"/home/{user}"
+
+    payload = {
+        "exp": now + settings.SLURM_REST_TOKEN_TTL_SECONDS,
+        "iat": now,
+        "sun": user,
+        "uid": settings.SLURM_REST_UID,
+        "gid": gid,
+        "id": {
+            "gecos": user,
+            "dir": home,
+            "gids": [gid],
+            "shell": "/bin/bash",
+        },
+    }
+
+    return jwt.encode(payload, _slurm_jwt_signing_key(), algorithm="HS256")
+
+
+def _slurmrestd_base(namespace: str = "slurm") -> str:
+    """
+    Return the versioned slurmrestd base URL for a namespace.
+
+    :param namespace: "slurm" (slurmctld) or "slurmdb" (accounting).
+    :return: Base URL, e.g. http://10.0.0.10:6820/slurm/v0.0.43.
+    :raises RuntimeError: If SLURM_REST_ENDPOINT is not configured.
+    """
+    if not settings.SLURM_REST_ENDPOINT:
+        raise RuntimeError("SLURM_REST_ENDPOINT is not configured")
+
+    base = settings.SLURM_REST_ENDPOINT.rstrip("/")
+    return f"{base}/{namespace}/{settings.SLURM_API_VERSION}"
+
+
+def _slurm_headers() -> dict[str, str]:
+    """Build the auth + content headers for a slurmrestd request."""
+    return {
+        "Authorization": f"Bearer {_slurm_jwt()}",
+        "Content-Type": "application/json",
+    }
+
+
+def _format_slurm_errors(errors: list[Any]) -> str:
+    """Flatten a slurmrestd ``errors`` array into a single message."""
+    messages = []
+    for item in errors:
+        if isinstance(item, dict):
+            messages.append(item.get("description") or item.get("error") or str(item))
+        else:
+            messages.append(str(item))
+    return "; ".join(messages) or "unknown slurmrestd error"
+
+
+def _slurm_response_payload(
+        response: requests.Response,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """
+    Validate a slurmrestd response and return its JSON body.
+
+    slurmrestd can return HTTP 200 while still reporting a logical failure in the
+    ``errors`` array, so both the HTTP status and ``errors`` are checked.
+
+    :param response: The requests Response.
+    :return: Tuple of (json_body, error_message). Exactly one is non-None.
+    """
+    if response.status_code >= 300:
+        return None, f"HTTP {response.status_code}: {response.text.strip()[:500]}"
+
+    try:
+        data = response.json()
+    except ValueError:
+        return None, (
+            f"non-JSON response (HTTP {response.status_code}): "
+            f"{response.text.strip()[:500]}"
+        )
+
+    errors = data.get("errors") or []
+    if errors:
+        return None, _format_slurm_errors(errors)
+
+    return data, None
+
+
+def _submit_via_slurmrestd(
         job_script: str,
-        partition: str | None = None,
+        *,
+        name: str,
+        partition: str | None,
+        nprocs: int | str,
+        standard_output: str,
+        working_directory: str,
 ) -> tuple[str | None, str | None]:
     """
-    Submit a Slurm script with sbatch.
+    Submit a Slurm batch job over the Slurm REST API (slurmrestd).
 
-    :param job_script: Path to the generated Slurm script
-    :param partition: Optional Slurm partition name
-    :return: Tuple of slurm_job_id and error message
+    Reads the batch script produced by write_slurm_script and POSTs it to the
+    job/submit endpoint with an enriched JWT. The script body (including the
+    Django callbacks it performs from the compute node) is identical to the
+    sbatch path; only the submission transport differs. Job properties are sent
+    explicitly in the ``job`` object so submission does not depend on slurmrestd
+    parsing the script's embedded #SBATCH directives.
+
+    :param job_script: Path to the generated Slurm script.
+    :param name: Slurm job name.
+    :param partition: Optional Slurm partition name.
+    :param nprocs: CPUs to request for the job's single task.
+    :param standard_output: Stdout file path for the job.
+    :param working_directory: Existing directory the job runs from.
+    :return: Tuple of slurm_job_id and error message.
     """
     try:
-        command = ["sbatch"]
+        with open(job_script) as handle:
+            script_body = handle.read()
+
+        job: dict[str, Any] = {
+            "name": name,
+            "current_working_directory": working_directory,
+            "standard_output": standard_output,
+            "environment": settings.SLURM_REST_JOB_ENVIRONMENT,
+            "tasks": 1,
+        }
 
         if partition:
-            command += ["--partition", partition]
+            job["partition"] = partition
 
-        command.append(job_script)
+        try:
+            cpus = int(nprocs)
+            if cpus > 0:
+                job["cpus_per_task"] = cpus
+        except (TypeError, ValueError):
+            pass
 
-        logger.info('Running command: ' + ' '.join(command))
-        result = subprocess.run(command, capture_output=True, text=True)
+        url = f"{_slurmrestd_base()}/job/submit"
+        logger.info("Submitting job '%s' to slurmrestd: %s", name, url)
 
-        if result.returncode != 0:
-            error_msg = f"Failed to submit job script {job_script} with  command {command}: {result.stderr.strip()}"
-            logger.error(error_msg)
-            return None, error_msg
+        response = requests.post(
+            url,
+            headers=_slurm_headers(),
+            json={"job": job, "script": script_body},
+            timeout=_REQUEST_TIMEOUT,
+        )
 
-        slurm_job_id = result.stdout.strip().split()[-1]
-        return slurm_job_id, None
+        data, error = _slurm_response_payload(response)
+        if error:
+            return None, f"slurmrestd rejected job '{name}': {error}"
+
+        job_id = data.get("job_id")
+        if not job_id:
+            return None, f"slurmrestd did not return a job_id for '{name}': {data}"
+
+        return str(job_id), None
     except Exception as e:
-        error_msg = f"Failed to submit job script {job_script}: {str(e)}"
+        error_msg = f"Failed to submit job script {job_script} via slurmrestd: {str(e)}"
         logger.exception(error_msg)
         return None, error_msg
 
@@ -349,15 +521,15 @@ def submit_job(
 
     Resolves the Singularity command, converts container paths to host/shared
     filesystem paths, validates the selected Slurm partition, writes the Slurm
-    script, submits it with sbatch, and returns the Slurm job id.
+    script, submits it via the Slurm REST API, and returns the Slurm job id.
 
-    In SLURM_MOCK mode, the script is written but sbatch is skipped.
+    In SLURM_MOCK mode, the script is written but submission is skipped.
 
     :param job_type: Normalized job type string.
     :param run_id: Run identifier.
     :param payload: Job-specific execution payload. Must include auth_token.
     :return: Slurm job id as a string. In SLURM_MOCK mode, returns "-1".
-    :raises RuntimeError: If validation, script generation, or sbatch fails.
+    :raises RuntimeError: If validation, script generation, or submission fails.
     :raises ValueError: If node_type is not an allowed Slurm partition.
     """
     logger.info("Starting Slurm job submission for job_type=%s run_id=%s", job_type, run_id)
@@ -412,7 +584,7 @@ def submit_job(
 
         if settings.JOB_EXECUTION_MODE == JobExecutionMode.SLURM_MOCK:
             logger.warning(
-                "SLURM_MOCK mode enabled; skipping sbatch submission for "
+                "SLURM_MOCK mode enabled; skipping Slurm submission for "
                 "job_type=%s run_id=%s. Generated script: %s",
                 job_type,
                 run_id,
@@ -420,7 +592,14 @@ def submit_job(
             )
             return "-1"
 
-        slurm_job_id, error = _run_sbatch(job_script, partition=node_type)
+        slurm_job_id, error = _submit_via_slurmrestd(
+            job_script,
+            name=f"{job_type}-{run_id}",
+            partition=node_type,
+            nprocs=nprocs,
+            standard_output=output_file_local,
+            working_directory=os.path.dirname(output_file_local),
+        )
         if error:
             raise RuntimeError(error)
         assert slurm_job_id is not None
@@ -477,9 +656,9 @@ def cancel_slurm_job(
     """
     Cancel a job through the Slurm execution path.
 
-    Runs scancel and sends a terminal CANCELED lifecycle event on success.
+    Sends a slurmrestd DELETE and a terminal CANCELED lifecycle event on success.
 
-    A failed scancel request does not mean the job failed; it only means the
+    A failed cancel request does not mean the job failed; it only means the
     cancellation request was not accepted.
 
     :param job_type: Normalized job type string
@@ -501,20 +680,24 @@ def cancel_slurm_job(
         slurm_job_id,
     )
 
-    # scancel requests cancellation asynchronously through Slurm
-    result = subprocess.run(
-        ["scancel", str(slurm_job_id)],
-        capture_output=True,
-        text=True
-    )
+    # DELETE asks slurmrestd to cancel the job; like scancel it is asynchronous.
+    try:
+        response = requests.delete(
+            f"{_slurmrestd_base()}/job/{slurm_job_id}",
+            headers=_slurm_headers(),
+            timeout=_REQUEST_TIMEOUT,
+        )
+        _, error = _slurm_response_payload(response)
+    except Exception as e:
+        error = str(e)
 
-    if result.returncode != 0:
+    if error:
         logger.error(
-            "scancel failed for job_type=%s run_id=%s slurm_job_id=%s: %s",
+            "slurmrestd cancel failed for job_type=%s run_id=%s slurm_job_id=%s: %s",
             job_type,
             run_id,
             slurm_job_id,
-            result.stderr.strip()
+            error,
         )
         return False
 
@@ -528,58 +711,103 @@ def cancel_slurm_job(
     return True
 
 
-def _run_slurm_command(command: list[str]) -> tuple[bool, str]:
+def _normalize_state(raw_state: Any) -> str | None:
     """
-    Run a Slurm CLI command and return whether it succeeded.
+    Reduce a slurmrestd job-state value to a single upper-case base state.
 
-    :param command: Command and arguments to execute.
-    :return: Tuple of (success, stdout_or_stderr).
+    Slurm 25.05 (v0.0.43) reports ``job_state`` as a list of flags such as
+    ``["RUNNING"]`` or ``["CANCELLED"]``; the first element is the base state.
+
+    :param raw_state: The raw job_state value (list or string).
+    :return: Normalized state string, or None if unavailable.
     """
-    result = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    if isinstance(raw_state, list):
+        raw_state = raw_state[0] if raw_state else None
 
-    if result.returncode != 0:
-        return False, result.stderr.strip()
+    if not raw_state:
+        return None
 
-    return True, result.stdout.strip()
+    return str(raw_state).upper()
 
 
-def _parse_sacct_status(slurm_id: int, sacct_output: str) -> str | None:
+def _first_job_state(data: dict[str, Any]) -> str | None:
     """
-    Parse sacct state output for a Slurm job.
+    Extract the first job's state from a slurmrestd jobs response.
 
-    sacct may return rows for the top-level job and its steps. Prefer the
-    top-level job row and ignore step rows such as .batch and .extern.
+    Handles both the slurmctld shape (``jobs[0].job_state`` is a list) and the
+    slurmdbd shape (state under ``jobs[0].state.current``).
 
-    :param slurm_id: Slurm job id being queried.
-    :param sacct_output: Raw stdout from sacct.
-    :return: Normalized top-level Slurm state, or None if unavailable.
+    :param data: Parsed slurmrestd JSON body.
+    :return: Normalized Slurm state, or None if no job/state is present.
     """
-    slurm_id_str = str(slurm_id)
+    jobs = data.get("jobs") or []
+    if not jobs:
+        return None
 
-    for line in sacct_output.splitlines():
-        line = line.strip()
-        if not line:
-            continue
+    job = jobs[0]
+    raw_state = job.get("job_state")
 
-        parts = line.split("|")
-        if len(parts) < 2:
-            continue
+    if raw_state is None:
+        state_obj = job.get("state")
+        if isinstance(state_obj, dict):
+            raw_state = state_obj.get("current")
+        else:
+            raw_state = state_obj
 
-        job_id = parts[0].strip()
-        state = parts[1].strip().upper()
+    return _normalize_state(raw_state)
 
-        if job_id != slurm_id_str:
-            continue
 
-        if state:
-            return state.split()[0]
+def _rest_job_state(slurm_id: int) -> str | None:
+    """
+    Query slurmctld (live) for a job's current state.
 
-    return None
+    Returns None if the job is no longer tracked by the controller (for example,
+    it has aged out after completing) or the query fails.
+
+    :param slurm_id: Slurm job id to query.
+    :return: Normalized live Slurm state, or None.
+    """
+    try:
+        response = requests.get(
+            f"{_slurmrestd_base()}/job/{slurm_id}",
+            headers=_slurm_headers(),
+            timeout=_REQUEST_TIMEOUT,
+        )
+    except Exception as e:
+        logger.warning("slurmrestd job query failed for %s: %s", slurm_id, e)
+        return None
+
+    data, error = _slurm_response_payload(response)
+    if error or not data:
+        return None
+
+    return _first_job_state(data)
+
+
+def _rest_acct_state(slurm_id: int) -> str | None:
+    """
+    Query slurmdbd (accounting) for a job's recorded final state.
+
+    Used as a fallback once a job has left the controller's live view.
+
+    :param slurm_id: Slurm job id to query.
+    :return: Normalized accounting Slurm state, or None.
+    """
+    try:
+        response = requests.get(
+            f"{_slurmrestd_base('slurmdb')}/job/{slurm_id}",
+            headers=_slurm_headers(),
+            timeout=_REQUEST_TIMEOUT,
+        )
+    except Exception as e:
+        logger.warning("slurmdbd job query failed for %s: %s", slurm_id, e)
+        return None
+
+    data, error = _slurm_response_payload(response)
+    if error or not data:
+        return None
+
+    return _first_job_state(data)
 
 
 def get_slurm_status(slurm_id: int) -> tuple[bool, str | None]:
@@ -587,14 +815,16 @@ def get_slurm_status(slurm_id: int) -> tuple[bool, str | None]:
     Query Slurm directly for the current status of a job.
 
     Semantics:
-    - If squeue is empty, the job is no longer active.
-    - If squeue reports COMPLETING, the job is in teardown/cleanup rather than
-      normal execution. In that case, if sacct already reports a terminal
-      state other than COMPLETED, treat the job as inactive and use sacct.
+    - If slurmctld no longer tracks the job, it is no longer active; fall back to
+      slurmdbd accounting for the recorded final state.
+    - If slurmctld reports COMPLETING, the job is in teardown/cleanup rather than
+      normal execution. In that case, if accounting already reports a terminal
+      state other than COMPLETED, treat the job as inactive and use that state.
       Otherwise, treat it as still active and allow time for callback/accounting
       to settle.
-    - For any other non-empty squeue state, treat the job as active.
-    - If Slurm commands fail or return unusable output, treat the job as not
+    - If slurmctld reports any other terminal state, the job is inactive.
+    - For any other live state, treat the job as active.
+    - If Slurm cannot be reached or returns unusable output, treat the job as not
       active with status UNKNOWN.
 
     :param slurm_id: Slurm job id to query.
@@ -602,53 +832,19 @@ def get_slurm_status(slurm_id: int) -> tuple[bool, str | None]:
         - is_active: True if the job is considered active, False otherwise.
         - status_detail: A relevant Slurm status string, or UNKNOWN if indeterminate.
     """
-    squeue_success, squeue_output = _run_slurm_command([
-        "squeue",
-        "--job",
-        str(slurm_id),
-        "--noheader",
-        "--format=%T",
-    ])
+    live_status = _rest_job_state(slurm_id)
 
-    if not squeue_success:
-        logger.error(
-            "Error querying squeue for Slurm job %s: %s",
-            slurm_id,
-            squeue_output,
-        )
-        return False, "UNKNOWN"
+    if not live_status:
+        # No live record; rely on accounting for the terminal state.
+        return False, _rest_acct_state(slurm_id) or "UNKNOWN"
 
-    squeue_status = (
-        squeue_output.splitlines()[0].strip().upper()
-        if squeue_output
-        else None
-    )
-
-    sacct_success, sacct_output = _run_slurm_command([
-        "sacct",
-        "--jobs",
-        str(slurm_id),
-        "--noheader",
-        "--parsable2",
-        "--format=JobID,State",
-    ])
-
-    if not sacct_success:
-        logger.warning(
-            "Error querying sacct for Slurm job %s: %s",
-            slurm_id,
-            sacct_output,
-        )
-        sacct_status = None
-    else:
-        sacct_status = _parse_sacct_status(slurm_id, sacct_output)
-
-    if not squeue_status:
-        return False, sacct_status or "UNKNOWN"
-
-    if squeue_status == "COMPLETING":
-        if sacct_status and sacct_status != "COMPLETED":
-            return False, sacct_status
+    if live_status == "COMPLETING":
+        acct_status = _rest_acct_state(slurm_id)
+        if acct_status and acct_status != "COMPLETED":
+            return False, acct_status
         return True, "COMPLETING"
 
-    return True, squeue_status
+    if live_status in _SLURM_TERMINAL_STATES:
+        return False, live_status
+
+    return True, live_status
