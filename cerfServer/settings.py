@@ -384,6 +384,35 @@ SLURM_PARTITIONS = [
 ]
 
 # -----------------------------
+# Slurm REST API (slurmrestd) transport
+# -----------------------------
+# When JOB_EXECUTION_MODE=SLURM, the server submits/cancels/queries jobs over the
+# Slurm REST API (slurmrestd) instead of the sbatch/scancel/squeue CLIs. Used with
+# AWS PCS, where the Django task reaches slurmrestd on the controller's private IP.
+#
+# SLURM_REST_ENDPOINT           base URL of slurmrestd, e.g. http://10.0.0.10:6820
+# SLURM_API_VERSION             REST API version (Slurm 25.05 -> v0.0.43)
+# SLURM_JWT_SECRET_ARN          Secrets Manager ARN of the PCS-managed JWT signing key
+#                               (its SecretString is base64; decoded before signing)
+# SLURM_REST_USER/UID/GID       POSIX identity claims AWS PCS requires in the JWT
+# SLURM_REST_TOKEN_TTL_SECONDS  lifetime of each signed per-request token
+# SLURM_REST_JOB_ENVIRONMENT    environment exported to the batch job (JSON array of
+#                               "KEY=VALUE"); slurmrestd requires a non-empty environment
+SLURM_REST_ENDPOINT = os.getenv("SLURM_REST_ENDPOINT", "")
+SLURM_API_VERSION = os.getenv("SLURM_API_VERSION", "v0.0.43")
+SLURM_JWT_SECRET_ARN = os.getenv("SLURM_JWT_SECRET_ARN", "")
+SLURM_REST_USER = os.getenv("SLURM_REST_USER", "root")
+SLURM_REST_UID = int(os.getenv("SLURM_REST_UID", "0"))
+SLURM_REST_GID = int(os.getenv("SLURM_REST_GID", "0"))
+SLURM_REST_TOKEN_TTL_SECONDS = int(os.getenv("SLURM_REST_TOKEN_TTL_SECONDS", "600"))
+SLURM_REST_JOB_ENVIRONMENT = json.loads(
+    os.getenv(
+        "SLURM_REST_JOB_ENVIRONMENT",
+        '["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"]',
+    )
+)
+
+# -----------------------------
 # MPI node rules
 # -----------------------------
 # Format:
