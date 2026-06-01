@@ -517,10 +517,16 @@ class ModuleMetadataStaticSerializer(BaseSerializer):
 # Landing page
 ##################################
 
-class GetCalibrationJobsSummaryResponseSerializer(BaseSerializer):
-    running_count = serializers.IntegerField()
-    ready_count = serializers.IntegerField()
-    saved_count = serializers.IntegerField()
+class GetJobsSummaryResponseSerializer(BaseSerializer):
+    running_calibration_count = serializers.IntegerField()
+    ready_calibration_count = serializers.IntegerField()
+    saved_calibration_count = serializers.IntegerField()
+    running_forecast_count = serializers.IntegerField()
+    done_forecast_count = serializers.IntegerField()
+    done_forecast_verification_count = serializers.IntegerField()
+    running_hindcast_count = serializers.IntegerField()
+    done_hindcast_count = serializers.IntegerField()
+    done_hindcast_verification_count = serializers.IntegerField()
 
 
 class ValidationStatusSerializer(ValidationRunIdSerializer):
