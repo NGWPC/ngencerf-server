@@ -1,3 +1,6 @@
+#This file is used for development testing only
+#compose files are not used for production
+
 name: ngencerf-server
 
 services:
