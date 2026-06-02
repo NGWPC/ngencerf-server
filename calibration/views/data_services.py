@@ -24,7 +24,7 @@ default_headers = {
 }
 
 
-def fetch_from_data_services(method: str, url: str, headers: dict = None, payload: dict = None) -> dict | str:
+def fetch_from_data_services(method: str, url: str, headers: dict | None = None, payload: dict | None = None) -> dict | str:
     """
     Issue an HTTP request to Data Services.
 
