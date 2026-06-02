@@ -39,13 +39,12 @@ if [[ ! -f "./check_enum_consistency.py" ]]; then
     exit 1
 fi
 
-python3 "./check_enum_consistency.py" || {
+python "./check_enum_consistency.py" || {
     echo "Enum consistency check failed. Fix mismatch before building."
     exit 1
 }
 
-
-python3.11 -m venv "$BUILD_VENV"
+python -m venv "$BUILD_VENV"
 source "$BUILD_VENV/bin/activate"
 
 echo "==> Upgrading pip and installing PyInstaller..."
