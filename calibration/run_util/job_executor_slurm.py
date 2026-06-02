@@ -149,12 +149,12 @@ def get_callback_url(job_type: str) -> str:
     :raises ValueError: If job_type is unsupported.
     """
     callback_paths = {
-        "calibration": "/api/calibration/calibration_job_slurm_callback/",
-        "validation": "/api/calibration/validation_job_slurm_callback/",
-        "cold_start": "/api/calibration/cold_start_job_slurm_callback/",
-        "forecast": "/api/calibration/forecast_job_slurm_callback/",
-        "hindcast": "/api/calibration/hindcast_job_slurm_callback/",
-        "verification": "/api/calibration/verification_job_slurm_callback/",
+        "calibration": "/calibration/calibration_job_slurm_callback/",
+        "validation": "/calibration/validation_job_slurm_callback/",
+        "cold_start": "/calibration/cold_start_job_slurm_callback/",
+        "forecast": "/calibration/forecast_job_slurm_callback/",
+        "hindcast": "/calibration/hindcast_job_slurm_callback/",
+        "verification": "/calibration/verification_job_slurm_callback/",
     }
 
     try:
@@ -162,7 +162,7 @@ def get_callback_url(job_type: str) -> str:
     except KeyError as exc:
         raise ValueError(f"Unsupported job_type for callback: {job_type}") from exc
 
-    return f"{settings.NGENCERF_BASE_URL}{callback_path}"
+    return settings.NGENCERF_BASE_URL.rstrip("/") + callback_path
 
 
 def write_slurm_script(
