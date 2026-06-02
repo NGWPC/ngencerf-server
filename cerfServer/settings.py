@@ -717,7 +717,7 @@ def validate_url(url: str, name: str) -> None:
 PORT = validate_port(os.getenv("PORT", "8000"))
 
 NGENCERF_BASE_URL = normalize_base_url(
-    os.getenv("NGENCERF_BASE_URL", "localhost"),
+    os.getenv("NGENCERF_BASE_URL", "localhost:8000/api"),
     PORT,
 )
 
