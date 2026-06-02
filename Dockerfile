@@ -28,8 +28,8 @@ ARG NGEN_FORCING_REF=development
 ############################################################################
 
 # Image selection
-ARG BASE_REPO=rockylinux
-ARG BASE_TAG=8
+ARG BASE_REPO=python
+ARG BASE_TAG=3.14-slim-bookworm
 
 FROM ${BASE_REPO}:${BASE_TAG}
 
@@ -93,20 +93,28 @@ LABEL org.opencontainers.image.base.name="${BASE_NAME}" \
 
 # Install build and runtime dependencies
 RUN set -eux && \
-    dnf install -y yum-utils epel-release && \
-    dnf install -y \
-        redis \
-        findutils \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
         file \
-        jq \
-        libpq \
+        findutils \
+        gcc \
+        g++ \
         git \
-        openssl openssl-devel \
-        # Python 3.11 stack
-        python3.11 python3.11-libs python3.11-devel \
-        python3.11-pip \
-        python3.11-setuptools && \
-    dnf clean all
+        jq \
+        libpq5 \
+        libpq-dev \
+        make \
+        openssl \
+        pkg-config \
+        xz-utils \
+        # GDAL/Fiona requirements
+        gdal-bin \
+        libgdal-dev \
+        libproj-dev \
+        proj-data && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Python virtual environment
 ENV VIRTUAL_ENV=/ngencerf/ngencerf-python
@@ -114,7 +122,7 @@ ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
 RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     set -eux && \
-    python3.11 -m venv ${VIRTUAL_ENV}
+    python -m venv ${VIRTUAL_ENV}
 
 WORKDIR /ngencerf/ngencerf-server/
 
@@ -123,8 +131,8 @@ COPY requirements.txt .
 
 RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     set -eux && \
-    pip3 install --upgrade pip && \
-    pip3 install -r requirements.txt && \
+    pip install --upgrade pip && \
+    pip install -r requirements.txt && \
     rm -f requirements.txt
 
 # ── EWTS (Error and Warning Trapping System)
@@ -140,7 +148,6 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
         "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" \
      || (git clone "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" && \
          cd "${ewts_dir}" && git checkout "${EWTS_REF}") && \
-    cd "${ewts_dir}" && \
     pip install "${ewts_dir}/runtime/python/ewts" && \
     rm -rf "${ewts_dir}"
 
