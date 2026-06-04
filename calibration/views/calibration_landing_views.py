@@ -2,8 +2,10 @@ import errno
 import json
 import logging
 import os
+import re
 import shutil
 import time
+from collections import defaultdict
 from datetime import datetime, timezone
 from functools import lru_cache
 
@@ -268,6 +270,7 @@ def delete_jobs(request: Request) -> Response:
                 "message": error.data.get('message'),
                 "calibration_run_id": calibration_run_id,
                 "success": False,
+                "message_type": "error"
             })
             continue
 
@@ -278,7 +281,8 @@ def delete_jobs(request: Request) -> Response:
             job_results.append({
                 "message": f'Calibration Job {calibration_run_id} is locked for archiving/deleting',
                 "calibration_run_id": calibration_run_id,
-                "success": False
+                "success": False,
+                "message_type": "error"
             })
             continue
 
@@ -288,7 +292,8 @@ def delete_jobs(request: Request) -> Response:
             job_results.append({
                 "message": running_jobs_error,
                 "calibration_run_id": calibration_run_id,
-                "success": False
+                "success": False,
+                "message_type": "error"
             })
             continue
 
@@ -298,10 +303,13 @@ def delete_jobs(request: Request) -> Response:
         job_results.append({
             "message": f"Calibration Job {calibration_run_id} and associated records have been deleted",
             "calibration_run_id": calibration_run_id,
-            "success": True
+            "success": True,
+            "message_type": "success"
         })
 
-    response = {"jobs": job_results}
+    job_summaries = create_job_summaries(job_results)
+    
+    response = {"jobs": job_results, "summaries": job_summaries}
 
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
@@ -410,7 +418,8 @@ def archive_jobs(request: Request) -> Response:
             job_results.append({
                 "message": error.data.get('message'),
                 "calibration_run_id": calibration_run_id,
-                "success": False
+                "success": False,
+                "message_type": "error"
             })
             continue
 
@@ -421,7 +430,8 @@ def archive_jobs(request: Request) -> Response:
             job_results.append({
                 "message": f'Calibration Job {calibration_run_id} is locked for archiving/deleting',
                 "calibration_run_id": calibration_run_id,
-                "success": False
+                "success": False,
+                "message_type": "error"
             })
             continue
 
@@ -430,7 +440,8 @@ def archive_jobs(request: Request) -> Response:
             job_results.append({
                 "message": f'Calibration Job {calibration_run_id} is {"already" if archive else "not"} archived',
                 "calibration_run_id": calibration_run_id,
-                "success": False
+                "success": False,
+                "message_type": "warn"
             })
             continue
 
@@ -445,7 +456,8 @@ def archive_jobs(request: Request) -> Response:
                     job_results.append({
                         "message": running_jobs_error,
                         "calibration_run_id": calibration_run_id,
-                        "success": False
+                        "success": False,
+                        "message_type": "error"
                     })
                     continue
 
@@ -566,7 +578,8 @@ def archive_jobs(request: Request) -> Response:
                 'message': f'Calibration Job {calibration_run_id} has been '
                            f'{"archived" if archive else "unarchived"}',
                 "calibration_run_id": calibration_run_id,
-                "success": True
+                "success": True,
+                "message_type": "success"
             })
 
         except Exception as e:
@@ -574,11 +587,14 @@ def archive_jobs(request: Request) -> Response:
             job_results.append({
                 "message": f"Failed to {'archive' if archive else 'unarchive'} Calibration Job {calibration_run_id}: {e}",
                 "calibration_run_id": calibration_run_id,
-                "success": False
+                "success": False,
+                "message_type": "error"
             })
             continue
+    
+    job_summaries = create_job_summaries(job_results)
 
-    response = {"jobs": job_results}
+    response = {"jobs": job_results, "summaries": job_summaries}
 
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
@@ -644,7 +660,8 @@ def lock_jobs(request: Request) -> Response:
             job_results.append({
                 "message": error.data.get('message'),
                 "calibration_run_id": calibration_run_id,
-                "success": False
+                "success": False,
+                "message_type": "error"
             })
             continue
 
@@ -655,7 +672,8 @@ def lock_jobs(request: Request) -> Response:
             job_results.append({
                 "message": f'Calibration Job {calibration_run_id} is {"already" if lock else "not"} locked',
                 "calibration_run_id": calibration_run_id,
-                "success": False
+                "success": False,
+                "message_type": "warn"
             })
             continue
 
@@ -665,10 +683,13 @@ def lock_jobs(request: Request) -> Response:
         job_results.append({
             'message': f'Calibration Job {calibration_run_id} has been {"locked" if lock else "unlocked"}',
             "calibration_run_id": calibration_run_id,
-            "success": True
+            "success": True,
+            "message_type": "success"
         })
-
-    response = {"jobs": job_results}
+    
+    job_summaries = create_job_summaries(job_results)
+        
+    response = {"jobs": job_results, "summaries": job_summaries}
 
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
@@ -905,3 +926,81 @@ def move_tree_out_of_active_path(path: str) -> str:
     os.replace(path, quarantine_path)
 
     return quarantine_path
+
+
+def create_job_summaries(job_results: list) -> list:
+    """
+    Generates summaries combining the individual status messages generated by a multiple job operation.
+
+    This is used after deleting, arhchiving/unarchiving, or locking/unlocking one or more jobs, for the
+    sake of giving the UI concise messages to show when dealing with larger job lists.
+
+    :param job_results: The individual job results from a multiple job operation.
+    :return: A list of summary messages, each with message_type "success", "warning", or "error".
+    """
+    jobs_grouped = defaultdict(list)
+    
+    for job in job_results:
+        message = job["message"]
+
+        match = re.match(
+            r"Calibration Job \S+\s+(.*)",
+            message
+        )
+
+        if not match:
+            # Fallback: don't group messages that don't match the pattern
+            key = (job["message_type"], message)
+        else:
+            remainder = match.group(1)
+            key = (job["message_type"], remainder)
+
+        jobs_grouped[key].append(job["calibration_run_id"])
+
+    job_summaries = [
+        {
+            "message_type": message_type,
+            "message": remainder,
+            "calibration_run_ids": ids,
+        }
+        for (message_type, remainder), ids in jobs_grouped.items()
+    ]
+
+    for summary in job_summaries:
+        ids = [str(i) for i in summary["calibration_run_ids"]]
+
+        if len(ids) == 1:
+            ids_text = ids[0]
+        elif len(ids) == 2:
+            ids_text = " and ".join(ids)
+        else:
+            ids_text = f"{', '.join(ids[:-1])} and {ids[-1]}"
+
+        if len(ids) > 1:
+            remainder_message = summary["message"]
+
+            replacements = {
+                "has": "have",
+                "is": "are",
+                "does": "do",
+            }
+
+            for singular, plural in replacements.items():
+                remainder_message = re.sub(
+                    rf"\b{singular}\b",
+                    plural,
+                    remainder_message,
+                    flags=re.IGNORECASE,
+                )
+        else:
+            remainder_message = summary["message"]
+
+        summary["message"] = (
+            f"Calibration Job{'s' if len(ids) > 1 else ''} "
+            f"{ids_text} {remainder_message}"
+        )
+
+        # Remove calibration_run_ids from the final response
+        del summary["calibration_run_ids"]
+    
+    return job_summaries

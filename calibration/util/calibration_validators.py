@@ -585,10 +585,16 @@ class LoadCalibrationJobSerializer(CalibrationRunIdSerializer):
 class JobElement(GenericMessageResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
     success = serializers.BooleanField(required=True, allow_null=False)
+    message_type = serializers.CharField(required=True)
+
+
+class MessageSummaryElement(GenericMessageResponseSerializer):
+    message_type = serializers.CharField(required=True)
 
 
 class CalibrationRunListResponse(BaseSerializer):
     jobs = JobElement(many=True, required=True, allow_null=False)
+    summaries = MessageSummaryElement(many=True, required=True, allow_null=False)
 
 
 class FooterResponseSerializer(BaseSerializer):
