@@ -426,9 +426,6 @@ def get_module_metadata_from_data_services(
                 "status_code": None,
             })
 
-    # Only translate names for modules that actually have parameters
-    fix_module_metadata(module_metadata)
-
     return module_metadata, eds_errors
 
 
@@ -520,92 +517,6 @@ def update_parameters(run: CalibrationRun, module_metadata: dict, gage_changed: 
                 if params_to_update:
                     CalibrationParameter.objects.bulk_update(params_to_update, ['initial_value'])
 
-
-translation_map = {
-    ("CFE-S", "soil_params.smcmax"): "maxsmc",
-    ("CFE-S", "soil_params.satdk"): "satdk",
-    ("CFE-S", "soil_params.slop"): "slope",
-    ("CFE-S", "soil_params.b"): "b",
-    ("CFE-S", "K_lf"): "Klf",
-    ("CFE-S", "K_nash"): "Kn",
-    ("CFE-S", "soil_params.satpsi"): "satpsi",
-    ("CFE-S", "soil_params.wltsmc"): "wltsmc",
-
-    ("CFE-X", "soil_params.smcmax"): "maxsmc",
-    ("CFE-X", "soil_params.satdk"): "satdk",
-    ("CFE-X", "soil_params.slop"): "slope",
-    ("CFE-X", "soil_params.b"): "b",
-    ("CFE-X", "K_lf"): "Klf",
-    ("CFE-X", "K_nash"): "Kn",
-    ("CFE-X", "soil_params.satpsi"): "satpsi",
-    ("CFE-X", "soil_params.wltsmc"): "wltsmc",
-
-    ("Noah-OWP-Modular", "MAXSMC"): "SMCMAX",
-    ("Noah-OWP-Modular", "CWPVT"): "CWP",
-    ("Noah-OWP-Modular", "SATDK"): "DKSAT",
-
-    ("LASAM", "theta_e"): "smcmax",
-    ("LASAM", "theta_r"): "smcmin",
-    ("LASAM", "n"): "van_genuchten_n",
-    ("LASAM", "alpha"): "van_genuchten_alpha",
-    ("LASAM", "Ks"): "hydraulic_conductivity",
-    ("LASAM", "field_capacity_psi"): "field_capacity",
-
-    ("SFT", "soil_params.smcmax"): "smcmax",
-    ("SFT", "soil_params.b"): "b",
-    ("SFT", "soil_params.satpsi"): "satpsi",
-    ("SFT", "soil_params.quartz"): "quartz",
-    ("SFT", "soil_temperature"): "soil_temperature_profile",
-
-    ("SMP", "soil_params.smcmax"): "smcmax",
-    ("SMP", "soil_params.b"): "b",
-    ("SMP", "soil_params.satpsi"): "satpsi",
-}
-
-
-def fix_module_metadata(module_metadata):
-    """
-     Normalize module metadata by translating selected parameter names.
-
-    Translation is based on the module name and original parameter name. Modules with
-    EDFS errors are skipped.
-
-    :param module_metadata: Dictionary containing module metadata.
-                     Example structure:
-                     {
-                         "modules": [
-                             {
-                                 "module_name": "module_name",
-                                 "calibratable_parameters": [
-                                     {"name": "full_param_name", "value": 123}
-                                 ]
-                             }
-                         ]
-                     }
-    :return: None. The input dictionary is modified in place.
-    """
-    modules = (module_metadata or {}).get("modules") or []
-    for module in modules:
-        # If EDFS reported an error for this module, do not touch it.
-        if module.get("error"):
-            continue
-
-        module_name = module.get("module_name")
-        if not module_name:
-            continue
-
-        params = module.get("calibratable_parameters") or []
-        for param in params:
-            param_name = param["name"]  # Extract the parameter name
-            if not param_name:
-                continue
-
-            key = (module_name, param_name)  # Create a tuple key
-            mapped = translation_map.get(key)
-            # Check if the key exists in the translation_map
-            if mapped:
-                logger.info(f"Translating {key} to {mapped}")
-                param["name"] = mapped
 
 
 def safe_float(value, label, param_name, module_name):
