@@ -2,12 +2,14 @@
 
 MSWM_REPO="https://github.com/NGWPC/nwm-msw-mgr.git"
 DATA_ASSIM_REPO="https://github.com/NGWPC/nwm-data-assimilation.git"
+EWTS_REPO="https://github.com/NGWPC/nwm-ewts.git"
 
 # Branches/tags for git repos
-#MSWM_BRANCH='jwade_NGWPC-7589_add_aet_rootzone'
-MSWM_BRANCH='development'
-DATA_ASSIMILATION_BRANCH='development'
-NGEN_FORCING_TAG='development'
+#MSWM_REF='jwade_NGWPC-7589_add_aet_rootzone'
+MSWM_REF='development'
+DATA_ASSIMILATION_REF='development'
+NGEN_FORCING_REF='development'
+EWTS_REF='development'
 
 #=======================================================================
 # Script must be sourced for 'activate' mode
@@ -455,8 +457,9 @@ validate_git_ref_or_exit() {
 #=======================================================================
 # Validate git refs early so we fail before any installs or setup work
 #=======================================================================
-validate_git_ref_or_exit "$MSWM_REPO" "$MSWM_BRANCH" "mswm"
-validate_git_ref_or_exit "$DATA_ASSIM_REPO" "$DATA_ASSIMILATION_BRANCH" "data_assimilation_engine"
+validate_git_ref_or_exit "$MSWM_REPO" "$MSWM_REF" "mswm"
+validate_git_ref_or_exit "$DATA_ASSIM_REPO" "$DATA_ASSIMILATION_REF" "data_assimilation_engine"
+validate_git_ref_or_exit "$EWTS_REPO" "$EWTS_REF" "ewts"
 
 #=======================================================================
 # Special case: if the first argument is “manage”, just run manage.py <args>
@@ -514,6 +517,13 @@ if [ "$IN_DOCKER" = false ]; then
 
         FORCE_REINSTALL_VCS="${FORCE_REINSTALL_VCS:-0}"
 
+        # SHA caching is branch-oriented. It resolves refs/heads/<ref>
+        # and skips reinstall when the branch tip SHA has not changed.
+        #
+        # Tags and commit hashes are still valid pip install refs, but this
+        # helper does not cache them. If a *_REF is set to a tag or commit hash,
+        # the install falls back to a full reinstall on each startup. That is
+        # acceptable because these override refs are mainly for development use.
         resolve_branch_sha() {
             local repo_url="$1"
             local branch="$2"
@@ -569,32 +579,50 @@ if [ "$IN_DOCKER" = false ]; then
 
         echo
         echo --------------------------------------------------------
-        echo "Installing mswm from branch '$MSWM_BRANCH'"
+        echo "Installing mswm from branch '$MSWM_REF'"
         MSWM_SHA_MARKER="${RUN_CERF_FLAG_DIRECTORY}/.mswm.sha"
-        if MSWM_SHA="$(resolve_branch_sha "$MSWM_REPO" "$MSWM_BRANCH")"; then
-            echo "mswm ${MSWM_BRANCH} -> ${MSWM_SHA}"
+        if MSWM_SHA="$(resolve_branch_sha "$MSWM_REPO" "$MSWM_REF")"; then
+            echo "mswm ${MSWM_REF} -> ${MSWM_SHA}"
+
             if should_reinstall_git_pkg "mswm" "$MSWM_SHA" "$MSWM_SHA_MARKER"; then
-                pip install --force-reinstall --no-cache-dir "git+${MSWM_REPO}@${MSWM_BRANCH}"
+                pip install --force-reinstall --no-cache-dir "git+${MSWM_REPO}@${MSWM_REF}"
                 record_sha_marker "$MSWM_SHA" "$MSWM_SHA_MARKER"
             fi
         else
             # Fallback: could not resolve the branch SHA; revert to branch-based install behavior.
-            pip install --force-reinstall --no-cache-dir "git+${MSWM_REPO}@${MSWM_BRANCH}"
+            pip install --force-reinstall --no-cache-dir "git+${MSWM_REPO}@${MSWM_REF}"
         fi
 
         echo
         echo --------------------------------------------------------
-        echo "Installing data_assimilation_engine from branch '$DATA_ASSIMILATION_BRANCH'"
+        echo "Installing data_assimilation_engine from branch '$DATA_ASSIMILATION_REF'"
         DATA_ASSIM_SHA_MARKER="${RUN_CERF_FLAG_DIRECTORY}/.data_assimilation_engine.sha"
-        if DATA_ASSIM_SHA="$(resolve_branch_sha "$DATA_ASSIM_REPO" "$DATA_ASSIMILATION_BRANCH")"; then
-            echo "data_assimilation_engine ${DATA_ASSIMILATION_BRANCH} -> ${DATA_ASSIM_SHA}"
+        if DATA_ASSIM_SHA="$(resolve_branch_sha "$DATA_ASSIM_REPO" "$DATA_ASSIMILATION_REF")"; then
+            echo "data_assimilation_engine ${DATA_ASSIMILATION_REF} -> ${DATA_ASSIM_SHA}"
+
             if should_reinstall_git_pkg "data_assimilation_engine" "$DATA_ASSIM_SHA" "$DATA_ASSIM_SHA_MARKER"; then
-                pip install --force-reinstall --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_BRANCH}"
+                pip install --force-reinstall --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_REF}"
                 record_sha_marker "$DATA_ASSIM_SHA" "$DATA_ASSIM_SHA_MARKER"
             fi
         else
             # Fallback: could not resolve the branch SHA; revert to branch-based install behavior.
-            pip install --force-reinstall --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_BRANCH}"
+            pip install --force-reinstall --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_REF}"
+        fi
+
+        echo
+        echo --------------------------------------------------------
+        echo "Installing ewts from branch '$EWTS_REF'"
+        EWTS_SHA_MARKER="${RUN_CERF_FLAG_DIRECTORY}/.ewts.sha"
+        if EWTS_SHA="$(resolve_branch_sha "$EWTS_REPO" "$EWTS_REF")"; then
+            echo "ewts ${EWTS_REF} -> ${EWTS_SHA}"
+
+            if should_reinstall_git_pkg "ewts" "$EWTS_SHA" "$EWTS_SHA_MARKER"; then
+                pip install --force-reinstall --no-cache-dir "git+${EWTS_REPO}@${EWTS_REF}#subdirectory=runtime/python/ewts"
+                record_sha_marker "$EWTS_SHA" "$EWTS_SHA_MARKER"
+            fi
+        else
+            # Fallback: could not resolve the branch SHA; revert to branch-based install behavior.
+            pip install --force-reinstall --no-cache-dir "git+${EWTS_REPO}@${EWTS_REF}#subdirectory=runtime/python/ewts"
         fi
 
         echo
@@ -611,6 +639,7 @@ if [ "$IN_DOCKER" = false ]; then
             echo "# If you suspect the git-installed packages are in a bad state, uninstall them and rerun this script:"
             echo "#   pip uninstall -y data_assimilation_engine"
             echo "#   pip uninstall -y mswm"
+            echo "#   pip uninstall -y ewts"
             echo "######################################################################"
             echo
         fi
@@ -780,7 +809,7 @@ if [ "$IN_DOCKER" = true ]; then
 else
     NGEN_FORCING_URL="https://github.com/NGWPC/ngen-forcing.git"
 
-    echo "Not running in Docker: cloning bmi_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_TAG}"
+    echo "Not running in Docker: cloning bmi_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_REF}"
 
     cd "$STATIC_DIR" || {
     echo "ERROR: could not cd to $STATIC_DIR"
@@ -788,7 +817,7 @@ else
     }
 
     git clone --depth 1 --filter=blob:none --sparse \
-        -b "${NGEN_FORCING_TAG}" \
+        -b "${NGEN_FORCING_REF}" \
         "$NGEN_FORCING_URL" tmp-ngen-forcing
 
     cd tmp-ngen-forcing || {
