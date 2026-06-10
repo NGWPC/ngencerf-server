@@ -462,7 +462,8 @@ def upload_user_parameters(request: Request) -> Response:
     if len(files) > 1:
         logger.warning(f'{get_caller_name()}() multiple files uploaded; using the first one')
 
-    # Process the first file in the list
+    # Only one parameter file is supported. If the client sends multiple files,
+    # use the first file and ignore the rest.
     parameter_file = files[0]
     try:
         file_contents = parameter_file.read().decode('utf-8')
@@ -473,7 +474,9 @@ def upload_user_parameters(request: Request) -> Response:
     if not file_contents.strip():
         return ResponseError('Uploaded file is empty.')
 
-    # Detect delimiter type by checking the first few rows
+    # Infer the delimiter from the header row. Comma and tab are handled as
+    # explicit delimiters; otherwise fall back to whitespace so space-separated
+    # files can still be accepted.
     first_line = file_contents.splitlines()[0]
 
     if ',' in first_line:
@@ -490,18 +493,26 @@ def upload_user_parameters(request: Request) -> Response:
     required_columns = ['param', 'min', 'max', 'init', 'model']
     expected_cols = len(required_columns)
 
-    # Pre-validate consistent column counts when we have a simple delimiter
-    # (csv.reader can't handle regex separators, so we skip this for r'\s+')
+    # For CSV/TSV files, perform a strict pre-parse check before pandas reads
+    # the file. This catches malformed rows with too many/few fields and gives
+    # a clearer line-specific error than pandas usually provides.
+    #
+    # This is skipped for whitespace-delimited files because csv.reader cannot
+    # use a regex delimiter like r'\s+'.
     if delimiter in (',', '\t'):
         import csv
         lines = file_contents.splitlines()
-        # Header check (strict match on header names after trim)
+
+        # Require an exact header match after trimming whitespace. This avoids
+        # accepting renamed, reordered, or extra columns accidentally.
         header_cols = [c.strip() for c in next(csv.reader([lines[0]], delimiter=delimiter))]
         if header_cols != required_columns:
             return ResponseError(
                 f'Header mismatch. Expected: {required_columns}, Found: {header_cols}'
             )
-        # Validate each data line has exactly the expected number of columns
+
+        # Check each data row before pandas parsing so we can report the actual
+        # offending line and avoid silent column shifting.
         for i, row in enumerate(lines[1:], start=2):  # human line numbers
             cols = next(csv.reader([row], delimiter=delimiter))
             if len(cols) != expected_cols:
@@ -509,7 +520,9 @@ def upload_user_parameters(request: Request) -> Response:
                     f'Row {i} has {len(cols)} fields; expected {expected_cols}. Offending row: {row}'
                 )
 
-    # Parse with pandas; enforce dtypes so we fail fast on bad numerics
+    # Parse with pandas after the manual structural checks. The dtype mapping
+    # forces numeric columns to be converted immediately, so invalid min/max/init
+    # values fail early instead of being carried forward as strings.
     try:
         # Handle file parsing based on detected delimiter
         df = pd.read_csv(
@@ -527,29 +540,33 @@ def upload_user_parameters(request: Request) -> Response:
         logger.debug(f'Pandas dtype error: {exc}')
         return Response({'error': f'Invalid data types in file: {exc}'}, status=400)
 
-    # Strip any leading/trailing whitespace in the column headers
+    # Normalize column names after parsing so headers like " param " are treated
+    # as "param".
     df.columns = df.columns.str.strip()
 
     # Log detected columns for debugging
     logger.debug(f"Detected columns: {df.columns.tolist()}")
 
-    # Ensure that the DataFrame contains the correct columns
+    # Confirm that all required columns are present after parsing.
     missing_cols = [col for col in required_columns if col not in df.columns]
     if missing_cols:
         # Log the actual DataFrame to inspect it
         logger.debug(f"DataFrame content:\n{df.head()}")
         return ResponseError(f'Missing required columns: {missing_cols}')
 
-    # Ensure no unexpected columns (common when a row has too many fields and pandas shifts things)
+    # Reject extra columns. Extra columns often indicate a bad delimiter or a row
+    # with too many fields, both of which can corrupt the parameter mapping.
     unexpected = [c for c in df.columns if c not in required_columns]
     if unexpected:
         return ResponseError(f'Unexpected columns present: {unexpected}. Expected only {required_columns}.')
 
-    # Ensure there is at least one data row
+    # Require at least one parameter row; a header-only file is structurally valid
+    # but not useful.
     if df.empty:
         return ResponseError('No data rows found. Provide at least one parameter row.')
 
-    # Validate numeric columns and report exact offending lines/values
+    # Re-check numeric fields and return exact line/value details. This protects
+    # against edge cases where pandas parsing succeeds but values still become NaN.
     invalid_details: dict[str, list[dict[str, object]]] = {}
     for col in ['min', 'max', 'init']:
         # Re-coerce to catch NaN in case dtype enforcement was bypassed by space sep quirks
@@ -557,7 +574,9 @@ def upload_user_parameters(request: Request) -> Response:
         bad_mask = pd.isna(coerced)
         if bad_mask.any():
             bad_rows = df[bad_mask]
-            # +2 => header is line 1; df index 0 is line 2
+
+            # Add 2 because line 1 is the header and DataFrame index 0
+            # corresponds to source file line 2.
             invalid_details[col] = [
                 {
                     'line': offset + 2,
@@ -571,7 +590,10 @@ def upload_user_parameters(request: Request) -> Response:
         logger.debug(f"Invalid numeric values: {invalid_details}")
         return Response({'error': 'Invalid numeric values', 'details': invalid_details}, status=400)
 
-    # Range checks: min <= max and init within [min, max]
+    # Validate parameter bounds before returning the parsed data to the UI.
+    # Each row must satisfy:
+    #   min <= max
+    #   min <= init <= max
     range_errors = {}
 
     bad_minmax_mask = df['min'] > df['max']
@@ -621,7 +643,8 @@ def upload_user_parameters(request: Request) -> Response:
 
     logger.debug(f"Parsed DataFrame after stripping and numeric conversion: \n{df}")
 
-    # Convert DataFrame to a list of dictionaries
+    # Return the parsed parameter rows to the caller. This endpoint validates and
+    # echoes the uploaded file contents; it only persists the filename on the run.
     parsed_data = df.to_dict(orient='records')
 
     # Persist filename on the run
