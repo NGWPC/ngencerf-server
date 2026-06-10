@@ -90,6 +90,7 @@ class CalibrationConfig(AppConfig):
         logger.info(f'NGEN_STATIC_DIR: {settings.NGEN_STATIC_DIR}')
         logger.info(f'NGENCERF_ARCHIVE_S3_PATH: {settings.NGENCERF_ARCHIVE_S3_PATH}')
         logger.info(f'NGENCERF_ZIPS_S3_PATH: {settings.NGENCERF_ZIPS_S3_PATH}')
+        logger.info(f"FORCING_AORC_CONUS_BMI_DATE_RANGE: {settings.FORCING_AORC_CONUS_BMI_DATE_RANGE}")
         logger.info(f'DJANGO DEBUG: {settings.DEBUG}')
         log_mpi_rules()
 
