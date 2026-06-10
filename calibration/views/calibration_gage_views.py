@@ -11,7 +11,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum
-from calibration.models import Gage, CalibrationRun, CalibrationFormulation
+from calibration.models import Gage, CalibrationRun, CalibrationFormulation, ForcingSource
 from calibration.util.caching import get_cached_gages, get_gage_by_id, update_and_get_cached_gage_status
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, SaveGageResponseSerializer, GageSerializer, \
     LoadGageResponseSerializer, ErrorResponseSerializer, UpdateGageStatusRequestSerializer, UpdateGageStatusResponseSerializer, EmptySerializer
@@ -224,6 +224,19 @@ def save_gage_tab(request: Request):
         .get(gage_id=gage_id)
     )
 
+    forcing_source: ForcingSource | None = (
+        ForcingSourceEnum.get_instance(forcing_source_name)
+        if forcing_source_name
+        else None
+    )
+
+    if (
+            forcing_source is not None
+            and forcing_source.name == ForcingSourceEnum.AORC.value
+            and gage.domain.name != DomainEnum.CONUS.value
+    ):
+        return ResponseError("'AORC' is only valid for Domain 'CONUS'")
+
     gage_is_new_or_changed = (run.gage is None) or (run.gage != gage)
 
     if gage_is_new_or_changed:
@@ -279,12 +292,6 @@ def save_gage_tab(request: Request):
         geopackage_image_url = get_geopackage_image_url(geopackage_path)
 
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
-
-    forcing_source = (
-        ForcingSourceEnum.get_instance(forcing_source_name)
-        if forcing_source_name
-        else None
-    )
 
     run.forcing_source = forcing_source
 

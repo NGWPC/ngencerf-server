@@ -1276,19 +1276,15 @@ def get_csv_daterange(path: str) -> DateTimeRange:
 def get_date_range_intersection(run: CalibrationRun) -> DateTimeRange | None:
     """
     Calculates the intersection of date ranges between observational and forcing data.
-    Supports both local paths and cloud URLs.
 
-    :param run Calibration Run
+    :param run: Calibration Run.
     :return: DateTimeRange representing the overlapping period, or None if no overlap.
     """
     # Calculate the date range for the observational data
     obs_range = get_observational_date_range_from_data_services(run)
     logger.debug(f"obs_range: {obs_range}")
 
-    # Use fixed date range for the forcing data
-    forcing_range = (settings.FORCING_AORC_BMI_DATE_RANGE
-                     if run.forcing_source == ForcingSourceEnum.AORC.db_instance
-                     else settings.FORCING_NWM_RETROSPECTIVE_BMI_DATE_RANGE)
+    forcing_range = get_forcing_date_range(run)
     logger.debug(f"forcing_range: {forcing_range}")
 
     # Compute the intersection of the two ranges
@@ -1306,6 +1302,48 @@ def get_date_range_intersection(run: CalibrationRun) -> DateTimeRange | None:
 
         if start_time <= end_time:
             return DateTimeRange(start_time, end_time)
+
+    return None
+
+
+def get_forcing_date_range(run: CalibrationRun) -> DateTimeRange | None:
+    """
+    Return the configured forcing date range for the run's forcing source and domain.
+
+    AORC currently only supports CONUS and uses the dynamically resolved AORC
+    CONUS range.
+
+    NWM Retrospective supports multiple domains, each with its own configured
+    date range.
+    """
+    if run.forcing_source is None or run.gage is None or run.gage.domain is None:
+        return None
+
+    forcing_source_name = run.forcing_source.name
+    domain_name = run.gage.domain.name
+
+    if forcing_source_name == ForcingSourceEnum.AORC.value:
+        if domain_name == "CONUS":
+            return settings.FORCING_AORC_CONUS_BMI_DATE_RANGE
+        return None
+
+    if forcing_source_name == ForcingSourceEnum.NWM_RETROSPECTIVE.value:
+        nwm_ranges = {
+            "CONUS": settings.FORCING_NWM_RETROSPECTIVE_CONUS_BMI_DATE_RANGE,
+            "Hawaii": settings.FORCING_NWM_RETROSPECTIVE_HAWAII_BMI_DATE_RANGE,
+            "Alaska": settings.FORCING_NWM_RETROSPECTIVE_ALASKA_BMI_DATE_RANGE,
+            "Puerto_Rico": settings.FORCING_NWM_RETROSPECTIVE_PUERTO_RICO_BMI_DATE_RANGE,
+        }
+
+        forcing_range = nwm_ranges.get(domain_name)
+
+        logger.info(
+            "Using NWM Retrospective forcing date range for domain %s: %s",
+            domain_name,
+            forcing_range,
+        )
+
+        return forcing_range
 
     return None
 

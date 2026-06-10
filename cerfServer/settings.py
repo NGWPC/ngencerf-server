@@ -18,6 +18,7 @@ from datetimerange import DateTimeRange
 from dotenv import load_dotenv
 
 from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum, JobType
+from calibration.util.aorc_date_range import get_aorc_conus_bmi_date_range
 
 DJANGO_START_TIME = datetime.now(tz=timezone.utc)
 
@@ -260,8 +261,11 @@ ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL')
 ENTERPRISE_DATA_ENV = os.getenv('ENTERPRISE_DATA_ENV')
 
 # Default time range for BMI forcing data
-FORCING_AORC_BMI_DATE_RANGE = DateTimeRange("1980-01-01T00:00:00+0000", "2024-12-31T23:59:59+0000")
-FORCING_NWM_RETROSPECTIVE_BMI_DATE_RANGE = DateTimeRange("1980-01-01T00:00:00+0000", "2023-01-31T23:59:59+0000")
+FORCING_AORC_CONUS_BMI_DATE_RANGE = get_aorc_conus_bmi_date_range()
+FORCING_NWM_RETROSPECTIVE_CONUS_BMI_DATE_RANGE = DateTimeRange("1979-01-01T00:00:00+0000", "2023-01-31T23:59:59+0000")
+FORCING_NWM_RETROSPECTIVE_HAWAII_BMI_DATE_RANGE = DateTimeRange("1994-01-01T00:00:00+0000", "2013-12-31T23:59:59+0000")
+FORCING_NWM_RETROSPECTIVE_ALASKA_BMI_DATE_RANGE = DateTimeRange("1981-01-01T00:00:00+0000", "2019-12-31T23:59:59+0000")
+FORCING_NWM_RETROSPECTIVE_PUERTO_RICO_BMI_DATE_RANGE = DateTimeRange("2008-01-01T00:00:00+0000", "2023-06-30T23:59:59+0000")
 
 # Location of archive files
 NGENCERF_ARCHIVE_S3_PATH = os.getenv('NGENCERF_ARCHIVE_S3_PATH')
