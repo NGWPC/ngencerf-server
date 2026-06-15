@@ -16,7 +16,7 @@ from urllib.parse import urlparse, urlunparse
 from datetimerange import DateTimeRange
 from dotenv import load_dotenv
 
-from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum, JobType
+from calibration.enums_vanilla import JobExecutionMode
 from calibration.util.aorc_date_range import get_aorc_conus_bmi_date_range
 
 DJANGO_START_TIME = datetime.now(tz=timezone.utc)
