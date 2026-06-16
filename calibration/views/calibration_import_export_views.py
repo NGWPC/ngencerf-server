@@ -27,7 +27,7 @@ from calibration.views.calibration_gage_views import get_data_files_status, rese
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
 from calibration.views.calibration_run_views import normalize_failure_messages
-from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameter_values, \
+from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_time_controls, validate_parameter_values, \
     save_parameters, has_user_selected_tuning_parameters, compute_time_range, persist_time_range
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
@@ -89,6 +89,7 @@ def import_calibration_run_data(request: Request,
     automatic_validation = calibration_run_data.get('automatic_validation')  # defaults handled later on run
     calibration_times = calibration_run_data.get('calibration_times')
     validation_times = calibration_run_data.get('validation_times')
+    time_controls = calibration_run_data.get('time_controls')
 
     optimization_name = calibration_run_data.get('optimization')
     objective_function_name = calibration_run_data.get('objective_function')
@@ -334,8 +335,8 @@ def import_calibration_run_data(request: Request,
         if time_range and (not run.time_range_start or not run.time_range_end):
             persist_time_range(run, time_range)
 
-        # Times (persist)
-        error_message = validate_and_save_times(run, calibration_times, validation_times)
+        # Time controls (persist)
+        error_message = save_time_controls(run, time_controls)
         if error_message:
             return None, None, ResponseError(error_message)
 
