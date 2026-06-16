@@ -4,7 +4,8 @@ import logging
 import os
 import time
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
-from typing import Literal
+from dateutil.relativedelta import relativedelta
+from typing import Literal, TypedDict
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -22,7 +23,9 @@ from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun
 from calibration.util import cloud_util
 from calibration.util.caching import get_cached_module_by_name, have_LSTM, get_cached_modules_by_id
-from calibration.util.calibration_validators import CalibrationRunIdSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
+from calibration.util.calibration_validators import CalibrationRunIdSerializer, \
+    SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
+    ValidateTuningTimesRequestSerializer, ValidateTuningTimesResponseSerializer, \
     ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse, \
     ValidateParametersResponseSerializer, SaveTuningResponseSerializer
 from calibration.views import ngen_cal_input
@@ -87,7 +90,7 @@ def load_tuning_tab(request: Request) -> Response:
 
         # Compute time range without persisting
         time_range = compute_time_range(run)
-        calibration_times, validation_times = get_times(run)
+        calibration_times, validation_times, time_controls = get_times(run)
 
         formulations = (
             CalibrationFormulation.objects
@@ -123,7 +126,8 @@ def load_tuning_tab(request: Request) -> Response:
         'modules': module_list,
         'time_range': time_range,
         'calibration_times': calibration_times,
-        'validation_times': validation_times
+        'validation_times': validation_times,
+        'time_controls': time_controls
     }
 
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
@@ -287,17 +291,20 @@ def persist_time_range(run: CalibrationRun, time_range: dict[str, datetime | Non
     run.save(update_fields=['time_range_start', 'time_range_end'])
 
 
-def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datetime]]:
+def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datetime], dict[str, datetime]]:
     """
-    Retrieves calibration and validation time periods for a given calibration run.
+    Retrieves calibration and validation time periods and time controls for a given calibration run.
 
     :param run: The CalibrationRun instance containing time period information.
-    :return: A tuple containing two dictionaries:
+    :return: A tuple containing three dictionaries:
              - The first dictionary holds calibration time periods.
              - The second dictionary holds validation time periods (if automatic validation is enabled).
+             - The third dictionary holds values from the UI time controls that were used to determine 
+                the calibration and validation times.
     """
     calibration_times = {}
     validation_times = {}
+    time_controls = {}
 
     # If calibration times exist, assume all related fields are present
     if run.calibration_start_period:
@@ -316,7 +323,18 @@ def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datet
             'validation_start_time': run.validation_eval_start_period,
             'validation_end_time': run.validation_eval_end_period
         }
-    return calibration_times, validation_times
+    
+    # If time controls have been saved, populate them
+    if run.warmup_duration and run.calibration_duration and run.validation_duration:
+        time_controls = {
+            'simulation_start_time': run.calibration_start_period,
+            'warmup_duration': run.warmup_duration,
+            'calibration_duration': run.calibration_duration,
+            'validation_window': run.validation_window,
+            'validation_duration': run.validation_duration
+        }
+
+    return calibration_times, validation_times, time_controls
 
 
 @extend_schema(
@@ -349,8 +367,7 @@ def save_tuning_tab(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     automatic_validation = validator.get('automatic_validation')
-    calibration_times = validator.get('calibration_times')
-    validation_times = validator.get('validation_times')
+    time_controls = validator.get('time_controls')
     parameters = validator.get('parameters')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user)
@@ -386,7 +403,11 @@ def save_tuning_tab(request: Request) -> Response:
 
     run.automatic_validation = automatic_validation
 
-    error_message = validate_and_save_times(run, calibration_times, validation_times)
+    error_message, calibration_times, validation_times, time_control_limits = calculate_times_and_limits(run, time_controls)
+    if error_message:
+        return ResponseError(error_message)
+
+    error_message = validate_and_save_times(run, calibration_times, validation_times, time_controls)
     if error_message:
         return ResponseError(error_message)
 
@@ -413,6 +434,63 @@ def save_tuning_tab(request: Request) -> Response:
         response["parameter_errors"] = parameter_rule_report.errors
 
     response_validator, error_response = validate_response(SaveTuningResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=ValidateTuningTimesRequestSerializer,
+    responses={
+        200: ValidateTuningTimesResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Calculate and validate times from tuning tab"
+)
+@api_view(['POST'])
+@handle_exceptions
+def validate_tuning_times(request: Request) -> Response:
+    """
+    Calculate and validate times set by the input values from the tuning tab
+    """
+    data = request.data
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(ValidateTuningTimesRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+    time_controls = validator.get('time_controls')
+
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
+    assert run is not None
+
+    error_message, calibration_times, validation_times, time_control_limits = calculate_times_and_limits(run, time_controls)
+    if error_message:
+        return ResponseError(error_message)
+
+    response = {
+        'message': f'Calibration Job {run.id} times validated',
+        'calibration_run_id': run.id, 
+        'status': run.status.name,
+        'calibration_times': calibration_times, 
+        'validation_times': validation_times, 
+        'time_control_limits': time_control_limits
+    }
+
+    response_validator, error_response = validate_response(ValidateTuningTimesResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(
@@ -811,15 +889,163 @@ def validate_time_range_against_data(
     return None
 
 
+class TimeControls(TypedDict, total=False):
+    simulation_start_time: datetime
+    warmup_duration: int
+    calibration_duration: int
+    validation_window: bool
+    validation_duration: int
+
+
+def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls) -> tuple[list[str], dict, dict, dict]:
+    """
+    Calculates calibration and validation times when given a simulation start time, durations for
+    warmup, calibration, and validation, and a validation window. Also calculates new limites to 
+    constrain the UI inputs to.
+
+    :param run: The calibration run being validated and updated.
+    :param calibration_times: Dictionary containing simulation start, warmup duration, calibration
+    duration, validation window (true=after ,false=before), and validation duration.
+    :return: A list of error messages if calcuation fails; otherwise, an empty list.
+    """
+
+    time_range = compute_time_range(run)
+
+    simulation_start_time = time_controls.get('simulation_start_time', time_range['start_time'])
+    warmup_duration = time_controls.get('warmup_duration', 12)
+    calibration_duration = time_controls.get('calibration_duration', 60)
+    validation_window = time_controls.get('validation_window', True)
+    validation_duration = time_controls.get('validation_duration', 36)
+
+    # Force to midnight
+    simulation_start_time = simulation_start_time.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0
+    )
+
+    # If midnight moved us before the allowed start, advance one day
+    if simulation_start_time < time_range['start_time']:
+        simulation_start_time += relativedelta(days=1)
+
+    error_messages = []
+
+    if simulation_start_time < time_range['start_time'] or simulation_start_time > time_range['end_time']:
+        error_messages.append("Simulation start time must be within the allowed range.")
+    if warmup_duration < 0:
+        error_messages.append("Warmup duration must be non-negative.")
+    if calibration_duration < 1:
+        error_messages.append("Calibration duration must be at least 1 month.")
+    if validation_duration < 1:
+        error_messages.append("Validation duration must be at least 1 month.")
+    
+    if error_messages:
+        return error_messages, {}, {}, {}
+
+    # Compute remaining times
+
+    # Calibration starts at 00:00, following warmup duration
+    calibration_start_time = simulation_start_time + relativedelta(months=warmup_duration) 
+    # Calibration ends at 23:00, following calibration duration
+    calibration_end_time = calibration_start_time + relativedelta(months=calibration_duration) - relativedelta(hours=1)
+    # Simulation ends when calibration ends, also at 23:00
+    simulation_end_time = calibration_end_time
+
+    if validation_window:
+        # Validation is after calibration
+        # Both simulations start at the same time, 00:00
+        validation_simulation_start_time = simulation_start_time 
+        # Validation starts at 00:00, an hour after calibration ends
+        validation_start_time = calibration_end_time + relativedelta(hours=1)
+        # Validation ends at 23:00, following validation duration
+        validation_end_time = calibration_end_time + relativedelta(months=validation_duration)
+        # Simulation ends when validation ends, at 23:00
+        validation_simulation_end_time = validation_end_time
+    else:
+        # Validation is before calibration
+        # Validation ends at 23:00, an hour before calibration starts
+        validation_end_time = calibration_start_time - relativedelta(hours=1)
+        # Validation starts at 00:00, preceding validation duration
+        validation_start_time = calibration_start_time - relativedelta(months=validation_duration)
+        # Simulation starts at 00:00, preceding warmup duration
+        validation_simulation_start_time = validation_start_time - relativedelta(months=warmup_duration)
+        # Simulation ends when calibration ends, at 23:00
+        validation_simulation_end_time = calibration_end_time
+
+    calibration_times = {
+        'calibration_start_time': calibration_start_time,
+        'calibration_end_time': calibration_end_time,
+        'simulation_start_time': simulation_start_time,
+        'simulation_end_time': simulation_end_time
+    }
+    validation_times = {
+        'validation_start_time': validation_start_time,
+        'validation_end_time': validation_end_time,
+        'simulation_start_time': validation_simulation_start_time,
+        'simulation_end_time': validation_simulation_end_time
+    }
+
+    error_messages = []
+
+    for dt in [calibration_start_time, calibration_end_time, simulation_start_time, simulation_end_time,
+               validation_start_time, validation_end_time, validation_simulation_start_time, validation_simulation_end_time]:
+        if dt < time_range['start_time'] or dt > time_range['end_time']:
+            error_messages.append(f'Calculated date {str(dt).split(" ")[0]} falls outside the allowed range.')
+
+    # Compute input limits
+
+    # these mins are constant
+    warmup_duration_min = 0
+    calibration_duration_min = 1
+    validation_duration_min = 1
+    if validation_window:
+        # cal sim start > warmup > cal start > calibration > val start > validation
+        # (val sim start is during warmup or calibration)
+        # cal sim start is the earliest point in the job
+        # warmup, calibration and validation need to fit between cal sim start and end time
+        simulation_start_time_min = time_range['start_time'] 
+        simulation_start_time_max = time_range['end_time'] - relativedelta(months=warmup_duration+calibration_duration+validation_duration)
+        warmup_duration_max = delta_months(simulation_start_time,time_range['end_time']-relativedelta(months=calibration_duration+validation_duration))
+        calibration_duration_max = delta_months(simulation_start_time,time_range['end_time']-relativedelta(months=warmup_duration+validation_duration))
+        validation_duration_max = delta_months(simulation_start_time,time_range['end_time']-relativedelta(months=warmup_duration+calibration_duration))
+    else:
+        # val sim start > warmup > val start > validation > cal start > calibration
+        # (cal sim start is during warmup or validation)
+        # validation needs to fit between start time and cal sim start - warmup periods will cancel each other out
+        # warmup and calibration need to fit between cal sim start and end time
+        simulation_start_time_min = time_range['start_time'] + relativedelta(months=validation_duration)
+        simulation_start_time_max = time_range['end_time'] - relativedelta(months=warmup_duration+calibration_duration)
+        warmup_duration_max = delta_months(simulation_start_time - relativedelta(months=calibration_duration),time_range['end_time'])
+        calibration_duration_max = delta_months(simulation_start_time - relativedelta(months=warmup_duration),time_range['end_time'])
+        validation_duration_max = delta_months(time_range['start_time'],simulation_start_time + relativedelta(months=warmup_duration))
+
+    time_control_limits = {
+        'simulation_start_time_min': simulation_start_time_min,
+        'simulation_start_time_max': simulation_start_time_max,
+        'warmup_duration_min': warmup_duration_min,
+        'warmup_duration_max': warmup_duration_max,
+        'calibration_duration_min': calibration_duration_min,
+        'calibration_duration_max': calibration_duration_max,
+        'validation_duration_min': validation_duration_min,
+        'validation_duration_max': validation_duration_max
+    }
+
+    return error_messages, calibration_times, validation_times, time_control_limits
+
+
 def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, datetime] | None,
-                            validation_times: dict[str, datetime] | None) -> str | None:
+                            validation_times: dict[str, datetime] | None,
+                            time_controls: dict[str, datetime] | None) -> str | None:
     """
     Validates calibration and validation time ranges, ensuring they fall within the allowable data range.
-    If valid, updates the `CalibrationRun` instance with the provided times.
+    If valid, updates the `CalibrationRun` instance with the provided times and controls.
 
     :param run: The calibration run being validated and updated.
     :param calibration_times: Dictionary containing calibration start, end, and evaluation periods.
     :param validation_times: Dictionary containing validation start, end, and evaluation periods.
+    :param time_controls: Dictionary containing simulation start date, duration for warmup, calibration,
+      and validation, and validation window.
     :return: A list of error messages if validation fails; otherwise, an empty list.
     """
 
@@ -936,6 +1162,12 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, da
             run.validation_end_period = validation_times.get('simulation_end_time')
             run.validation_eval_start_period = validation_times.get('validation_start_time')
             run.validation_eval_end_period = validation_times.get('validation_end_time')
+        
+        if time_controls:
+            run.warmup_duration = time_controls.get('warmup_duration')
+            run.calibration_duration = time_controls.get('calibration_duration')
+            run.validation_window = time_controls.get('validation_window',False)
+            run.validation_duration = time_controls.get('validation_duration')
 
     return None
 
@@ -1409,3 +1641,8 @@ def validate_parameter_rules(
 
     if has_topoflow and has_non_topoflow_modules and not has_non_topoflow_param:
         error_object.add_warning("At least one non-Topoflow-Glacier parameter must be specified")
+
+
+def delta_months(date1, date2):
+    delta = relativedelta(date2, date1)
+    return (delta.years * 12) + delta.months
