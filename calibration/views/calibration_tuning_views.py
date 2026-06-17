@@ -311,6 +311,7 @@ def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datet
         calibration_times = {
             'simulation_start_time': run.calibration_start_period,
             'simulation_end_time': run.calibration_end_period,
+            # Peter Should these be the new properties:  calibration_evaluation_start_period
             'calibration_start_time': run.calibration_eval_start_period,
             'calibration_end_time': run.calibration_eval_end_period
         }
@@ -325,6 +326,7 @@ def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datet
         }
 
     # If time controls have been saved, populate them
+    # Peter You need to test using 'is not None', because a 0 value will not work the way you expect
     if run.warmup_duration and run.calibration_duration and run.validation_duration:
         time_controls = {
             'simulation_start_time': run.calibration_start_period,
@@ -897,31 +899,36 @@ class TimeControls(TypedDict, total=False):
     validation_duration: int
 
 
-def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls) -> tuple[list[str], dict, dict, dict]:
+def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls | None) -> tuple[list[str], dict, dict, dict]:
     """
-    Calculates calibration and validation times when given a simulation start time, durations for
-    warmup, calibration, and validation, and a validation window. Also calculates new limits to
-    constrain the UI inputs to.
+    Calculate derived calibration/validation periods from the tuning time controls and
+    return the valid UI limits for those controls.
 
-    :param run: The calibration run being validated and updated.
-    :param time_controls: Dictionary containing tuning controls
-      - simulation_start_time is equivalent to calibration_start_period, the only time field still saved to the
-          database
-      - warmup_duration is the length of the warmup preceding both the calibration and validation, in months
-      - calibration_duration is length of the calibration evaluation period, in months
-      - validation_window indicates whether the validation takes place after the calibration (true) or 
-          before (false)
-      - validation_duration is length of the validation evaluation period, in months
-    :return: A list of error messages if calculation fails; otherwise, an empty list.
+    The controls persisted on the run are:
+      - simulation_start_time: the calibration simulation start time, saved as
+        calibration_start_period and normalized to midnight.
+      - warmup_duration: months between simulation_start_time and the calibration
+        evaluation start.
+      - calibration_duration: months in the calibration evaluation period.
+      - validation_window: True when validation follows calibration; False when
+        validation precedes calibration.
+      - validation_duration: months in the validation evaluation period.
+
+    The remaining calibration/validation start/end times are derived from these
+    controls by CalibrationRun properties.
+
+    :param run: CalibrationRun being validated. Requires time_range_start and time_range_end.
+    :param time_controls: UI time controls to validate.
+    :return: Tuple of error messages, calibration times, validation times, and UI control limits.
     """
 
     simulation_start_time = time_controls.get('simulation_start_time', run.time_range_start)
-    warmup_duration = time_controls.get('warmup_duration')
-    calibration_duration = time_controls.get('calibration_duration')
+    warmup_duration = time_controls.get('warmup_duration',12)
+    calibration_duration = time_controls.get('calibration_duration',60)
     validation_window = time_controls.get('validation_window', True)
-    validation_duration = time_controls.get('validation_duration')
+    validation_duration = time_controls.get('validation_duration',36)
 
-    # Force to midnight
+    # Normalize UI-selected dates to midnight because durations are whole-month windows.
     simulation_start_time = simulation_start_time.replace(
         hour=0,
         minute=0,
@@ -937,16 +944,7 @@ def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls)
 
     if simulation_start_time < run.time_range_start or simulation_start_time > run.time_range_end:
         error_messages.append("Simulation start time must be within the allowed range.")
-    if warmup_duration < 0:
-        error_messages.append("Warmup duration must be non-negative.")
-    if calibration_duration < 1:
-        error_messages.append("Calibration duration must be at least 1 month.")
-    if validation_duration < 1:
-        error_messages.append("Validation duration must be at least 1 month.")
-
-    if error_messages:
-        return error_messages, {}, {}, {}
-
+        
     # Set time control values - model methods will set the rest dynamically
     run.calibration_start_period = simulation_start_time
     run.warmup_duration = warmup_duration
@@ -967,11 +965,9 @@ def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls)
         'simulation_end_time': run.validation_end_period
     }
 
-    error_messages = []
-
-    for dt in [run.calibration_eval_start_period, run.calibration_eval_end_period, 
+    for dt in [run.calibration_eval_start_period, run.calibration_eval_end_period,
                run.calibration_start_period, run.calibration_end_period,
-               run.validation_eval_start_period, run.validation_eval_end_period, 
+               run.validation_eval_start_period, run.validation_eval_end_period,
                run.validation_start_period, run.validation_end_period]:
         if dt < run.time_range_start or dt > run.time_range_end:
             error_messages.append(f'Calculated date {str(dt).split(" ")[0]} falls outside the allowed range.')
@@ -983,31 +979,41 @@ def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls)
     calibration_duration_min = 1
     validation_duration_min = 1
     if validation_window:
-        # cal sim start > warmup > cal start > calibration > val start > validation
-        # (val sim start is during warmup or calibration)
-        # cal sim start is the earliest point in the job
-        # warmup, calibration and validation need to fit between cal sim start and end time
+        # Validation follows calibration. The calibration simulation start is the
+        # earliest time used by either simulation. Warmup, calibration, and
+        # validation must all fit before the available data end.
         simulation_start_time_min = run.time_range_start
         simulation_start_time_max = run.time_range_end - relativedelta(months=warmup_duration + calibration_duration + validation_duration)
-        warmup_duration_max = delta_months(simulation_start_time,
-                                           run.time_range_end - relativedelta(months=calibration_duration + validation_duration))
-        calibration_duration_max = delta_months(simulation_start_time,
-                                                run.time_range_end - relativedelta(months=warmup_duration + validation_duration))
-        validation_duration_max = delta_months(simulation_start_time,
-                                               run.time_range_end - relativedelta(months=warmup_duration + calibration_duration))
+        warmup_duration_max = delta_months(
+            simulation_start_time,
+            run.time_range_end - relativedelta(months=calibration_duration + validation_duration)
+        )
+        calibration_duration_max = delta_months(
+            simulation_start_time,
+            run.time_range_end - relativedelta(months=warmup_duration + validation_duration)
+        )
+        validation_duration_max = delta_months(
+            simulation_start_time,
+            run.time_range_end - relativedelta(months=warmup_duration + calibration_duration)
+        )
     else:
-        # val sim start > warmup > val start > validation > cal start > calibration
-        # (cal sim start is during warmup or validation)
-        # validation needs to fit between start time and cal sim start - warmup periods will cancel each other out
-        # warmup and calibration need to fit between cal sim start and end time
+        # Validation precedes calibration. The validation simulation starts
+        # validation_duration months before the calibration simulation start.
+        # Warmup and calibration must fit after the calibration simulation start.
         simulation_start_time_min = run.time_range_start + relativedelta(months=validation_duration)
         simulation_start_time_max = run.time_range_end - relativedelta(months=warmup_duration + calibration_duration)
-        warmup_duration_max = delta_months(simulation_start_time - relativedelta(months=calibration_duration), 
-                                           run.time_range_end)
-        calibration_duration_max = delta_months(simulation_start_time - relativedelta(months=warmup_duration), 
-                                                run.time_range_end)
-        validation_duration_max = delta_months(simulation_start_time + relativedelta(months=warmup_duration), 
-                                               run.time_range_end)
+        warmup_duration_max = delta_months(
+            simulation_start_time,
+            run.time_range_end - relativedelta(months=calibration_duration)
+        )
+        calibration_duration_max = delta_months(
+            simulation_start_time + relativedelta(months=warmup_duration),
+            run.time_range_end
+        )
+        validation_duration_max = delta_months(
+            run.time_range_start, 
+            simulation_start_time
+        )
 
     time_control_limits = {
         'simulation_start_time_min': simulation_start_time_min,
@@ -1023,26 +1029,26 @@ def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls)
     return error_messages, calibration_times, validation_times, time_control_limits
 
 
-def save_time_controls(run: CalibrationRun, time_controls: dict[str, datetime] | None) -> str | None:
+def save_time_controls(run: CalibrationRun, time_controls: TimeControls | None) -> str | None:
     """
-    Updates the `CalibrationRun` instance with the provided time controls.
+    Copy validated UI time controls onto the run.
 
-    :param run: The calibration run being validated and updated.
-    :param time_controls: Dictionary containing simulation start date, duration for warmup, calibration,
-      and validation, and validation window.
-    :return: A list of error messages if validation fails; otherwise, an empty list.
+    Only the control values are persisted. The simulation/evaluation end times are
+    derived by CalibrationRun properties from calibration_start_period, durations,
+    and validation_window.
+
+    :param run: CalibrationRun to update.
+    :param time_controls: Validated UI time controls.
+    :return: None, or an error message if saving is not possible.
     """
+    if not time_controls:
+        return None
 
-    messages = []
-
-    # Save times if no errors found
-    if not messages:
-        if time_controls:
-            run.calibration_start_period = time_controls.get('simulation_start_time')
-            run.warmup_duration = time_controls.get('warmup_duration')
-            run.calibration_duration = time_controls.get('calibration_duration')
-            run.validation_window = time_controls.get('validation_window', False)
-            run.validation_duration = time_controls.get('validation_duration')
+    run.calibration_start_period = time_controls.get('simulation_start_time')
+    run.warmup_duration = time_controls.get('warmup_duration')
+    run.calibration_duration = time_controls.get('calibration_duration')
+    run.validation_window = time_controls.get('validation_window', True)
+    run.validation_duration = time_controls.get('validation_duration')
 
     return None
 
