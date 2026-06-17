@@ -61,7 +61,7 @@ def to_float_or_nan(value: object) -> float:
         return float("nan")
 
     # Normal numeric conversion (raises if invalid)
-    return float(value)
+    return float(cast(Any, value))
 
 
 def read_validation_output(validation_run: ValidationRun, failed_so_far: bool) -> None:
@@ -284,8 +284,9 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
 
         # For each metric in the row, create or update the relevant Metric model
         for metric_name, value in metrics_row.items():
+            metric_name = cast(str, metric_name)
             # Perform case-insensitive lookup for the metric
-            metric = MetricEnum.get_instance(str(metric_name))
+            metric = MetricEnum.get_instance(metric_name)
             if not metric:
                 raise CerfException(f"Could not find metric '{metric_name}' in MetricEnum")
 
@@ -721,7 +722,7 @@ def process_iterations_for_a_worker(
             # - params_match_best() uses math.isclose, so we must coerce to float.
             # - We do NOT sanitize (NaN/±Inf -> None); we just float() the value.
             params_row = {
-                str(k): float(row[k])
+                str(k): float(cast(Any, row[k]))
                 for k in row.index
                 if k != 'iteration'
             }
@@ -1055,7 +1056,7 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
                 batch_metrics = {
                     'slurm_job_id': job_id,
                     'run_time': parse_duration(row.get('Elapsed')),
-                    'num_cpus': int(row.get('NCPUS')) if row.get('NCPUS') else None,
+                    'num_cpus': int(cast(Any, row.get("NCPUS"))) if row.get("NCPUS") else None,
                     'cpu_time': parse_duration(row.get('CPUTime')),
                     'max_rss': parse_size_to_kb(row.get('MaxRSS')),
                     'max_disk_read': parse_size_to_kb(row.get('MaxDiskRead')),
