@@ -1138,7 +1138,7 @@ def params_match_best(params_row: dict[str, float], best_params_dict: dict[str, 
     return True
 
 
-def _write_observed_hindcast_file(run) -> str | None:
+def _write_observed_hindcast_file(run) -> None:
     """
     Fetch observed streamflow for the hindcast window and write it to disk.
 
@@ -1186,4 +1186,10 @@ def _write_observed_hindcast_file(run) -> str | None:
     with open(obs_path, "w", encoding="utf-8", newline="") as f:
         f.write(obs_csv)
 
-    return obs_path
+    logger.info(
+        f"Wrote observed hindcast data to {obs_path} "
+        f"for {requested_start} to {requested_end}"
+    )
+
+    return None
+

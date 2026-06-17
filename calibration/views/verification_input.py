@@ -9,7 +9,7 @@ from calibration.enums import HindcastConfigEnum, ForecastConfigEnum
 from calibration.models import VerificationRun
 from calibration.util.caching import generate_forecast_config_yaml
 from calibration.util.ngen_locations import get_verification_run_dir, VERF_CROSSWALK_NGEN_FILE, get_forecast_output_file_path, \
-    get_verification_yaml_config_file, get_hindcast_output_file_name, get_hindcast_dir
+    get_verification_yaml_config_file, get_hindcast_output_file_name, get_hindcast_dir, get_observational_file_for_hindcast
 from calibration.views.called_from import called_from
 from calibration.views.common import format_datetime
 
@@ -41,14 +41,6 @@ CONFIG_TEMPLATE = {
 
     "nwm_forecast": {
         "data_source": ""
-    },
-
-    "flow_observation": {
-        "usgs": {
-            "chunk_by": "month",
-            "overwrite_output": True,
-            "memory_per_worker_gb": 3
-        }
     },
 
     "pair_data": {
@@ -127,6 +119,7 @@ def create_verification_input(run: VerificationRun) -> str:
             calibration_run.job_name: get_hindcast_dir(hindcast_run)
         }
         file_paths['fcst_data_file'] = get_hindcast_output_file_name(hindcast_run)
+        file_paths['obs_data_file'] = get_observational_file_for_hindcast(hindcast_run)
     else:
         forecast_run = run.forecast_run
         assert forecast_run is not None
