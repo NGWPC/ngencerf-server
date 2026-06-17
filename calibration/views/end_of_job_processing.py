@@ -10,6 +10,7 @@ from operator import attrgetter
 from typing import cast, Any
 
 import pandas as pd
+from datetimerange import DateTimeRange
 from django.db import transaction
 from django.utils.timezone import now
 
@@ -25,9 +26,10 @@ from calibration.util.ngen_locations import get_realization_file_path, get_metri
     get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
     get_validation_special_performance_file, get_forecast_performance_file, get_verification_performance_file, \
-    get_params_iteration_file, get_cold_start_performance_file, get_hindcast_performance_file
+    get_params_iteration_file, get_cold_start_performance_file, get_hindcast_performance_file, get_observational_file_for_hindcast
 from calibration.views.calibration_secondary_data_views import generate_secondary_ts_data, should_generate_swe, should_generate_soil_moisture
 from calibration.views.common import CerfException, get_job_description, find_validation_worker_with_matching_id
+from calibration.views.data_services import get_observational_date_range_from_data_services, get_observational_data_from_data_services
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +187,10 @@ def read_hindcast_output(run: HindcastRun, _failed_so_far: bool) -> None:
     job_description = get_job_description(run)
 
     logger.info(f"Processing output for {job_description}, status={run.status}")
+
+    # Get observed data for the Hindcast
+    _write_observed_hindcast_file(run)
+
     with transaction.atomic():
         create_performance_metrics(run, get_hindcast_performance_file(run))
 
@@ -335,6 +341,8 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
     elif validation_run.validation_type == ValidationType.VALID_BEST.value:
         metrics_file = get_validation_metrics_valid_best_file(validation_run.calibration_run)
         expected_run_type = ValidationType.VALID_BEST.value
+
+    assert metrics_file is not None and expected_run_type is not None
 
     already_done = ValidationMetrics.objects.filter(
         validation_run=validation_run, run_type=expected_run_type
@@ -1127,3 +1135,54 @@ def params_match_best(params_row: dict[str, float], best_params_dict: dict[str, 
             return False
 
     return True
+
+
+def _write_observed_hindcast_file(run) -> str | None:
+    """
+    Fetch observed streamflow for the hindcast window and write it to disk.
+
+    If Data Services does not have the full requested window, no file is written.
+    """
+    # Build the full hindcast output window in UTC.
+    time_start = run.cycle_date
+    time_end = run.cycle_date + timedelta(
+        hours=run.interval_cycle * (run.num_iterations - 1) + run.configuration.fcst_win
+    )
+
+    # Fetch observed data for the same UTC window used by the hindcast output.
+    date_time_range = DateTimeRange(time_start, time_end)
+
+    # Verify that Data Services has observations for the requested hindcast window.
+    available_date_range = get_observational_date_range_from_data_services(run.calibration_run)
+
+    available_start = available_date_range.start_datetime
+    available_end = available_date_range.end_datetime
+    requested_start = date_time_range.start_datetime
+    requested_end = date_time_range.end_datetime
+
+    # These should always be set if Data Services behaved correctly
+    assert available_start is not None and available_end is not None
+    assert requested_start is not None and requested_end is not None
+
+    observations_available = (
+            available_start <= requested_start
+            and requested_end <= available_end
+    )
+
+    if not observations_available:
+        logger.warning(
+            "Observed streamflow is not available for the full hindcast window. "
+            f"Requested: {requested_start} to {requested_end}. "
+            f"Available: {available_start} to {available_end}."
+        )
+        return None
+
+    obs_path = get_observational_file_for_hindcast(run)
+
+    # Fetch observed streamflow only when Data Services has the full requested range.
+    obs_csv = get_observational_data_from_data_services(run.calibration_run, date_time_range)
+
+    with open(obs_path, "w", encoding="utf-8", newline="") as f:
+        f.write(obs_csv)
+
+    return obs_path

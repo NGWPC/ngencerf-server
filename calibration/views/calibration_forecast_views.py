@@ -2,9 +2,7 @@ import json
 import logging
 import os
 import shutil
-from datetime import timedelta
 
-from datetimerange import DateTimeRange
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
@@ -26,7 +24,6 @@ from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
     ResponseError, get_user_email, get_elapsed_str, readonly_transaction, get_calibration_run, truncate_large_fields, \
     create_hindcast_run_internal, get_hindcast_run
-from calibration.views.data_services import get_observational_data_from_data_services, get_observational_date_range_from_data_services
 
 logger = logging.getLogger(__name__)
 
@@ -395,9 +392,9 @@ def get_hindcast_timeseries_data(request: Request) -> Response:
 
     timeseries_by_time: dict[str, dict[str, object]] = {}
 
-    obs_path = _write_observed_hindcast_file(run)
+    obs_path = get_observational_file_for_hindcast(run)
 
-    if obs_path:
+    if obs_path and os.path.exists(obs_path):
         observed_data = read_csv_as_json(obs_path, keys=["Time", "observed_flow"])
 
         # Add observed streamflow to the shared time-indexed response.
@@ -451,57 +448,6 @@ def get_hindcast_timeseries_data(request: Request) -> Response:
     )
 
     return Response(response_validator.data)
-
-
-def _write_observed_hindcast_file(run) -> str | None:
-    """
-    Fetch observed streamflow for the hindcast window and write it to disk.
-
-    If Data Services does not have the full requested window, no file is written.
-    """
-    # Build the full hindcast output window in UTC.
-    time_start = run.cycle_date
-    time_end = run.cycle_date + timedelta(
-        hours=run.interval_cycle * (run.num_iterations - 1) + run.configuration.fcst_win
-    )
-
-    # Fetch observed data for the same UTC window used by the hindcast output.
-    date_time_range = DateTimeRange(time_start, time_end)
-
-    # Verify that Data Services has observations for the requested hindcast window.
-    available_date_range = get_observational_date_range_from_data_services(run.calibration_run)
-
-    available_start = available_date_range.start_datetime
-    available_end = available_date_range.end_datetime
-    requested_start = date_time_range.start_datetime
-    requested_end = date_time_range.end_datetime
-
-    # These should always be set if Data Services behaved correctly
-    assert available_start is not None and available_end is not None
-    assert requested_start is not None and requested_end is not None
-
-    observations_available = (
-            available_start <= requested_start
-            and requested_end <= available_end
-    )
-
-    if not observations_available:
-        logger.warning(
-            "Observed streamflow is not available for the full hindcast window. "
-            f"Requested: {requested_start} to {requested_end}. "
-            f"Available: {available_start} to {available_end}."
-        )
-        return None
-
-    obs_path = get_observational_file_for_hindcast(run)
-
-    # Fetch observed streamflow only when Data Services has the full requested range.
-    obs_csv = get_observational_data_from_data_services(run.calibration_run, date_time_range)
-
-    with open(obs_path, "w", encoding="utf-8", newline="") as f:
-        f.write(obs_csv)
-
-    return obs_path
 
 
 def _get_hindcast_iterations(interval_cycle: int, num_iterations: int) -> list[int]:
