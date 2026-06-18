@@ -5,11 +5,11 @@ import logging
 import os
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Sequence, Iterator
 from contextlib import contextmanager
 from datetime import timedelta, datetime
 from functools import wraps
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, Callable, Protocol, TypeVar, cast
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -756,7 +756,7 @@ def generate_custom_token(user: User, scope: str) -> str:
     return str(access)
 
 
-def auth_scope_required(scope):
+def auth_scope_required(scope: str) -> Callable[[Any], Any]:
     """
     Custom decorator to require a specific token scope.
     """
@@ -768,10 +768,10 @@ class CheckTokenScope(BasePermission):
     Permission class to check if the provided JWT token contains a specific scope.
     """
 
-    def __init__(self, required_scope):
+    def __init__(self, required_scope: str) -> None:
         self.required_scope = required_scope
 
-    def has_permission(self, request, view) -> bool:
+    def has_permission(self, request: Request, view: Any) -> bool:
         # Ensure that the user is authenticated and has a valid token
         if not request.user or not request.auth:
             logger.debug(
@@ -826,8 +826,19 @@ class CheckTokenScope(BasePermission):
         return True
 
 
+class ViewFunc(Protocol):
+    __module__: str
+    __name__: str
+
+    def __call__(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        ...
+
+
+ViewFuncT = TypeVar("ViewFuncT", bound=ViewFunc)
+
+
 # Function wrapper to implement common exception handling
-def handle_exceptions(view_func):
+def handle_exceptions(view_func: ViewFuncT) -> ViewFuncT:
     """
     A decorator to wrap view functions and handle common exceptions.
     Logs the exception and returns a formatted error response when an exception occurs.
@@ -837,7 +848,7 @@ def handle_exceptions(view_func):
     """
 
     @wraps(view_func)
-    def _wrapped_view(request, *args, **kwargs):
+    def _wrapped_view(request: Request, *args: Any, **kwargs: Any) -> Response | JsonResponse:
         original_logger = logging.getLogger(view_func.__module__)
         try:
             response = view_func(request, *args, **kwargs)
@@ -846,7 +857,7 @@ def handle_exceptions(view_func):
             if isinstance(response, Response):
                 original_render = response.render
 
-                def safe_render():
+                def safe_render() -> Response | JsonResponse:
                     """ Wrap response rendering to catch JSON serialization errors """
                     try:
                         return original_render()
@@ -888,7 +899,7 @@ def handle_exceptions(view_func):
             original_logger.exception(f"Unhandled exception in handle_exceptions: {message}")
             return ResponseError(message, response_type='exception')
 
-    return _wrapped_view
+    return cast(ViewFuncT, _wrapped_view)
 
 
 def get_valid_path(eds_path: str | None, get_path_func: Callable[[], str | None]) -> str | None:
@@ -914,7 +925,11 @@ def get_valid_path(eds_path: str | None, get_path_func: Callable[[], str | None]
     return None
 
 
-def truncate_large_fields(data, fields_to_truncate=None, max_length=100):
+def truncate_large_fields(
+        data: dict[str, Any],
+        fields_to_truncate: Sequence[str] | None = None,
+        max_length: int = 100,
+) -> dict[str, Any]:
     """
     Truncate large fields (lists, dicts, strings) in the data to prevent logging large values.
 
@@ -944,7 +959,13 @@ def truncate_large_fields(data, fields_to_truncate=None, max_length=100):
     return truncated_data
 
 
-def ResponseError(message, response_type='error', validation_errors=None, errors=None, http_status=status.HTTP_400_BAD_REQUEST):
+def ResponseError(
+        message: str,
+        response_type: str = 'error',
+        validation_errors: Any = None,
+        errors: Any = None,
+        http_status: int = status.HTTP_400_BAD_REQUEST,
+) -> Response:
     """
     Return a standardized error response, with optional validation errors.
 
@@ -955,7 +976,7 @@ def ResponseError(message, response_type='error', validation_errors=None, errors
     :param http_status: The HTTP status code for the response (default is 400).
     :return: A formatted Response object with the error details.
     """
-    response = {'response_type': response_type, 'message': message}
+    response: dict[str, Any] = {'response_type': response_type, 'message': message}
     if validation_errors:
         response['validation_errors'] = validation_errors
     if errors:
@@ -965,7 +986,11 @@ def ResponseError(message, response_type='error', validation_errors=None, errors
     return Response(serializer.data, status=http_status)
 
 
-def validate_request(serializer_class, data, context=None):
+def validate_request(
+        serializer_class: type[BaseSerializer],
+        data: dict[str, Any],
+        context: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any] | None, Response | None]:
     """
     Validate request data using the specified serializer class.
     Returns the validated data or an error response if validation fails.
@@ -975,7 +1000,7 @@ def validate_request(serializer_class, data, context=None):
     :param context: Optional context for the serializer.
     :return: The validated data or an error response.
     """
-    validator = serializer_class(data=data, context=context)
+    validator = serializer_class(data=data, context={} if context is None else context)
     try:
         validator.is_valid(raise_exception=True)
         return validator.validated_data, None
@@ -986,7 +1011,12 @@ def validate_request(serializer_class, data, context=None):
         return None, ResponseError(message, response_type='validation_error', validation_errors=validation_errors)
 
 
-def validate_response(serializer_class, data, fields_to_truncate=None, max_length=100):
+def validate_response(
+        serializer_class: type[BaseSerializer],
+        data: dict[str, Any],
+        fields_to_truncate: Sequence[str] | None = None,
+        max_length: int = 100,
+) -> tuple[BaseSerializer | None, Response | None]:
     """
     Validate the response data using the specified serializer class.
     Logs validation errors if any and returns the validator or an error response.
@@ -1017,7 +1047,11 @@ def validate_response(serializer_class, data, fields_to_truncate=None, max_lengt
         return None, ResponseError(message, response_type='validation_error_response', validation_errors=validation_errors)
 
 
-def validate_response_data(serializer_class: type[BaseSerializer], data: dict[str, Any], error_message: str) -> dict[str, Any]:
+def validate_response_data(
+        serializer_class: type[BaseSerializer],
+        data: dict[str, Any],
+        error_message: str
+) -> dict[str, Any]:
     """
     Validates response data and raises an exception if validation fails.
 
@@ -1043,15 +1077,15 @@ class CerfException(Exception):
     Custom exception class for handling specific exceptions with optional details.
     """
 
-    def __init__(self, message=None, details=None):
+    def __init__(self, message: str | None = None, details: Any = None) -> None:
         self.message = message
         self.details = details
         super().__init__(self.message)
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.details:
             return f"{self.message}: {self.details}"
-        return self.message
+        return str(self.message)
 
 
 def get_job_description(run: BaseRun) -> str:
@@ -1421,7 +1455,7 @@ def get_elapsed_str(request: Request) -> str:
 
 
 @contextmanager
-def readonly_transaction():
+def readonly_transaction() -> Iterator[None]:
     """
     Context manager to enforce a read-only transaction.
     Use this for functions that only query the database.
