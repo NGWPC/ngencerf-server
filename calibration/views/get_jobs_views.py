@@ -3,7 +3,8 @@ Job Retrieval Endpoints for Calibration, Forecast, Hindcast, and Verification
 =============================================================================
 
 This module provides a unified interface for retrieving job records across the
-CERF workflow, including Calibration, Forecast, Hindcast, and Verification runs.
+CERF workflow, including Calibration, Forecast, Hindcast, and Hindcast-based
+Verification runs.
 
 Job-list retrieval endpoints support:
   • Server-side filtering
@@ -53,7 +54,7 @@ Calibration-only request keys
 
 Verification-only request keys
 ------------------------------
-    verification_job_type: "forecast" | "hindcast"
+    verification_job_type: "hindcast"
 
 Do not send empty/default filters or sort objects.
 
@@ -108,7 +109,7 @@ Verification example:
     {
         "limit": 25,
         "offset": 0,
-        "verification_job_type": "forecast"
+        "verification_job_type": "hindcast"
     }
 
 Key concepts
@@ -156,8 +157,8 @@ Status handling
     Verification jobs currently use their raw VerificationRun status.
 
 Filtering
-    All job types support gage, domain, status, module membership, date, ID, and
-    archive toggles.
+    Calibration, Forecast, Hindcast, and Verification jobs support gage, domain,
+    status, module membership, date, ID, and archive toggles.
 
     Archive filtering for Forecast, Hindcast, and Verification jobs is based on
     the parent CalibrationRun archive flag.
@@ -737,8 +738,9 @@ def apply_verification_filters(
     """
     Apply standard verification filters to a VerificationRun queryset.
 
-    The ORM path used for gage, module, archive, and domain filtering depends on
-    whether the verification job belongs to a ForecastRun or a HindcastRun.
+    The ORM path used for gage, module, archive, and domain filtering is resolved
+    from verification_job_type. Currently, verification list retrieval is expected
+    to use hindcast-based verification jobs.
 
     Notes:
       - module_filter.operator="and" is only supported for Calibration jobs.
@@ -748,8 +750,8 @@ def apply_verification_filters(
     :param query: Base Q object constrained to the authenticated user's verification jobs.
     :param filters: Dictionary of filter parameters (gage_id, domain_name, status,
         modules, date_filter, id_filter, include_archived, etc.).
-    :param verification_job_type: Parent job type for the verification jobs being
-        queried. Must be either 'forecast' or 'hindcast'.
+    :param verification_job_type: Parent job type for the verification jobs being queried.
+        Currently expected to be 'hindcast'.
     :return: Q object with verification-specific filters applied.
     """
     paths = get_verification_parent_paths(verification_job_type)
@@ -970,7 +972,7 @@ def get_jobs_summary(request: Request) -> Response:
       - Calibration: Running, Ready, Saved
       - Forecast: Running, Done
       - Hindcast: Running, Done
-      - Verification: Done forecast-based, Done hindcast-based
+      - Verification: Done hindcast-based
 
     Calibration counts are based on derived combined_status.
     Forecast and Hindcast counts are based on combined_status, including cold-start status.
@@ -1077,7 +1079,7 @@ def get_jobs_summary(request: Request) -> Response:
         verification_qs = annotate_combined_status(
             VerificationRun.objects.filter(verification_query),
             include_status_lower=True,
-        ) 
+        )
 
         verification_agg = verification_qs.aggregate(
             done_forecast_verification_count=Sum(
@@ -1148,7 +1150,7 @@ def annotate_combined_status(
     FAILED_ID = StatusEnum.FAILED.db_instance.id
     CANCELLED_ID = StatusEnum.CANCELLED.db_instance.id
     SUBMITTED_ID = StatusEnum.SUBMITTED.db_instance.id
-    
+
     if qs.model is CalibrationRun:
         # ─────────────────────────────────────────────────────────────
         # Always annotate validation_control_status_id + validation_best_status_id.
@@ -1171,7 +1173,7 @@ def annotate_combined_status(
                 ).values("status_id")[:1]
             ),
         )
-        
+
         # ───── Combined status computation ─────
         # Combined status computation:
         # Django’s Case() evaluates WHEN clauses in order and stops at the first match.
@@ -1277,7 +1279,7 @@ def annotate_combined_status(
 
         if include_status_lower:
             qs = qs.annotate(_status_lower=Lower("combined_status"))
-    
+
     elif qs.model is ForecastRun or qs.model is HindcastRun:
         # ─────────────────────────────────────────────────────────────
         # Always annotate cold_start_status_id
@@ -1340,7 +1342,7 @@ def annotate_combined_status(
 
         if include_status_lower:
             qs = qs.annotate(_status_lower=Lower("combined_status"))
-    
+
     elif include_status_lower:
         qs = qs.annotate(_status_lower=Lower(F("status__name")))
 
@@ -1495,53 +1497,6 @@ def get_hindcast_gages(request: Request) -> Response:
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
         500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
     },
-    description="Get distinct gage_ids for DONE Forecast jobs eligible for Verification (optional domain + include_archived)"
-)
-@api_view(["POST", "GET"])
-@handle_exceptions
-def get_forecast_gages_for_verification(request: Request) -> Response:
-    """
-    Get distinct gage_ids for DONE Forecast jobs eligible for Verification (optional domain + include_archived).
-    """
-    data = request.data if request.method == "POST" else request.query_params.dict()
-    logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
-
-    validator, error_return = validate_request(GetGagesRequestSerializer, data)
-    if error_return:
-        return error_return
-
-    domain_name = validator.get("domain_name") or None
-    include_archived = validator.get("include_archived")
-
-    gages = get_forecast_base_gages(
-        ForecastRun,
-        auth_user(request),
-        run_status=[StatusEnum.DONE],
-        include_archived=include_archived,
-        domain_name=domain_name,
-    )
-
-    response = {"gages": gages}
-    response_validator, error_response = validate_response(
-        GetGagesResponseSerializer, response, fields_to_truncate=["gages"], max_length=10
-    )
-    if error_response:
-        return error_response
-
-    logger.debug(
-        f"Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - "
-        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=10))}'
-    )
-    return Response(response_validator.data)
-
-
-@extend_schema(
-    request=GetGagesRequestSerializer,
-    responses={
-        200: GetGagesResponseSerializer,
-        400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
-        500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
-    },
     description="Get distinct gage_ids for DONE Hindcast jobs eligible for Verification (optional domain + include_archived)"
 )
 @api_view(["POST", "GET"])
@@ -1590,14 +1545,13 @@ def get_hindcast_gages_for_verification(request: Request) -> Response:
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
         500: OpenApiResponse(response=ErrorResponseSerializer, description="Internal server error"),
     },
-    description="Get distinct gage_ids for forecast-based or hindcast-based Verification jobs (optional domain + include_archived)"
+    description="Get distinct gage_ids for hindcast-based Verification jobs (optional domain + include_archived)"
 )
 @api_view(["POST", "GET"])
 @handle_exceptions
 def get_verification_gages(request: Request) -> Response:
     """
-    Get distinct gage_ids for verification jobs for either forecast-based or
-    hindcast-based verification runs.
+    Get distinct gage_ids for hindcast-based verification jobs.
 
     The request must include verification_job_type so the endpoint can use the
     correct parent ORM path.
@@ -2191,7 +2145,7 @@ def _get_forecast_or_hindcast_base_jobs_internal(
         query = apply_forecast_filters(query, filters_dict)
 
         base_qs = model.objects.filter(query)
-        
+
         # ─────────────────────────────────────────────────────────────
         # Compute combined_status before applying user status filters.
         #
@@ -2224,7 +2178,7 @@ def _get_forecast_or_hindcast_base_jobs_internal(
             base_qs,
             include_status_lower=bool(filters_dict.get("status")),
         )
-        
+
         # ─────────────────────────────────────────────────────────────
         # Apply user status filtering against combined_status rather
         # than the raw Forecast/Hindcast status so filtering reflects
@@ -2516,77 +2470,6 @@ def get_hindcast_jobs(request: Request) -> Response:
 
 
 @extend_schema(
-    request=ForecastPaginationSerializer,
-    responses={
-        200: GetForecastJobsResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Get DONE forecast jobs"
-)
-@api_view(['POST', 'GET'])
-@handle_exceptions
-def get_forecast_jobs_for_verification(request: Request) -> Response:
-    """
-    Retrieve only DONE forecast jobs for the authenticated user.
-
-    Runs in READ ONLY mode to reduce contention.
-
-    :param request: The HTTP request object containing forecast pagination data.
-    :return: JSON response with forecast jobs or error information.
-    """
-    data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(ForecastPaginationSerializer, data)
-    if error_return:
-        return error_return
-
-    limit = validator.get("limit")
-    offset = validator.get("offset", 0)
-    filters = validator.get("filters") or {}
-    sort = validator.get("sort")
-    filters, sort = _normalize_filters_and_sort(filters, sort)
-
-    forecast_jobs, total_count, date_range, id_range = get_forecast_jobs_internal(
-        auth_user(request),
-        run_status=[StatusEnum.DONE],
-        limit=limit,
-        offset=offset,
-        filters=filters,
-        sort=sort
-    )
-
-    response = {
-        "forecast_jobs": forecast_jobs,
-        "total_count": total_count
-    }
-    if total_count > 0:
-        response['date_range'] = date_range
-        response['id_range'] = id_range
-
-    response_validator, error_response = validate_response(
-        GetForecastJobsResponseSerializer, response,
-        fields_to_truncate=['forecast_jobs'],
-        max_length=10
-    )
-    if error_response:
-        return error_response
-
-    logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
-        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_jobs"], max_length=10))}'
-    )
-    return Response(response_validator.data)
-
-
-@extend_schema(
     request=HindcastPaginationSerializer,
     responses={
         200: GetHindcastJobsResponseSerializer,
@@ -2668,8 +2551,11 @@ def get_verification_jobs_internal(
         sort: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
     """
-    Internal helper to retrieve verification jobs for either forecast-based or
-    hindcast-based verification runs, with optional filtering, sorting, and pagination.
+    Internal helper to retrieve verification jobs for a user with optional filtering,
+    sorting, and pagination.
+
+    Currently, verification list retrieval is expected to use hindcast-based
+    verification jobs.
 
     Runs in READ ONLY mode to reduce contention.
 
@@ -2679,9 +2565,9 @@ def get_verification_jobs_internal(
         is treated as "or" by the shared filter logic.
 
     :param user: Owner of the jobs to fetch.
-    :param verification_job_type: Parent job type for the verification jobs being
-        queried. Must be either 'forecast' or 'hindcast'.
-    :param run_status: Optional list of StatusEnum values to restrict the base job set (e.g., DONE).
+    :param verification_job_type: Parent job type for the verification jobs being queried.
+        Currently expected to be 'hindcast'.
+    :param run_status: Optional list of StatusEnum values to restrict the base job set.
                        This restriction is applied before computing date/id ranges and before user filters.
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
     :param offset: Optional number of rows to skip before returning results (for pagination).
@@ -2754,14 +2640,13 @@ def get_verification_jobs_internal(
             description="Internal server error"
         )
     },
-    description="Get verification jobs"
+    description="Get hindcast-based verification jobs"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def get_verification_jobs(request: Request) -> Response:
     """
-    Retrieve verification jobs for the authenticated user for either forecast-based
-    or hindcast-based verification runs.
+    Retrieve hindcast-based verification jobs for the authenticated user.
 
     The request must include verification_job_type so the endpoint can query the
     correct parent run relationship and return the matching parent run id field.
@@ -2821,8 +2706,7 @@ def get_verification_parent_paths(
         verification_job_type: Literal['forecast', 'hindcast'],
 ) -> dict[str, str]:
     """
-    Return ORM path fragments for verification queries based on whether the
-    verification job belongs to a forecast run or a hindcast run.
+    Return ORM path fragments for verification queries.
 
     The returned values are used to build:
       - ownership constraints
@@ -2831,8 +2715,8 @@ def get_verification_parent_paths(
       - module filters
       - gage extraction for verification gage endpoints
 
-    :param verification_job_type: Parent job type for the verification jobs being
-        queried. Must be either 'forecast' or 'hindcast'.
+    :param verification_job_type: Parent job type for the verification jobs being queried.
+        Currently expected to be 'hindcast'.
     :return: Dictionary containing the ORM prefixes/field paths needed for
         verification queries.
     """

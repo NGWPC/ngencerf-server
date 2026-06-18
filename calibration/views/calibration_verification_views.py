@@ -13,7 +13,6 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import ForecastRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, \
     CreateAndRunVerificationRequestSerializer, CreateAndRunVerificationResponseSerializer, \
@@ -22,7 +21,7 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, \
 from calibration.util.ngen_locations import get_verification_run_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, \
-    get_forecast_run, get_verification_run, ResponseError, get_user_email, get_elapsed_str, \
+    get_verification_run, ResponseError, get_user_email, get_elapsed_str, \
     create_verification_run_internal, png_to_base64_url, truncate_large_fields, get_job_description, get_hindcast_run
 
 logger = logging.getLogger(__name__)
@@ -47,12 +46,12 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 def create_and_run_verification_job(request: Request) -> Response:
     """
-    Creates a new verification job for the requesting user, and submits it for processing.
+    Create a new hindcast-based verification job for the requesting user and submit it for processing.
 
     Handles the creation process by accepting verification details in the request, validating them,
     and creating a new verification job if the request is valid.
 
-    :param request: The HTTP request object, containing user and verification job details.
+    :param request: The HTTP request object containing hindcast verification job details.
     :return: A Response object with the serialized verification job data.
     """
     data = request.data
@@ -62,18 +61,12 @@ def create_and_run_verification_job(request: Request) -> Response:
     if error_return:
         return error_return
 
-    forecast_run_id = validator.get('forecast_run_id')
     hindcast_run_id = validator.get('hindcast_run_id')
     logging_config = validator.get('logging_config')
 
-    if forecast_run_id:
-        run, error_return = get_forecast_run(forecast_run_id, request.user, run_status=[StatusEnum.DONE])
-        if error_return:
-            return error_return
-    else:
-        run, error_return = get_hindcast_run(hindcast_run_id, request.user, run_status=[StatusEnum.DONE])
-        if error_return:
-            return error_return
+    run, error_return = get_hindcast_run(hindcast_run_id, request.user, run_status=[StatusEnum.DONE])
+    if error_return:
+        return error_return
 
     assert run is not None
 
@@ -87,15 +80,11 @@ def create_and_run_verification_job(request: Request) -> Response:
     response = {
         'message': msg,
         'calibration_run_id': run.calibration_run.id,
+        'hindcast_run_id': run.id,
         'verification_run_id': verification_run.id,
         'submit_date': verification_run.submit_date,
         'status': verification_run.status.name
     }
-
-    if isinstance(run, ForecastRun):
-        response['forecast_run_id'] = run.id
-    else:
-        response['hindcast_run_id'] = run.id
 
     response_validator, error_response = validate_response(
         CreateAndRunVerificationResponseSerializer,

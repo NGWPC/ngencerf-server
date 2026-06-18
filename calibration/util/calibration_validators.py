@@ -1652,12 +1652,11 @@ class GetColdStartJobsForConfigurationResponseSerializer(BaseSerializer):
 ##################################
 
 
-class CreateAndRunVerificationRequestSerializer(ForecastOrHindcastRunIdSerializer):
+class CreateAndRunVerificationRequestSerializer(HindcastRunIdSerializer):
     logging_config = LoggingConfigSerializer(required=False)
 
 
-class CreateAndRunVerificationResponseSerializer(GenericMessageWithIdResponseSerializer, ForecastOrHindcastRunIdSerializer,
-                                                 VerificationRunIdSerializer):
+class CreateAndRunVerificationResponseSerializer(GenericMessageWithIdResponseSerializer, HindcastRunIdSerializer, VerificationRunIdSerializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum, allow_blank=False)], required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
