@@ -686,7 +686,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     calibration_run_data['automatic_validation'] = run.automatic_validation
 
-    calibration_times, validation_times = get_times(run)
+    calibration_times, validation_times, time_controls = get_times(run)
     calibration_run_data['calibration_times'] = calibration_times
     calibration_run_data['validation_times'] = validation_times
 

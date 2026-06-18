@@ -385,29 +385,11 @@ class TimeRangeSerializerAllowEmpty(BaseSerializer):
 
 
 class TuningTimeControls(BaseSerializer):
-    simulation_start_time = serializers.DateTimeField()
-    warmup_duration = serializers.IntegerField()
-    calibration_duration = serializers.IntegerField()
-    validation_window = serializers.BooleanField()
-    validation_duration = serializers.IntegerField()
-
-    def __init__(self, *args, allow_empty=False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.allow_empty = allow_empty  # Explicitly define allow_empty attribute
-
-        # If allow_empty is True, make the fields not required
-        if allow_empty:
-            self.fields['simulation_start_time'].required = False
-            self.fields['warmup_duration'].required = False
-            self.fields['calibration_duration'].required = False
-            self.fields['validation_window'].required = False
-            self.fields['validation_duration'].required = False
-        else:
-            self.fields['simulation_start_time'].required = True
-            self.fields['warmup_duration'].required = True
-            self.fields['calibration_duration'].required = True
-            self.fields['validation_window'].required = True
-            self.fields['validation_duration'].required = True
+    simulation_start_time = serializers.DateTimeField(required = True, allow_null=True)
+    warmup_duration = serializers.IntegerField(required = True)
+    calibration_duration = serializers.IntegerField(required = True)
+    validation_window = serializers.BooleanField(required = True)
+    validation_duration = serializers.IntegerField(required = True)
 
 
 class TuningTimeControlLimits(BaseSerializer):
@@ -1293,7 +1275,7 @@ class ModuleDataListSerializer(BaseSerializer):
 class SaveTuningRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
     parameters = SaveTuningParametersSerializer(many=True, required=False)
-    time_controls = TuningTimeControls(required=True, allow_empty=False)
+    time_controls = TuningTimeControls(required=True)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
 
 
@@ -1304,7 +1286,7 @@ class SaveTuningResponseSerializer(GenericResponseSerializer):
 
 class ValidateTuningTimesRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
-    time_controls = TuningTimeControls(required=True, allow_empty=False)
+    time_controls = TuningTimeControls(required=True)
 
 
 class ValidateTuningTimesResponseSerializer(GenericResponseSerializer):
@@ -1320,7 +1302,7 @@ class LoadTuningResponseSerializer(BaseSerializer):
     time_range = TimeRangeSerializerAllowEmpty(required=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
-    time_controls = TuningTimeControls(required=True, allow_empty=True)
+    time_controls = TuningTimeControls(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
 
 

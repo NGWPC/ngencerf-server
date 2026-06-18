@@ -1879,15 +1879,28 @@ def get_jobs(
             ordered_qs = ordered_qs[offset: offset + limit]
 
         # ───── Extract values AFTER slicing ─────
-        calibration_runs_qs = ordered_qs.values(
-            "id", "gage__gage_id", "gage__domain__name", "submit_date", "updated_at",
-            "job_name", "calibration_start_period", "calibration_end_period",
-            "status_id", "status__name", "combined_status", "job_genesis", "created_at",
-            "objective_function__name", "optimization__name",
-            "is_archived", "is_locked"
-        )
-
-        calibration_runs = list(calibration_runs_qs)
+        calibration_runs = [
+            {
+                "id": run.id,
+                "gage__gage_id": run.gage.gage_id if run.gage else None,
+                "gage__domain__name": run.gage.domain.name if run.gage else None, 
+                "submit_date": run.submit_date, 
+                "updated_at": run.updated_at,
+                "job_name": run.job_name, 
+                "calibration_start_period": run.calibration_start_period,
+                "calibration_end_period": run.calibration_end_period,
+                "status_id": run.status_id, 
+                "status__name": run.status.name if run.status else None, 
+                "combined_status": run.combined_status, 
+                "job_genesis": run.job_genesis, 
+                "created_at": run.created_at,
+                "objective_function__name": run.objective_function.name if run.objective_function else None, 
+                "optimization__name": run.optimization.name if run.optimization else None,
+                "is_archived": run.is_archived, 
+                "is_locked": run.is_locked
+            }
+            for run in ordered_qs
+        ]
         run_ids = [r["id"] for r in calibration_runs]
 
         # ───── Preload modules if requested ─────

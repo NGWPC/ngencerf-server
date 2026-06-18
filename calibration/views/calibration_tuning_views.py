@@ -311,7 +311,6 @@ def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datet
         calibration_times = {
             'simulation_start_time': run.calibration_start_period,
             'simulation_end_time': run.calibration_end_period,
-            # Peter Should these be the new properties:  calibration_evaluation_start_period
             'calibration_start_time': run.calibration_eval_start_period,
             'calibration_end_time': run.calibration_eval_end_period
         }
@@ -326,15 +325,13 @@ def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datet
         }
 
     # If time controls have been saved, populate them
-    # Peter You need to test using 'is not None', because a 0 value will not work the way you expect
-    if run.warmup_duration and run.calibration_duration and run.validation_duration:
-        time_controls = {
-            'simulation_start_time': run.calibration_start_period,
-            'warmup_duration': run.warmup_duration,
-            'calibration_duration': run.calibration_duration,
-            'validation_window': run.validation_window,
-            'validation_duration': run.validation_duration
-        }
+    time_controls = {
+        'simulation_start_time': run.calibration_start_period,
+        'warmup_duration': run.warmup_duration if run.warmup_duration and run.warmup_duration != 0 else 12,
+        'calibration_duration': run.calibration_duration if run.calibration_duration and run.calibration_duration != 0 else 60,
+        'validation_window': run.validation_window,
+        'validation_duration': run.validation_duration if run.validation_duration and run.validation_duration != 0 else 36
+    }
 
     return calibration_times, validation_times, time_controls
 
@@ -923,10 +920,10 @@ def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls 
     """
 
     simulation_start_time = time_controls.get('simulation_start_time', run.time_range_start)
-    warmup_duration = time_controls.get('warmup_duration',12)
-    calibration_duration = time_controls.get('calibration_duration',60)
+    warmup_duration = time_controls.get('warmup_duration')
+    calibration_duration = time_controls.get('calibration_duration')
     validation_window = time_controls.get('validation_window', True)
-    validation_duration = time_controls.get('validation_duration',36)
+    validation_duration = time_controls.get('validation_duration')
 
     # Normalize UI-selected dates to midnight because durations are whole-month windows.
     simulation_start_time = simulation_start_time.replace(
@@ -965,12 +962,22 @@ def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls 
         'simulation_end_time': run.validation_end_period
     }
 
-    for dt in [run.calibration_eval_start_period, run.calibration_eval_end_period,
-               run.calibration_start_period, run.calibration_end_period,
-               run.validation_eval_start_period, run.validation_eval_end_period,
-               run.validation_start_period, run.validation_end_period]:
-        if dt < run.time_range_start or dt > run.time_range_end:
-            error_messages.append(f'Calculated date {str(dt).split(" ")[0]} falls outside the allowed range.')
+    if run.calibration_start_period < run.time_range_start or run.calibration_start_period > run.time_range_end:
+        error_messages.append(f'Cal Sim Start {str(run.calibration_start_period).split(" ")[0]} falls outside the allowed range.')
+    if run.calibration_end_period < run.time_range_start or run.calibration_end_period > run.time_range_end:
+        error_messages.append(f'Cal Sim End {str(run.calibration_end_period).split(" ")[0]} falls outside the allowed range.')
+    if run.calibration_eval_start_period < run.time_range_start or run.calibration_eval_start_period > run.time_range_end:
+        error_messages.append(f'Calibration Start {str(run.calibration_eval_start_period).split(" ")[0]} falls outside the allowed range.')
+    if run.calibration_eval_end_period < run.time_range_start or run.calibration_eval_end_period > run.time_range_end:
+        error_messages.append(f'Calibration End {str(run.calibration_eval_end_period).split(" ")[0]} falls outside the allowed range.')
+    if run.validation_start_period < run.time_range_start or run.validation_start_period > run.time_range_end:
+        error_messages.append(f'Val Sim Start {str(run.validation_start_period).split(" ")[0]} falls outside the allowed range.')
+    if run.validation_end_period < run.time_range_start or run.validation_end_period > run.time_range_end:
+        error_messages.append(f'Val Sim End {str(run.validation_end_period).split(" ")[0]} falls outside the allowed range.')
+    if run.validation_eval_start_period < run.time_range_start or run.validation_eval_start_period > run.time_range_end:
+        error_messages.append(f'Validation Start {str(run.validation_eval_start_period).split(" ")[0]} falls outside the allowed range.')
+    if run.validation_eval_end_period < run.time_range_start or run.validation_eval_end_period > run.time_range_end:
+        error_messages.append(f'Validation End {str(run.validation_eval_end_period).split(" ")[0]} falls outside the allowed range.')
 
     # Compute input limits
 
@@ -1026,7 +1033,7 @@ def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls 
         'validation_duration_max': validation_duration_max
     }
 
-    return error_messages, calibration_times, validation_times, time_control_limits
+    return '\n'.join(error_messages), calibration_times, validation_times, time_control_limits
 
 
 def save_time_controls(run: CalibrationRun, time_controls: TimeControls | None) -> str | None:
@@ -1071,23 +1078,23 @@ def get_full_evaluation_date_range_from_ranges(
 
 
 def get_full_evaluation_date_range(
-        calibration_evaluation_start_time: datetime,
-        calibration_evaluation_end_time: datetime,
-        validation_evaluation_start_time: datetime,
-        validation_evaluation_end_time: datetime
+        calibration_eval_start_time: datetime,
+        calibration_eval_end_time: datetime,
+        validation_eval_start_time: datetime,
+        validation_eval_end_time: datetime
 ) -> tuple[datetime, datetime]:
     """
     Calculates the overall evaluation date range by taking the earliest start time and latest end time
     from both calibration and validation evaluation periods.
 
-    :param calibration_evaluation_start_time: Start time of the calibration evaluation period.
-    :param calibration_evaluation_end_time: End time of the calibration evaluation period.
-    :param validation_evaluation_start_time: Start time of the validation evaluation period.
-    :param validation_evaluation_end_time: End time of the validation evaluation period.
+    :param calibration_eval_start_time: Start time of the calibration evaluation period.
+    :param calibration_eval_end_time: End time of the calibration evaluation period.
+    :param validation_eval_start_time: Start time of the validation evaluation period.
+    :param validation_eval_end_time: End time of the validation evaluation period.
     :return: A tuple containing the start and end times of the combined evaluation period.
     """
-    start_date = min(calibration_evaluation_start_time, validation_evaluation_start_time)
-    end_date = max(calibration_evaluation_end_time, validation_evaluation_end_time)
+    start_date = min(calibration_eval_start_time, validation_eval_start_time)
+    end_date = max(calibration_eval_end_time, validation_eval_end_time)
     return start_date, end_date
 
 
