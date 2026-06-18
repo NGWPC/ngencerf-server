@@ -308,7 +308,49 @@ def write_slurm_script(
         # run-as-root guard would abort mpirun; allow it explicitly.
         script.write("export SINGULARITYENV_OMPI_MCA_rmaps_base_oversubscribe=1\n")
         script.write("export SINGULARITYENV_OMPI_ALLOW_RUN_AS_ROOT=1\n")
-        script.write("export SINGULARITYENV_OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1\n\n")
+        script.write("export SINGULARITYENV_OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1\n")
+
+        # Keep Slurm out of the container's MPI launch. PCS keeps its Slurm
+        # binaries (srun) on the host under /opt/aws/pcs/..., not inside the SIF,
+        # so OpenMPI's Slurm launcher cannot find srun and aborts. Tell OpenMPI to
+        # skip both the Slurm allocation reader (ras) and the Slurm launcher (plm)
+        # so mpirun forks its ranks locally on the single node we already pin with
+        # taskset. The container never uses Slurm; the calling script owns core
+        # placement (taskset + cpus-per-task), matching how jobs ran on PW.
+        script.write("export SINGULARITYENV_OMPI_MCA_ras='^slurm'\n")
+        script.write("export SINGULARITYENV_OMPI_MCA_plm=rsh\n\n")
+
+        # Per-job scratch dir on the shared filesystem (EFS). Everything that
+        # writes to /tmp inside the container lands here: ngen-forcing's hardcoded
+        # /tmp cache files, the PMIx dstore (OpenMPI's on-disk key/value store),
+        # and HDF5 swap. The dir lives under HOST_DATA_ROOT so it is also visible
+        # inside the container at ${CONTAINER_DATA_ROOT}/scratch/<label> via the
+        # existing data-dir bind, and SINGULARITY_BIND additionally maps it onto
+        # the container's /tmp. The label carries job_type + run_id for
+        # greppability; SLURM_JOB_ID makes it unique.
+        scratch_root = os.path.join(settings.HOST_DATA_ROOT, "scratch")
+        host_scratch = os.path.join(
+            scratch_root, f"{job_type}-{run_id}-${{SLURM_JOB_ID}}"
+        )
+        script.write(f'mkdir -p "{scratch_root}"\n')
+        # Opportunistic sweep of scratch dirs orphaned by SIGKILL / node crashes
+        # (the EXIT trap below covers normal exits and SIGTERM). Self-guards: if
+        # squeue is unavailable or returns nothing, skip rather than delete every
+        # dir.
+        script.write(
+            f"(active=$(squeue -h -o '%i' 2>/dev/null | sort -u); "
+            f'[ -n "$active" ] || exit 0; '
+            f'for d in "{scratch_root}"/*; do '
+            f'[ -d "$d" ] || continue; '
+            f'jobid="${{d##*-}}"; '
+            f'echo "$active" | grep -qx "$jobid" || rm -rf "$d"; '
+            f"done) || true\n"
+        )
+        script.write(f'export TMPDIR="{host_scratch}"\n')
+        script.write('export SINGULARITY_BIND="$TMPDIR:/tmp"\n')
+        script.write("export SINGULARITYENV_TMPDIR=/tmp\n")
+        script.write('mkdir -p "$TMPDIR"\n')
+        script.write("trap 'rm -rf \"$TMPDIR\"' EXIT\n\n")
 
         # Force the workload to stay inside the CPUs Slurm granted this job.
         modified_singularity_run_cmd = f'taskset -c "${{CPUSET}}" {singularity_run_cmd}'
