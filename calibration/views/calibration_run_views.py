@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Any
 
 from django.db import transaction
 from django.forms import model_to_dict
@@ -12,7 +13,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, JobType, SlurmCallbackStatusEnum
 from calibration.enums_vanilla import SecondaryDataEnum
-from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun, VerificationRun
+from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun, VerificationRun, PerformanceMetrics
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
 from calibration.run_util.job_executor_slurm import get_slurm_status
@@ -27,7 +28,7 @@ from calibration.util.calibration_validators import GenericResponseSerializer, \
     CalibrationOrValidationOrColdStartOrForecastOrHindcastOrVerificationRunIdSerializer, ValidationRunIdSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, ColdStartJobSlurmCallbackRequestSerializer, \
     ForecastJobSlurmCallbackRequestSerializer, HindcastJobSlurmCallbackRequestSerializer, VerificationJobSlurmCallbackRequestSerializer, \
-    ReportIterationSerializer, EmptySerializer
+    ReportIterationSerializer, EmptySerializer, BaseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_secondary_data_views import generate_secondary_ts_data
 from calibration.views.called_from import get_caller_name
@@ -40,7 +41,7 @@ from calibration.views.end_of_job_processing import read_calibration_output
 logger = logging.getLogger(__name__)
 
 
-def normalize_failure_messages(value) -> list[dict]:
+def normalize_failure_messages(value: Any) -> list[dict]:
     """
     Normalize failure_messages into a canonical list[dict] form.
 
@@ -121,6 +122,7 @@ def get_status(request: Request) -> Response:
     verification_run_id = validator.get('verification_run_id')
 
     include_performance_metrics = validator.get('include_performance_metrics')
+    assert isinstance(include_performance_metrics, bool)
 
     if calibration_run_id:
         serializer_class = GetStatusForCalibrationResponseSerializer
@@ -144,6 +146,8 @@ def get_status(request: Request) -> Response:
     # ─────────────────────────────────────────────────────────────
     with readonly_transaction():
         if calibration_run_id:
+            assert isinstance(calibration_run_id, int)
+            
             calibration_run, error_return = get_calibration_run(
                 calibration_run_id, request.user, run_status=list(StatusEnum)
             )
@@ -166,6 +170,8 @@ def get_status(request: Request) -> Response:
             response = get_status_for_calibration(calibration_run, include_performance_metrics)
 
         elif validation_run_id:
+            assert isinstance(validation_run_id, int)
+
             validation_run, error_return = get_validation_run(
                 validation_run_id, request.user, run_status=list(StatusEnum)
             )
@@ -178,6 +184,8 @@ def get_status(request: Request) -> Response:
             response = get_status_for_validation(validation_run, include_performance_metrics)
 
         elif forecast_run_id:
+            assert isinstance(forecast_run_id, int)
+
             # Handle cold start
             forecast_run, error_return = get_forecast_run(
                 forecast_run_id, request.user, run_status=list(StatusEnum)
@@ -191,6 +199,8 @@ def get_status(request: Request) -> Response:
             response = get_status_for_forecast(forecast_run, include_performance_metrics)
 
         elif hindcast_run_id:
+            assert isinstance(hindcast_run_id, int)
+
             # Handle cold start
             hindcast_run, error_return = get_hindcast_run(
                 hindcast_run_id, request.user, run_status=list(StatusEnum)
@@ -204,6 +214,8 @@ def get_status(request: Request) -> Response:
             response = get_status_for_hindcast(hindcast_run, include_performance_metrics)
 
         else:
+            assert isinstance(verification_run_id, int)
+
             verification_run, error_return = get_verification_run(
                 verification_run_id, request.user, run_status=list(StatusEnum)
             )
@@ -704,6 +716,7 @@ def get_status_for_comparison(request: Request) -> Response:
         return error_return
 
     calibration_run_ids = validator.get('calibration_run_ids')
+    assert isinstance(calibration_run_ids, list)
 
     response = {
         'calibration_run_ids': calibration_run_ids,
@@ -800,6 +813,8 @@ def run_calibration(request: Request) -> Response:
     calibration_run_id = validator.get('calibration_run_id')
     logging_config = validator.get('logging_config')
 
+    assert isinstance(calibration_run_id, int)
+
     run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
@@ -824,7 +839,7 @@ def run_calibration(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def get_performance_metrics(performance_metrics) -> dict[str, str | int | float | None]:
+def get_performance_metrics(performance_metrics: PerformanceMetrics | None) -> dict[str, str | int | float | None]:
     """
     Helper function to retrieve selected performance metrics, converting numeric fields to 'K' units.
     """
@@ -878,7 +893,7 @@ def should_include_metrics(run_status: Status, include_performance_metrics: bool
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def process_calibration_output(request):
+def process_calibration_output(request: Request) -> Response:
     """
     This endpoint is mostly for testing, to kick off the processing of output for a completed job.
     Normally read_calibration_output() is called automatically when a job completes.
@@ -892,6 +907,7 @@ def process_calibration_output(request):
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    assert isinstance(calibration_run_id, int)
 
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE, StatusEnum.FAILED])
 
@@ -944,6 +960,7 @@ def process_swe_timeseries(request: Request) -> Response:
         return error_return
 
     validation_run_id = validator.get('validation_run_id')
+    assert isinstance(validation_run_id, int)
 
     run, error_return = get_validation_run(validation_run_id, request.user, run_status=[StatusEnum.DONE])
 
@@ -984,7 +1001,7 @@ def process_swe_timeseries(request: Request) -> Response:
 # Called by cal-mgr
 @api_view(['POST'])
 @handle_exceptions
-def report_iteration(request):
+def report_iteration(request: Request) -> Response:
     """
     Reports an iteration for a running calibration job. This endpoint updates or creates an
     iteration record for a specific worker in the calibration job.
@@ -1016,6 +1033,8 @@ def report_iteration(request):
     iteration_number = validator.get('iteration')
     worker_name = validator.get('worker_name')
     first_iteration_for_worker = validator.get('first_iteration_for_worker')
+
+    assert isinstance(calibration_run_id, int)
 
     logger.debug(
         f"Report Iteration for calibration_run_id {calibration_run_id}, iteration number: {iteration_number}, "
@@ -1108,6 +1127,7 @@ def get_iteration(request: Request) -> Response:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    assert isinstance(calibration_run_id, int)
 
     with readonly_transaction():
         run, error_return = get_calibration_run(
@@ -1186,6 +1206,8 @@ def cancel_job(request: Request) -> Response:
 
     # Determine job type and retrieve the appropriate run instance
     if calibration_run_id:
+        assert isinstance(calibration_run_id, int)
+
         run_type = JobType.CALIBRATION.value
         run, error_return = get_calibration_run(
             calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED]
@@ -1194,6 +1216,8 @@ def cancel_job(request: Request) -> Response:
             return error_return
 
     elif validation_run_id:
+        assert isinstance(validation_run_id, int)
+
         run_type = JobType.VALIDATION.value
         run, error_return = get_validation_run(
             validation_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED]
@@ -1202,6 +1226,8 @@ def cancel_job(request: Request) -> Response:
             return error_return
 
     elif verification_run_id:
+        assert isinstance(verification_run_id, int)
+
         run_type = JobType.VERIFICATION.value
         run, error_return = get_verification_run(
             verification_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED]
@@ -1210,6 +1236,8 @@ def cancel_job(request: Request) -> Response:
             return error_return
 
     elif forecast_run_id:
+        assert isinstance(forecast_run_id, int)
+
         forecast_run, error_return = get_forecast_run(
             forecast_run_id, request.user, run_status=list(StatusEnum)
         )
@@ -1225,6 +1253,8 @@ def cancel_job(request: Request) -> Response:
             return error_response
 
     elif hindcast_run_id:
+        assert isinstance(hindcast_run_id, int)
+
         hindcast_run, error_return = get_hindcast_run(
             hindcast_run_id,
             request.user,
@@ -1529,7 +1559,7 @@ def verification_job_slurm_callback(request: Request) -> Response:
 
 def handle_slurm_callback(
         request: Request,
-        serializer_class,
+        serializer_class: type[BaseSerializer],
         job_type: str,
         run_id_field: str,
 ) -> Response:
@@ -1556,6 +1586,8 @@ def handle_slurm_callback(
     run_id = validator.get(run_id_field)
     job_status = validator.get("job_status")
     slurm_job_id = validator.get("slurm_job_id")
+
+    assert isinstance(run_id, int)
 
     # State validation and duplicate callback protection are centralized there.
     handle_job_event(
@@ -1744,4 +1776,3 @@ def apply_slurm_reconciliation(run: BaseRun, slurm_status: str | None) -> None:
     run.failure_messages = json.dumps(existing)
 
     run.save(update_fields=["status", "failure_messages"])
-
