@@ -87,8 +87,6 @@ def import_calibration_run_data(request: Request,
     parameters = calibration_run_data.get('parameters')
 
     automatic_validation = calibration_run_data.get('automatic_validation')  # defaults handled later on run
-    calibration_times = calibration_run_data.get('calibration_times')
-    validation_times = calibration_run_data.get('validation_times')
     time_controls = calibration_run_data.get('time_controls')
 
     optimization_name = calibration_run_data.get('optimization')
@@ -336,6 +334,8 @@ def import_calibration_run_data(request: Request,
             persist_time_range(run, time_range)
 
         # Time controls (persist)
+        print('SAVING TIME CONTROLS:')
+        print(time_controls)
         error_message = save_time_controls(run, time_controls)
         if error_message:
             return None, None, ResponseError(error_message)
@@ -689,6 +689,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     calibration_times, validation_times, time_controls = get_times(run)
     calibration_run_data['calibration_times'] = calibration_times
     calibration_run_data['validation_times'] = validation_times
+    calibration_run_data['time_controls'] = time_controls
 
     logger.info(f"Tuning data processed in {time.perf_counter() - tuning_start:.2f}s")
 

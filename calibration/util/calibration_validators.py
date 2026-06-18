@@ -652,6 +652,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     time_range = TimeRangeSerializerAllowEmpty(required=False)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
+    time_controls = TuningTimeControls(required=False)
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
     logging_config = LoggingConfigSerializer(required=False)
     objective_function = serializers.CharField(required=True, allow_null=True)
