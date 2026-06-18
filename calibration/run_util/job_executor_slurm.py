@@ -303,8 +303,12 @@ def write_slurm_script(
         )
         script.write('echo "Job isolated to CPUs: $CPUSET"\n\n')
 
-        # Pass through OpenMPI override inside the Singularity container.
-        script.write("export SINGULARITYENV_OMPI_MCA_rmaps_base_oversubscribe=1\n\n")
+        # Pass through OpenMPI overrides inside the Singularity container. The PCS
+        # Slurm job runs as root (the work tree is chown'd to 0:0 above), so OpenMPI's
+        # run-as-root guard would abort mpirun; allow it explicitly.
+        script.write("export SINGULARITYENV_OMPI_MCA_rmaps_base_oversubscribe=1\n")
+        script.write("export SINGULARITYENV_OMPI_ALLOW_RUN_AS_ROOT=1\n")
+        script.write("export SINGULARITYENV_OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1\n\n")
 
         # Force the workload to stay inside the CPUs Slurm granted this job.
         modified_singularity_run_cmd = f'taskset -c "${{CPUSET}}" {singularity_run_cmd}'
