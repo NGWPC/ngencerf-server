@@ -415,6 +415,14 @@ RUN cli/build_cli.sh
 # Copy additional configuration files
 COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
 
+# cartopy has no prebuilt wheel for Python 3.14, so its trace extension is built
+# from source here and links libgcc/libc but not libstdc++. Under CPython's
+# RTLD_LOCAL extension imports, its std::ios_base::failure[abi:cxx11] symbol then
+# has no libstdc++ in scope to resolve against and the import fails at startup.
+# Preload the system libstdc++ (which exports the symbol) so it binds. Remove once
+# cartopy ships a Python 3.14 wheel.
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+
 # Set the entry point and expose the application port
 ENTRYPOINT [ "/ngencerf/ngencerf-server/runCerf.sh" ]
 EXPOSE 8000
