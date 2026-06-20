@@ -36,7 +36,7 @@ print(f'Loading values from {version_path}')
 load_dotenv(version_path)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = str(os.getenv('DJANGO_DEBUG', 'true')).lower() == 'true'
+DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 
 NGENCERF_VERSION = os.getenv("NGENCERF_VERSION", "<unknown>")
 NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
@@ -129,9 +129,9 @@ CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
-MFA_ENABLED = str(os.getenv("MFA_ENABLED", "false")).lower() == "true"
+MFA_ENABLED = os.getenv("MFA_ENABLED", "false").lower() == "true"
 
-ACTIVE_DIRECTORY_ENABLED = str(os.getenv("ACTIVE_DIRECTORY_ENABLED", "false")).lower() == "true"
+ACTIVE_DIRECTORY_ENABLED = os.getenv("ACTIVE_DIRECTORY_ENABLED", "false").lower() == "true"
 
 # Active Directory / LDAP
 LDAP_DOMAIN = os.getenv("LDAP_DOMAIN", "nextgenwaterprediction.com").strip()
@@ -150,7 +150,7 @@ LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
 
 # sssd is using AD auth without SSL shown here, so default to ldap:// / non-SSL.
 # Set LDAP_USE_SSL=true and LDAP_SERVER_URI=ldaps://... if LDAPS is configured later.
-LDAP_USE_SSL = str(os.getenv("LDAP_USE_SSL", "false")).lower() == "true"
+LDAP_USE_SSL = os.getenv("LDAP_USE_SSL", "false").lower() == "true"
 
 LDAP_TIMEOUT = int(os.getenv("LDAP_TIMEOUT", "10"))
 
@@ -489,7 +489,6 @@ def parse_mpi_node_rules(value: str) -> list[tuple[int, int]]:
 
 MPI_NODE_RULES = parse_mpi_node_rules(_MPI_NODE_RULES_STR)
 
-
 # -----------------------------
 # Execution mode
 # -----------------------------
@@ -584,10 +583,6 @@ SINGULARITY_RUNTIME_INFO = {
 
 # Optional sacct columns collected after job completion.
 SLURM_JOB_METRICS = os.getenv("SLURM_JOB_METRICS")
-
-NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'logs')
-print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
-os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
 # Static and working directories
 NGEN_STATIC_DIR = os.path.join(CONTAINER_DATA_ROOT, 'ngen-static-files')
@@ -746,16 +741,36 @@ DEFAULT_LOG_LEVEL = get_log_level('NGENCERF_LOG_LEVEL', 'DEBUG')
 DJANGO_LOG_LEVEL = get_log_level('NGENCERF_DJANGO_LOG_LEVEL', 'INFO')
 DJANGO_REQUEST_LOG_LEVEL = get_log_level('NGENCERF_DJANGO_REQUEST_LOG_LEVEL', DJANGO_LOG_LEVEL)
 DATABASE_LOG_LEVEL = get_log_level('NGENCERF_DATABASE_LOG_LEVEL', 'WARNING')
-NGENCERF__LOG_LEVEL = get_log_level('NGENCERF_CALIBRATION_LOG_LEVEL', DEFAULT_LOG_LEVEL)
+NGENCERF_LOG_LEVEL = get_log_level('NGENCERF_CALIBRATION_LOG_LEVEL', DEFAULT_LOG_LEVEL)
+
+# Controls whether Django also writes local log files.
+# Defaults to the value of DEBUG (typically True in development and
+# False in production):
+#   - Development: console + log files
+#   - Production:  console only (CloudWatch collects container stdout/stderr)
+# Override by setting NGENCERF_LOG_TO_FILE=true|false.
+LOG_TO_FILE = (
+        os.getenv("NGENCERF_LOG_TO_FILE", str(DEBUG)).lower() == "true"
+)
+
+APP_HANDLERS = ["console"]
+DB_HANDLERS = ["console"]
+
+if LOG_TO_FILE:
+    NGEN_LOGGING_DIR = os.path.join(BASE_DIR, "logs")
+    print(f"File logging enabled: {NGEN_LOGGING_DIR}")
+    os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
+
+    APP_HANDLERS.append("file_dev")
+    DB_HANDLERS.append("file_db")
 
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
 
-    # Root Logger: Sends everything to the console and file
     'root': {
-        'handlers': ['console', 'file_dev'],
-        'level': ROOT_LOG_LEVEL
+        'handlers': APP_HANDLERS,
+        'level': ROOT_LOG_LEVEL,
     },
 
     'formatters': {
@@ -777,73 +792,84 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
         },
-        'file_dev': {
-            'level': DEFAULT_LOG_LEVEL,
-            'class': 'logging.FileHandler',
-            'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf.log'),
-            'formatter': 'dev_format',
-            'encoding': 'utf-8',
-        },
-        'file_db': {
-            'level': DATABASE_LOG_LEVEL,
-            'class': 'logging.FileHandler',
-            'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_db.log'),
-            'formatter': 'dev_format',
-            'encoding': 'utf-8',
-        },
+        # Only define file handlers when file logging is enabled.
+        # Production logs are written to stdout/stderr and collected by CloudWatch.
+        **({
+               'file_dev': {
+                   'level': DEFAULT_LOG_LEVEL,
+                   'class': 'logging.FileHandler',
+                   'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf.log'),
+                   'formatter': 'dev_format',
+                   'encoding': 'utf-8',
+               },
+               'file_db': {
+                   'level': DATABASE_LOG_LEVEL,
+                   'class': 'logging.FileHandler',
+                   'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_db.log'),
+                   'formatter': 'dev_format',
+                   'encoding': 'utf-8',
+               },
+           } if LOG_TO_FILE else {}),
     },
-
+    # propagate=False prevents duplicate log messages via the root logger.
     'loggers': {
         'django.db.backends': {
-            'handlers': ['file_db'],
+            'handlers': DB_HANDLERS,
             'level': DATABASE_LOG_LEVEL,
-            'propagate': False  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'django': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': DJANGO_LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'djoser': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': DJANGO_LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'rest_framework_simplejwt': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': DJANGO_LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'django.request': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': DJANGO_REQUEST_LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'django_dbconn_retry': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': DJANGO_LOG_LEVEL,
-            'propagate': False,
+            'propagate': False
         },
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': 'INFO',
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'urllib3': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': 'INFO',
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'calibration': {
-            'handlers': ['console', 'file_dev'],
-            'level': NGENCERF__LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'handlers': APP_HANDLERS,
+            'level': NGENCERF_LOG_LEVEL,
+            'propagate': False
         },
         'cerfServer': {
-            'handlers': ['console', 'file_dev'],
-            'level': NGENCERF__LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'handlers': APP_HANDLERS,
+            'level': NGENCERF_LOG_LEVEL,
+            'propagate': False
+        },
+
+        # Suppress AWS/ELB health check requests that use an invalid Host header.
+        # These are expected in production behind a load balancer.
+        'django.security.DisallowedHost': {
+            'handlers': [],
+            'propagate': False
         },
     }
 }
