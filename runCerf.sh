@@ -5,7 +5,6 @@ DATA_ASSIM_REPO="https://github.com/NGWPC/nwm-data-assimilation.git"
 EWTS_REPO="https://github.com/NGWPC/nwm-ewts.git"
 
 # Branches/tags for git repos
-#MSWM_REF='jwade_NGWPC-7589_add_aet_rootzone'
 MSWM_REF='development'
 DATA_ASSIMILATION_REF='development'
 NGEN_FORCING_REF='development'
@@ -51,26 +50,85 @@ if [ "${CERF_VENV}" = "Docker" ]; then
     IN_DOCKER=true
 fi
 
+if [ "$IN_DOCKER" = false ]; then
+    #=======================================================================
+    # Python interpreter validation
+    #=======================================================================
+    # Strip 'python' prefix.  Value can be python3.11 or 3.11
+    REQUIRED_PYTHON_VERSION="${REQUIRED_PYTHON#python}"
+
+    PYTHON_BIN="${PYTHON_BIN:-python${REQUIRED_PYTHON_VERSION}}"
+
+    if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+        echo "ERROR: Required Python interpreter not found."
+        echo
+        echo "This project requires Python ${REQUIRED_PYTHON_VERSION}."
+        echo "The expected executable is:"
+        echo "    $PYTHON_BIN"
+        echo
+        echo "Please install Python ${REQUIRED_PYTHON_VERSION} and rerun this script."
+        exit 1
+    fi
+
+    PYTHON_VERSION="$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+
+    if [ "$PYTHON_VERSION" != "$REQUIRED_PYTHON_VERSION" ]; then
+        echo "ERROR: $PYTHON_BIN is Python $PYTHON_VERSION, but Python $REQUIRED_PYTHON_VERSION is required."
+        exit 1
+    fi
+
+    echo "Using Python $PYTHON_VERSION ($PYTHON_BIN)"
+fi
+
 
 #=======================================================================
 # Function: ensure_virtualenv
-#   - If CERF_VENV is empty or “Docker”, do nothing
-#   - If the directory "$cerfServer/$CERF_VENV" does not exist, create it
-#   - Activate that venv so “python3” and “pip” later refer to the venv
+#   - If CERF_VENV is empty or "Docker", do nothing
+#   - Derives the actual venv path from CERF_VENV + REQUIRED_PYTHON
+#       Example:
+#         CERF_VENV=./.venv-cerf
+#         REQUIRED_PYTHON=3.11
+#         => ./.venv-cerf_python3.11
+#   - If the venv does not exist, create it with the required Python version
+#   - If the venv exists, verify that it uses the required Python version
+#   - If the existing venv is invalid or has the wrong Python version, fail
+#   - Activate the venv so "python" and "pip" refer to the venv
 #=======================================================================
 ensure_virtualenv() {
-    # Requires: CERF_VENV loaded, IN_DOCKER set, cerfServer set
-    if [ -n "${CERF_VENV}" ] && [ "$IN_DOCKER" = false ]; then
-        VENV_PATH="$cerfServer/${CERF_VENV}"
+    # Requires: CERF_VENV loaded, IN_DOCKER set, cerfServer set,
+    #           REQUIRED_PYTHON_VERSION set, PYTHON_BIN validated
 
-        if [ ! -d "$VENV_PATH" ]; then
-            echo "Virtual environment not found at $VENV_PATH. Creating it..."
-            python3.11 -m venv "$VENV_PATH"
+    if [ -z "${CERF_VENV}" ] || [ "$IN_DOCKER" = true ]; then
+        return 0
+    fi
+
+    VENV_PATH="${cerfServer}/${CERF_VENV}_python${REQUIRED_PYTHON_VERSION}"
+    VENV_PYTHON="$VENV_PATH/bin/python"
+
+    if [ -d "$VENV_PATH" ]; then
+        if [ ! -x "$VENV_PYTHON" ]; then
+            echo "ERROR: Existing virtual environment is invalid: $VENV_PATH"
+            echo "ERROR: Expected executable not found: $VENV_PYTHON"
+            exit 1
         fi
 
-        source "$VENV_PATH/bin/activate"
-        echo "Activated virtual environment at $VENV_PATH"
+        VENV_VERSION="$("$VENV_PYTHON" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+
+        if [ "$VENV_VERSION" != "$REQUIRED_PYTHON_VERSION" ]; then
+            echo "ERROR: Virtual environment '$VENV_PATH' is inconsistent."
+            echo "ERROR: Directory name indicates Python $REQUIRED_PYTHON_VERSION,"
+            echo "ERROR: but it actually contains Python $VENV_VERSION."
+            echo "ERROR: Delete this virtual environment and rerun the script."
+            exit 1
+        fi
+    else
+        echo "Creating virtual environment at $VENV_PATH using $PYTHON_BIN..."
+        "$PYTHON_BIN" -m venv "$VENV_PATH"
     fi
+
+    source "$VENV_PATH/bin/activate"
+    echo "Activated virtual environment at $VENV_PATH"
+    echo "Virtual environment Python: $(python --version)"
 }
 
 #=======================================================================
@@ -507,13 +565,13 @@ if [ "$IN_DOCKER" = false ]; then
         echo
         echo --------------------------------------------------------
         echo "Upgrading pip"
-        pip install --upgrade pip
-        pip --version
+        python -m pip install --upgrade pip
+        python -m pip --version
 
         echo
         echo --------------------------------------------------------
         echo "Installing requirements.txt"
-        pip install -r "$SCRIPT_DIR/requirements.txt"
+        python -m pip install -r "$SCRIPT_DIR/requirements.txt"
 
         FORCE_REINSTALL_VCS="${FORCE_REINSTALL_VCS:-0}"
 
@@ -546,7 +604,7 @@ if [ "$IN_DOCKER" = false ]; then
                 return 0
             fi
 
-            if ! pip show "$pkg_name" >/dev/null 2>&1; then
+            if ! python -m pip show "$pkg_name" >/dev/null 2>&1; then
                 echo "$pkg_name not installed; will install"
                 return 0
             fi
@@ -585,12 +643,12 @@ if [ "$IN_DOCKER" = false ]; then
             echo "mswm ${MSWM_REF} -> ${MSWM_SHA}"
 
             if should_reinstall_git_pkg "mswm" "$MSWM_SHA" "$MSWM_SHA_MARKER"; then
-                pip install --force-reinstall --no-cache-dir "git+${MSWM_REPO}@${MSWM_REF}"
+                python -m pip install --force-reinstall --no-cache-dir "git+${MSWM_REPO}@${MSWM_REF}"
                 record_sha_marker "$MSWM_SHA" "$MSWM_SHA_MARKER"
             fi
         else
             # Fallback: could not resolve the branch SHA; revert to branch-based install behavior.
-            pip install --force-reinstall --no-cache-dir "git+${MSWM_REPO}@${MSWM_REF}"
+            python -m pip install --force-reinstall --no-cache-dir "git+${MSWM_REPO}@${MSWM_REF}"
         fi
 
         echo
@@ -601,12 +659,12 @@ if [ "$IN_DOCKER" = false ]; then
             echo "data_assimilation_engine ${DATA_ASSIMILATION_REF} -> ${DATA_ASSIM_SHA}"
 
             if should_reinstall_git_pkg "data_assimilation_engine" "$DATA_ASSIM_SHA" "$DATA_ASSIM_SHA_MARKER"; then
-                pip install --force-reinstall --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_REF}"
+                python -m pip install --force-reinstall --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_REF}"
                 record_sha_marker "$DATA_ASSIM_SHA" "$DATA_ASSIM_SHA_MARKER"
             fi
         else
             # Fallback: could not resolve the branch SHA; revert to branch-based install behavior.
-            pip install --force-reinstall --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_REF}"
+            python -m pip install --force-reinstall --no-cache-dir "git+${DATA_ASSIM_REPO}@${DATA_ASSIMILATION_REF}"
         fi
 
         echo
@@ -628,17 +686,17 @@ if [ "$IN_DOCKER" = false ]; then
         echo
         echo --------------------------------------------------------
         echo "Running pip check..."
-        if ! pip check; then
+        if ! python -m pip check; then
             echo
             echo "######################################################################"
             echo "##############################  WARNING  #############################"
             echo "######################################################################"
             echo "# pip check found broken requirements. Continuing startup anyway."
             echo "# You may see runtime import errors or unexpected behavior until deps are fixed."
-            echo "# To diagnose: run 'pip check' and reinstall the missing/conflicting packages."
+            echo "# To diagnose: run 'python -m pip check' and reinstall the missing/conflicting packages."
             echo "# If you suspect the git-installed packages are in a bad state, uninstall them and rerun this script:"
-            echo "#   pip uninstall -y data_assimilation_engine"
-            echo "#   pip uninstall -y mswm"
+            echo "#   python -m pip uninstall -y data_assimilation_engine"
+            echo "#   python -m pip uninstall -y mswm"
             echo "#   pip uninstall -y ewts"
             echo "######################################################################"
             echo
@@ -871,6 +929,7 @@ if [ $status -ne 0 ]; then
 fi
 
 echo
+echo --------------------------------------------------------
 echo "Starting server"
 
 ASGI_FLAG="${CERF_ASGI:-}" # explicit override
@@ -923,6 +982,6 @@ else
     fi
 fi
 
-if [ -n "${CERF_VENV}" ]; then
+if [ -n "${CERF_VENV}" ] && [ "$IN_DOCKER" = false ]; then
     deactivate
 fi
