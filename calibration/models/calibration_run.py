@@ -38,6 +38,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     job_name = models.CharField(max_length=100, null=True)
     save_plot_iteration_frequency = models.PositiveIntegerField(null=True)
     save_output_iteration = models.BooleanField(default=False)
+    # TODO Get rid of this field
     automatic_validation = models.BooleanField(null=False, default=False)
     is_archived = models.BooleanField(default=False)
     archive_status_updated_at = models.DateTimeField(null=True)

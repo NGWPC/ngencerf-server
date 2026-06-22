@@ -646,12 +646,6 @@ class FooterResponseSerializer(BaseSerializer):
     contact_email = serializers.CharField(required=True, allow_blank=True)
 
 
-def validate_automatic_validation(value):
-    if value is not True:
-        raise serializers.ValidationError("automatic_validation must always be True.")
-    return value
-
-
 class LoadCalibrationRunResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
     last_updated_on = serializers.DateTimeField(required=True)
@@ -670,7 +664,6 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     parameters_selected = serializers.BooleanField(required=True)
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=[])
-    automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     time_range = TimeRangeSerializerAllowEmpty(required=False)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
@@ -1298,7 +1291,6 @@ class SaveTuningRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
     parameters = SaveTuningParametersSerializer(many=True, required=False)
     time_controls = TuningTimeControls(required=True, allow_empty=False)
-    automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
 
 
 class SaveTuningResponseSerializer(GenericResponseSerializer):
@@ -1709,7 +1701,6 @@ class ExportResponseSerializer(BaseSerializer):
     job_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=list)
-    automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     time_controls = TuningTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
@@ -1736,7 +1727,6 @@ class ImportDataSerializer(BaseSerializer):
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     job_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)
-    automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     time_controls = TuningTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
