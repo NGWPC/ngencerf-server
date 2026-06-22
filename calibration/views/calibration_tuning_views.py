@@ -386,7 +386,6 @@ def save_tuning_tab(request: Request) -> Response:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
-    automatic_validation = validator.get('automatic_validation')
     time_controls = validator.get('time_controls')
     parameters = validator.get('parameters')
 

@@ -54,8 +54,6 @@
             "maps_to_variable_name": "soil_moisture_profile"
         }
     ],
-    "automatic_validation": true,
-
     "calibration_times": {
         "calibration_start_time": "2016-10-01T00:00:00Z",
         "calibration_end_time": "2017-09-30T23:00:00Z",

@@ -560,9 +560,7 @@ def create_calibration_run_internal(user: User, genesis: JobGenesis | None = Non
 
     logger.info(f"Directory created: {run.job_data_dir} | perms={oct(mode)}")
 
-    # This is always true
-    run.automatic_validation = True
-    run.save(update_fields=['job_data_dir', 'automatic_validation'])
+    run.save(update_fields=['job_data_dir'])
     return run
 
 
