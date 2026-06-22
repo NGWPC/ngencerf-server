@@ -303,8 +303,7 @@ def get_times(run: CalibrationRun) -> tuple[TimeDict, TimeDict, TimeControlsResp
     :param run: The CalibrationRun instance containing the persisted time settings.
     :return: A tuple containing three dictionaries:
              - calibration_times: Simulation and evaluation start/end times for calibration.
-             - validation_times: Simulation and evaluation start/end times for validation,
-               if automatic validation is enabled.
+             - validation_times: Simulation and evaluation start/end times for validation
              - time_controls: The UI time control values (simulation start time,
                warmup duration, calibration duration, validation window, and
                validation duration) from which the calibration and validation
@@ -322,8 +321,8 @@ def get_times(run: CalibrationRun) -> tuple[TimeDict, TimeDict, TimeControlsResp
             'calibration_end_time': run.calibration_eval_end_period
         }
 
-    # If automatic validation is enabled and validation times exist, populate validation times
-    if run.automatic_validation and run.validation_start_period:
+    # If validation times exist, populate validation times
+    if run.validation_start_period:
         validation_times = {
             'simulation_start_time': run.validation_start_period,
             'simulation_end_time': run.validation_end_period,
@@ -406,8 +405,6 @@ def save_tuning_tab(request: Request) -> Response:
 
     if have_LSTM(run) and parameters:
         return ResponseError('You cannot specify parameters when using LSTM')
-
-    run.automatic_validation = automatic_validation
 
     error_message, calibration_times, validation_times, time_control_limits = calculate_times_and_limits(run, time_controls)
     if error_message:
@@ -889,7 +886,7 @@ def validate_time_range_against_data(
     validation_start = validation_times.get('simulation_start_time') if validation_times else run.validation_start_period
     validation_end = validation_times.get('simulation_end_time') if validation_times else run.validation_end_period
 
-    if run.automatic_validation and validation_start and validation_end:
+    if validation_start and validation_end:
         return validate_simulation_within_range(data_start, data_end, validation_start, validation_end, JobType.VALIDATION)
 
     return None

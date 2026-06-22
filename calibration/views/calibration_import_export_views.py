@@ -86,7 +86,6 @@ def import_calibration_run_data(request: Request,
     use_sloth = calibration_run_data.get('use_sloth')
     parameters = calibration_run_data.get('parameters')
 
-    automatic_validation = calibration_run_data.get('automatic_validation')  # defaults handled later on run
     time_controls = calibration_run_data.get('time_controls')
 
     optimization_name = calibration_run_data.get('optimization')
@@ -174,10 +173,6 @@ def import_calibration_run_data(request: Request,
             return None, None, ResponseError(f"If you indicate 'use_sloth', you must enter {SLOTH} parameters")
         if (not use_sloth) and sloth_parameters:
             return None, None, ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
-
-        # Validation times constraints (no DB writes here)
-        # if not automatic_validation and validation_times:
-        #     return None, None, ResponseError('validation_times cannot be specified unless automatic_validation is True')
 
         # Optimization validations (assigns to `run` in memory only; no DB write)
         if optimization_name:
@@ -317,8 +312,6 @@ def import_calibration_run_data(request: Request,
         # -----------------------------
         # Tuning (validate & persist)
         # -----------------------------
-        run.automatic_validation = automatic_validation
-
         # Only validate parameters if we didn't hit Data Services parameter metadata errors
         if parameters and not any(error.get('name') == 'parameters' for error in eds_errors):
             # These validations read from DB; saving persists selections
@@ -684,11 +677,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     logger.info("Processing tuning data")
     tuning_start = time.perf_counter()
 
-    calibration_run_data['automatic_validation'] = run.automatic_validation
-
     calibration_times, validation_times, time_controls = get_times(run)
-    # calibration_run_data['calibration_times'] = calibration_times
-    # calibration_run_data['validation_times'] = validation_times
     calibration_run_data['time_controls'] = time_controls
 
     logger.info(f"Tuning data processed in {time.perf_counter() - tuning_start:.2f}s")
