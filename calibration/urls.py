@@ -8,7 +8,7 @@ from calibration.views import calibration_formulation_views, calibration_tuning_
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
     calibration_evaluation_views, calibration_forecast_views, calibration_regionalization_views, \
     calibration_verification_views, calibration_secondary_data_views, calibration_download_views, calibration_log_files_views, \
-    calibration_create_jobs_views, calibration_mfa_views
+    calibration_create_jobs_views
 
 urlpatterns = [
     ##################################
