@@ -291,20 +291,27 @@ def persist_time_range(run: CalibrationRun, time_range: dict[str, datetime | Non
     run.save(update_fields=['time_range_start', 'time_range_end'])
 
 
-def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datetime], dict[str, datetime]]:
-    """
-    Retrieves calibration and validation time periods and time controls for a given calibration run.
+TimeDict = dict[str, datetime]
+TimeControlsResponse = dict[str, datetime | int | bool | None]
 
-    :param run: The CalibrationRun instance containing time period information.
-    :return: A tuple containing three dictionaries:
-             - The first dictionary holds calibration time periods.
-             - The second dictionary holds validation time periods (if automatic validation is enabled).
-             - The third dictionary holds values from the UI time controls that were used to determine 
-                the calibration and validation times.
+
+def get_times(run: CalibrationRun) -> tuple[TimeDict, TimeDict, TimeControlsResponse]:
     """
-    calibration_times = {}
-    validation_times = {}
-    time_controls = {}
+    Retrieves the saved calibration and validation time periods along with the
+    time control values for a calibration run.
+
+    :param run: The CalibrationRun instance containing the persisted time settings.
+    :return: A tuple containing three dictionaries:
+             - calibration_times: Simulation and evaluation start/end times for calibration.
+             - validation_times: Simulation and evaluation start/end times for validation,
+               if automatic validation is enabled.
+             - time_controls: The UI time control values (simulation start time,
+               warmup duration, calibration duration, validation window, and
+               validation duration) from which the calibration and validation
+               periods are derived.
+    """
+    calibration_times: TimeDict = {}
+    validation_times: TimeDict = {}
 
     # If calibration times exist, assume all related fields are present
     if run.calibration_start_period:
@@ -325,7 +332,7 @@ def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datet
         }
 
     # If time controls have been saved, populate them
-    time_controls = {
+    time_controls: TimeControlsResponse = {
         'simulation_start_time': run.calibration_start_period,
         'warmup_duration': run.warmup_duration if run.warmup_duration and run.warmup_duration != 0 else 12,
         'calibration_duration': run.calibration_duration if run.calibration_duration and run.calibration_duration != 0 else 60,
@@ -628,7 +635,7 @@ def upload_user_parameters(request: Request) -> Response:
     missing_cols = [col for col in required_columns if col not in df.columns]
     if missing_cols:
         # Log the actual DataFrame to inspect it
-        logger.debug(f"DataFrame content:\n{df.head()}")
+        logger.debug("DataFrame content:\n%s", df.head())
         return ResponseError(f'Missing required columns: {missing_cols}')
 
     # Reject extra columns. Extra columns often indicate a bad delimiter or a row
@@ -718,7 +725,7 @@ def upload_user_parameters(request: Request) -> Response:
         logger.debug(f"Range validation errors: {range_errors}")
         return Response({'error': 'Range validation failed', 'details': range_errors}, status=400)
 
-    logger.debug(f"Parsed DataFrame after stripping and numeric conversion: \n{df}")
+    logger.debug(f"Parsed DataFrame after stripping and numeric conversion: \n%s, df")
 
     # Return the parsed parameter rows to the caller. This endpoint validates and
     # echoes the uploaded file contents; it only persists the filename on the run.
@@ -896,7 +903,15 @@ class TimeControls(TypedDict, total=False):
     validation_duration: int
 
 
-def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls | None) -> tuple[list[str], dict, dict, dict]:
+def calculate_times_and_limits(
+        run: CalibrationRun,
+        time_controls: TimeControls | None
+) -> tuple[
+    str,
+    dict[str, datetime],
+    dict[str, datetime],
+    dict[str, datetime | int]
+]:
     """
     Calculate derived calibration/validation periods from the tuning time controls and
     return the valid UI limits for those controls.
@@ -925,6 +940,11 @@ def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls 
     validation_window = time_controls.get('validation_window', True)
     validation_duration = time_controls.get('validation_duration')
 
+    assert isinstance(simulation_start_time, datetime)
+    assert isinstance(warmup_duration, int)
+    assert isinstance(calibration_duration, int)
+    assert isinstance(validation_duration, int)
+
     # Normalize UI-selected dates to midnight because durations are whole-month windows.
     simulation_start_time = simulation_start_time.replace(
         hour=0,
@@ -941,7 +961,7 @@ def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls 
 
     if simulation_start_time < run.time_range_start or simulation_start_time > run.time_range_end:
         error_messages.append("Simulation start time must be within the allowed range.")
-        
+
     # Set time control values - model methods will set the rest dynamically
     run.calibration_start_period = simulation_start_time
     run.warmup_duration = warmup_duration
@@ -963,21 +983,37 @@ def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls 
     }
 
     if run.calibration_start_period < run.time_range_start or run.calibration_start_period > run.time_range_end:
-        error_messages.append(f'Cal Sim Start {str(run.calibration_start_period).split(" ")[0]} falls outside the allowed range.')
+        error_messages.append(
+            f'Cal Sim Start {run.calibration_start_period.date()} falls outside the allowed range.'
+        )
     if run.calibration_end_period < run.time_range_start or run.calibration_end_period > run.time_range_end:
-        error_messages.append(f'Cal Sim End {str(run.calibration_end_period).split(" ")[0]} falls outside the allowed range.')
+        error_messages.append(
+            f'Cal Sim End {run.calibration_end_period.date()} falls outside the allowed range.'
+        )
     if run.calibration_eval_start_period < run.time_range_start or run.calibration_eval_start_period > run.time_range_end:
-        error_messages.append(f'Calibration Start {str(run.calibration_eval_start_period).split(" ")[0]} falls outside the allowed range.')
+        error_messages.append(
+            f'Calibration Start {run.calibration_eval_start_period.date()} falls outside the allowed range.'
+        )
     if run.calibration_eval_end_period < run.time_range_start or run.calibration_eval_end_period > run.time_range_end:
-        error_messages.append(f'Calibration End {str(run.calibration_eval_end_period).split(" ")[0]} falls outside the allowed range.')
+        error_messages.append(
+            f'Calibration End {run.calibration_eval_end_period.date()} falls outside the allowed range.'
+        )
     if run.validation_start_period < run.time_range_start or run.validation_start_period > run.time_range_end:
-        error_messages.append(f'Val Sim Start {str(run.validation_start_period).split(" ")[0]} falls outside the allowed range.')
+        error_messages.append(
+            f'Val Sim Start {run.validation_start_period.date()} falls outside the allowed range.'
+        )
     if run.validation_end_period < run.time_range_start or run.validation_end_period > run.time_range_end:
-        error_messages.append(f'Val Sim End {str(run.validation_end_period).split(" ")[0]} falls outside the allowed range.')
+        error_messages.append(
+            f'Val Sim End {run.validation_end_period.date()} falls outside the allowed range.'
+        )
     if run.validation_eval_start_period < run.time_range_start or run.validation_eval_start_period > run.time_range_end:
-        error_messages.append(f'Validation Start {str(run.validation_eval_start_period).split(" ")[0]} falls outside the allowed range.')
+        error_messages.append(
+            f'Validation Start {run.validation_eval_start_period.date()} falls outside the allowed range.'
+        )
     if run.validation_eval_end_period < run.time_range_start or run.validation_eval_end_period > run.time_range_end:
-        error_messages.append(f'Validation End {str(run.validation_eval_end_period).split(" ")[0]} falls outside the allowed range.')
+        error_messages.append(
+            f'Validation End {run.validation_eval_end_period.date()} falls outside the allowed range.'
+        )
 
     # Compute input limits
 
@@ -1018,7 +1054,7 @@ def calculate_times_and_limits(run: CalibrationRun, time_controls: TimeControls 
             run.time_range_end
         )
         validation_duration_max = delta_months(
-            run.time_range_start, 
+            run.time_range_start,
             simulation_start_time
         )
 
