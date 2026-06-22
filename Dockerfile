@@ -126,10 +126,15 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     pip install "${ewts_dir}/runtime/python/ewts" && \
     rm -rf "${ewts_dir}"
 
-ARG CACHE_BUST=1
+# Per-dependency cache-bust: CI passes the resolved commit SHA, so a stale
+# Docker layer can't reinstall an older revision (see .github/workflows/cicd.yml)
+ARG MSW_MGR_CACHE_BUST=1
+ARG DATA_ASSIMILATION_CACHE_BUST=1
 RUN set -eux && \
-    echo $CACHE_BUST && pip3 install "git+https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git@${MSW_MGR_REF}" && \
-    echo $CACHE_BUST && pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}" && \
+    echo "nwm-msw-mgr cache bust: ${MSW_MGR_CACHE_BUST}" && \
+    pip3 install "git+https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git@${MSW_MGR_REF}" && \
+    echo "nwm-data-assimilation cache bust: ${DATA_ASSIMILATION_CACHE_BUST}" && \
+    pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}" && \
     pip3 cache purge
 
 # Should parallel similar functionality in the run_cerf.sh
@@ -191,7 +196,10 @@ RUN rm -rf .git
 COPY . /ngencerf/ngencerf-server/
 
 # Fetch bmi_forcing_templates into an internal, non-mounted path to be copied at runtime by runCerf.sh
+# Cache-bust on the resolved ngen-forcing commit so a ref update isn't masked by a cached layer
+ARG NGEN_FORCING_CACHE_BUST=1
 RUN set -eux && \
+    echo "ngen-forcing cache bust: ${NGEN_FORCING_CACHE_BUST}" && \
     PREBUILT_DIR="/ngencerf/prebuilt/bmi_forcing_templates" && \
     NGEN_FORCING_URL="https://github.com/${NGEN_FORCING_ORG}/ngen-forcing.git" && \
     \
