@@ -25,7 +25,7 @@ This template file is suitable for development and no changes need to be made.
 Note that the .env file is not checked in to Git
 
 # Install Redis
-Redis is used for the cache
+Redis is used for the cache.  It is memory-only and non-persistent.  When the server is restarted, the cache *must* be cleared.
 
 ```
 sudo apt update

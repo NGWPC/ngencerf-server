@@ -7,12 +7,13 @@ https://docs.djangoproject.com/en/5.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
-import codecs
+import codecs 
 import os
 import re
 from datetime import timedelta, datetime, timezone
 from enum import StrEnum, auto
 from urllib.parse import urlparse, urlunparse
+from urllib.request import urlopen
 
 from datetimerange import DateTimeRange
 from dotenv import load_dotenv
@@ -37,7 +38,7 @@ print(f'Loading values from {version_path}')
 load_dotenv(version_path)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = str(os.getenv('DJANGO_DEBUG', 'true')).lower() == 'true'
+DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 
 NGENCERF_VERSION = os.getenv("NGENCERF_VERSION", "<unknown>")
 NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
@@ -119,6 +120,25 @@ ALLOWED_HOSTS = [
     ).split(',')
     if host.strip()
 ]
+# On ECS Fargate, the ALB health check reaches this task by its own private
+# IP, so that IP arrives in the Host header. Add it to ALLOWED_HOSTS so the
+# health check (and any direct in-VPC call) passes host validation. AWS
+# injects ECS_CONTAINER_METADATA_URI_V4 into every Fargate container; the
+# container metadata document carries this task's private IP.
+_ecs_metadata_uri = os.getenv("ECS_CONTAINER_METADATA_URI_V4")
+if _ecs_metadata_uri:
+    try:
+        with urlopen(_ecs_metadata_uri, timeout=1) as _resp:
+            _meta = json.load(_resp)
+
+        for _network in _meta.get("Networks", []):
+            for _ip in _network.get("IPv4Addresses", []):
+                if _ip and _ip not in ALLOWED_HOSTS:
+                    ALLOWED_HOSTS.append(_ip)
+
+    except Exception as exc:
+        # Never block startup if metadata is unavailable (e.g. local dev).
+        print(f"Unable to read ECS container metadata for ALLOWED_HOSTS: {exc}")
 
 # Comma separated list in the env
 CORS_ALLOWED_ORIGINS = [
@@ -130,9 +150,9 @@ CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
-MFA_ENABLED = str(os.getenv("MFA_ENABLED", "false")).lower() == "true"
+MFA_ENABLED = os.getenv("MFA_ENABLED", "false").lower() == "true"
 
-ACTIVE_DIRECTORY_ENABLED = str(os.getenv("ACTIVE_DIRECTORY_ENABLED", "false")).lower() == "true"
+ACTIVE_DIRECTORY_ENABLED = os.getenv("ACTIVE_DIRECTORY_ENABLED", "false").lower() == "true"
 
 # Active Directory / LDAP
 LDAP_DOMAIN = os.getenv("LDAP_DOMAIN", "nextgenwaterprediction.com").strip()
@@ -151,7 +171,7 @@ LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
 
 # sssd is using AD auth without SSL shown here, so default to ldap:// / non-SSL.
 # Set LDAP_USE_SSL=true and LDAP_SERVER_URI=ldaps://... if LDAPS is configured later.
-LDAP_USE_SSL = str(os.getenv("LDAP_USE_SSL", "false")).lower() == "true"
+LDAP_USE_SSL = os.getenv("LDAP_USE_SSL", "false").lower() == "true"
 
 LDAP_TIMEOUT = int(os.getenv("LDAP_TIMEOUT", "10"))
 
@@ -367,6 +387,115 @@ FORCING_ENGINE_ENV = 'ngen_forcings_engine_bmi'
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
+)
+
+
+def parse_mpi_node_rules(value: str) -> list[tuple[int, int]]:
+    """
+    Parse MPI_NODE_RULES into ordered catchment-to-node-count rules.
+
+    Expected format:
+
+        [[max_catchments, num_nodes], [max_catchments, num_nodes]]
+
+    Example:
+
+        [[15, 1], [50, 2], [250, 4], [500, 6], [1000, 10], [1500, 12], [-1, 18]]
+
+    The final rule must use -1 as the fallback.
+
+    :param value: JSON-encoded rule string from the environment.
+    :return: Ordered list of (max_catchments, num_nodes) tuples.
+    :raises RuntimeError: If no rules are configured or the fallback rule is missing.
+    :raises ValueError: If the rule string is invalid JSON or contains invalid values.
+    """
+    try:
+        raw_rules = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid MPI_NODE_RULES JSON: {exc}") from exc
+
+    if not isinstance(raw_rules, list) or not raw_rules:
+        raise RuntimeError("MPI_NODE_RULES must define at least one rule")
+
+    rules: list[tuple[int, int]] = []
+
+    for index, item in enumerate(raw_rules):
+        if (
+                not isinstance(item, list)
+                or len(item) != 2
+                or not isinstance(item[0], int)
+                or not isinstance(item[1], int)
+        ):
+            raise ValueError(
+                f"MPI_NODE_RULES item {index} must be "
+                f"[int max_catchments, int num_nodes]; got: {item!r}"
+            )
+
+        max_catchments, num_nodes = item
+
+        if num_nodes <= 0:
+            raise ValueError(
+                f"MPI_NODE_RULES item {index} has invalid num_nodes={num_nodes}; "
+                "must be greater than 0"
+            )
+
+        rules.append((max_catchments, num_nodes))
+
+    if rules[-1][0] != -1:
+        raise RuntimeError("MPI_NODE_RULES must end with a -1 fallback rule")
+
+    return rules
+
+
+MPI_NODE_RULES = parse_mpi_node_rules(_MPI_NODE_RULES_STR)
+
+# -----------------------------
+# Execution mode
+# -----------------------------
+_JOB_EXECUTION_MODE_STR = os.getenv('JOB_EXECUTION_MODE', JobExecutionMode.DOCKER.name)
+
+try:
+    # noinspection PyTypeHints
+    JOB_EXECUTION_MODE = JobExecutionMode[_JOB_EXECUTION_MODE_STR]
+except KeyError:
+    # noinspection PyUnresolvedReferences
+    raise SystemExit(
+        f"Invalid environment value for JOB_EXECUTION_MODE: {_JOB_EXECUTION_MODE_STR}. "
+        f"Must be one of {', '.join([e.name for e in JobExecutionMode])}"
+    )
+
+if JOB_EXECUTION_MODE == JobExecutionMode.SLURM_MOCK and not DEBUG:
+    raise RuntimeError("SLURM_MOCK is only allowed when DJANGO_DEBUG=true")
+
+# ------------------------------------------------------------
+# Runtime commands
+# ------------------------------------------------------------
+
+# Docker command templates used when JOB_EXECUTION_MODE=DOCKER.
+# Use {name} placeholder for the Docker container name.
+# --rm ensures containers are auto-removed after exit.
+
+CAL_MGR_DOCKER_CMD = (
+    f"docker run --rm --network host --name {{name}} "
+    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-cal-mgr"
+)
+
+NGEN_FORECAST_DOCKER_CMD = (
+    f"docker run --rm --name {{name}} "
+    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-fcst-mgr"
+)
+
+NWM_VERF_DOCKER_CMD = (
+    f"docker run --rm --name {{name}} "
+    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-verf"
+)
+
+DOCKER_RUNTIME_INFO = {
+    "calibration": CAL_MGR_DOCKER_CMD,
+    "validation": CAL_MGR_DOCKER_CMD,
+    "validation_iteration": CAL_MGR_DOCKER_CMD,
+    "cold_start": NGEN_FORECAST_DOCKER_CMD,
+    "forecast": NGEN_FORECAST_DOCKER_CMD,
     "hindcast": NGEN_FORECAST_DOCKER_CMD,
     "verification": NWM_VERF_DOCKER_CMD,
 }
@@ -414,10 +543,6 @@ SINGULARITY_RUNTIME_INFO = {
 
 # Optional sacct columns collected after job completion.
 SLURM_JOB_METRICS = os.getenv("SLURM_JOB_METRICS")
-
-NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'logs')
-print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
-os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
 # Static and working directories
 NGEN_STATIC_DIR = os.path.join(CONTAINER_DATA_ROOT, 'ngen-static-files')
@@ -576,16 +701,36 @@ DEFAULT_LOG_LEVEL = get_log_level('NGENCERF_LOG_LEVEL', 'DEBUG')
 DJANGO_LOG_LEVEL = get_log_level('NGENCERF_DJANGO_LOG_LEVEL', 'INFO')
 DJANGO_REQUEST_LOG_LEVEL = get_log_level('NGENCERF_DJANGO_REQUEST_LOG_LEVEL', DJANGO_LOG_LEVEL)
 DATABASE_LOG_LEVEL = get_log_level('NGENCERF_DATABASE_LOG_LEVEL', 'WARNING')
-NGENCERF__LOG_LEVEL = get_log_level('NGENCERF_CALIBRATION_LOG_LEVEL', DEFAULT_LOG_LEVEL)
+NGENCERF_LOG_LEVEL = get_log_level('NGENCERF_CALIBRATION_LOG_LEVEL', DEFAULT_LOG_LEVEL)
+
+# Controls whether Django also writes local log files.
+# Defaults to the value of DEBUG (typically True in development and
+# False in production):
+#   - Development: console + log files
+#   - Production:  console only (CloudWatch collects container stdout/stderr)
+# Override by setting NGENCERF_LOG_TO_FILE=true|false.
+LOG_TO_FILE = (
+        os.getenv("NGENCERF_LOG_TO_FILE", str(DEBUG)).lower() == "true"
+)
+
+APP_HANDLERS = ["console"]
+DB_HANDLERS = ["console"]
+NGEN_LOGGING_DIR = os.path.join(BASE_DIR, "logs")
+
+if LOG_TO_FILE:
+    print(f"File logging enabled: {NGEN_LOGGING_DIR}")
+    os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
+
+    APP_HANDLERS.append("file_dev")
+    DB_HANDLERS.append("file_db")
 
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
 
-    # Root Logger: Sends everything to the console and file
     'root': {
-        'handlers': ['console', 'file_dev'],
-        'level': ROOT_LOG_LEVEL
+        'handlers': APP_HANDLERS,
+        'level': ROOT_LOG_LEVEL,
     },
 
     'formatters': {
@@ -607,73 +752,77 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
         },
-        'file_dev': {
-            'level': DEFAULT_LOG_LEVEL,
-            'class': 'logging.FileHandler',
-            'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf.log'),
-            'formatter': 'dev_format',
-            'encoding': 'utf-8',
-        },
-        'file_db': {
-            'level': DATABASE_LOG_LEVEL,
-            'class': 'logging.FileHandler',
-            'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_db.log'),
-            'formatter': 'dev_format',
-            'encoding': 'utf-8',
-        },
+        # Only define file handlers when file logging is enabled.
+        # Production logs are written to stdout/stderr and collected by CloudWatch.
+        **({
+               'file_dev': {
+                   'level': DEFAULT_LOG_LEVEL,
+                   'class': 'logging.FileHandler',
+                   'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf.log'),
+                   'formatter': 'dev_format',
+                   'encoding': 'utf-8',
+               },
+               'file_db': {
+                   'level': DATABASE_LOG_LEVEL,
+                   'class': 'logging.FileHandler',
+                   'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_db.log'),
+                   'formatter': 'dev_format',
+                   'encoding': 'utf-8',
+               },
+           } if LOG_TO_FILE else {}),
     },
-
+    # propagate=False prevents duplicate log messages via the root logger.
     'loggers': {
         'django.db.backends': {
-            'handlers': ['file_db'],
+            'handlers': DB_HANDLERS,
             'level': DATABASE_LOG_LEVEL,
-            'propagate': False  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'django': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': DJANGO_LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'djoser': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': DJANGO_LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'rest_framework_simplejwt': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': DJANGO_LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'django.request': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': DJANGO_REQUEST_LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'django_dbconn_retry': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': DJANGO_LOG_LEVEL,
-            'propagate': False,
+            'propagate': False
         },
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': 'INFO',
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'urllib3': {
-            'handlers': ['console', 'file_dev'],
+            'handlers': APP_HANDLERS,
             'level': 'INFO',
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'propagate': False
         },
         'calibration': {
-            'handlers': ['console', 'file_dev'],
-            'level': NGENCERF__LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'handlers': APP_HANDLERS,
+            'level': NGENCERF_LOG_LEVEL,
+            'propagate': False
         },
         'cerfServer': {
-            'handlers': ['console', 'file_dev'],
-            'level': NGENCERF__LOG_LEVEL,
-            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+            'handlers': APP_HANDLERS,
+            'level': NGENCERF_LOG_LEVEL,
+            'propagate': False
         }
     }
 }
