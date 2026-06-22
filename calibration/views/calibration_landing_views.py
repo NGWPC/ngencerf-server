@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 
 from django.conf import settings
+from django.http import HttpResponse, HttpRequest
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -127,10 +128,24 @@ def get_footer(request: Request) -> Response:
     response_validator, error_response = validate_response(FooterResponseSerializer, response)
     if error_response:
         return error_response
+    assert response_validator is not None
 
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'Returning to {get_user_email(request)} from {get_caller_name()}()'
+        f'{get_elapsed_str(request)} - '
+        f'{json.dumps(response_validator.data)}')
     return Response(response_validator.data)
+
+
+def health_check(_request: HttpRequest) -> HttpResponse:
+    """
+    Liveness endpoint used by AWS load balancer health checks.
+
+    Returns HTTP 200 if the Django application is running and able to
+    accept HTTP requests. No authentication or dependency checks are
+    performed.
+    """
+    return HttpResponse("ok", content_type="text/plain")
 
 
 @extend_schema(
@@ -172,9 +187,12 @@ def get_git_info(request: Request) -> Response:
     response_validator, error_response = validate_response(GetGitInfoResponseSerializer, response)
     if error_response:
         return error_response
+    assert response_validator is not None
 
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data, default=str)}')
+        f'Returning to {get_user_email(request)} from {get_caller_name()}()'
+        f'{get_elapsed_str(request)} - '
+        f'{json.dumps(response_validator.data, default=str)}')
     return Response(response_validator.data)
 
 
@@ -249,6 +267,7 @@ def delete_jobs(request: Request) -> Response:
         return error_return
 
     calibration_run_ids = validator.get('calibration_run_ids')
+    assert isinstance(calibration_run_ids, list)
 
     job_results = []
 
@@ -308,15 +327,18 @@ def delete_jobs(request: Request) -> Response:
         })
 
     job_summaries = create_job_summaries(job_results)
-    
+
     response = {"jobs": job_results, "summaries": job_summaries}
 
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
+    assert response_validator is not None
+
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}()'
-        f'{get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'{get_elapsed_str(request)} - '
+        f'{json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -372,6 +394,8 @@ def archive_jobs(request: Request) -> Response:
 
     calibration_run_ids = validator.get('calibration_run_ids')
     archive = validator.get('archive')
+
+    assert isinstance(calibration_run_ids, list)
 
     if not settings.NGENCERF_ARCHIVE_S3_PATH:
         return ResponseError("NGENCERF_ARCHIVE_S3_PATH is undefined")
@@ -591,7 +615,7 @@ def archive_jobs(request: Request) -> Response:
                 "message_type": "error"
             })
             continue
-    
+
     job_summaries = create_job_summaries(job_results)
 
     response = {"jobs": job_results, "summaries": job_summaries}
@@ -599,9 +623,11 @@ def archive_jobs(request: Request) -> Response:
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
+    assert response_validator is not None
 
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}()'
+        f'{get_elapsed_str(request)} - '
         f'{json.dumps(response_validator.data)}'
     )
 
@@ -641,6 +667,8 @@ def lock_jobs(request: Request) -> Response:
 
     calibration_run_ids = validator.get('calibration_run_ids')
     lock = validator.get('lock')
+
+    assert isinstance(calibration_run_ids, list)
 
     job_results = []
 
@@ -686,17 +714,20 @@ def lock_jobs(request: Request) -> Response:
             "success": True,
             "message_type": "success"
         })
-    
+
     job_summaries = create_job_summaries(job_results)
-        
+
     response = {"jobs": job_results, "summaries": job_summaries}
 
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
+    assert response_validator is not None
+
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}()'
-        f'{get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'{get_elapsed_str(request)} - '
+        f'{json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -764,6 +795,7 @@ def import_job(request: Request) -> Response:
     run_after_import = data.get('run_after_import', False)
 
     if calibration_run_id:
+        assert isinstance(calibration_run_id, int)
         calibration_run, error_return = get_calibration_run(calibration_run_id, request.user)
         if error_return:
             return error_return
@@ -807,9 +839,12 @@ def import_job(request: Request) -> Response:
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
         return error_response
+    assert response_validator is not None
 
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}'
+        f'Returning to {get_user_email(request)} from {get_caller_name()}()'
+        f'{get_elapsed_str(request)} - '
+        f'{json.dumps(response_validator.data)}'
     )
     return Response(response_validator.data)
 
@@ -939,7 +974,7 @@ def create_job_summaries(job_results: list) -> list:
     :return: A list of summary messages, each with message_type "success", "warning", or "error".
     """
     jobs_grouped = defaultdict(list)
-    
+
     for job in job_results:
         message = job["message"]
 
@@ -977,7 +1012,7 @@ def create_job_summaries(job_results: list) -> list:
             ids_text = f"{', '.join(ids[:-1])} and {ids[-1]}"
 
         if len(ids) > 1:
-            remainder_message = summary["message"]
+            remainder_message = str(summary["message"])
 
             replacements = {
                 "has": "have",
@@ -993,7 +1028,7 @@ def create_job_summaries(job_results: list) -> list:
                     flags=re.IGNORECASE,
                 )
         else:
-            remainder_message = summary["message"]
+            remainder_message = str(summary["message"])
 
         summary["message"] = (
             f"Calibration Job{'s' if len(ids) > 1 else ''} "
@@ -1002,5 +1037,5 @@ def create_job_summaries(job_results: list) -> list:
 
         # Remove calibration_run_ids from the final response
         del summary["calibration_run_ids"]
-    
+
     return job_summaries

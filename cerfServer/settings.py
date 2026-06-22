@@ -12,6 +12,7 @@ import os
 from datetime import timedelta, datetime, timezone
 from enum import StrEnum, auto
 from urllib.parse import urlparse, urlunparse
+from urllib.request import urlopen
 
 from datetimerange import DateTimeRange
 from dotenv import load_dotenv
@@ -118,6 +119,25 @@ ALLOWED_HOSTS = [
     ).split(',')
     if host.strip()
 ]
+# On ECS Fargate, the ALB health check reaches this task by its own private
+# IP, so that IP arrives in the Host header. Add it to ALLOWED_HOSTS so the
+# health check (and any direct in-VPC call) passes host validation. AWS
+# injects ECS_CONTAINER_METADATA_URI_V4 into every Fargate container; the
+# container metadata document carries this task's private IP.
+_ecs_metadata_uri = os.getenv("ECS_CONTAINER_METADATA_URI_V4")
+if _ecs_metadata_uri:
+    try:
+        with urlopen(_ecs_metadata_uri, timeout=1) as _resp:
+            _meta = json.load(_resp)
+
+        for _network in _meta.get("Networks", []):
+            for _ip in _network.get("IPv4Addresses", []):
+                if _ip and _ip not in ALLOWED_HOSTS:
+                    ALLOWED_HOSTS.append(_ip)
+
+    except Exception as exc:
+        # Never block startup if metadata is unavailable (e.g. local dev).
+        print(f"Unable to read ECS container metadata for ALLOWED_HOSTS: {exc}")
 
 # Comma separated list in the env
 CORS_ALLOWED_ORIGINS = [
@@ -755,9 +775,9 @@ LOG_TO_FILE = (
 
 APP_HANDLERS = ["console"]
 DB_HANDLERS = ["console"]
+NGEN_LOGGING_DIR = os.path.join(BASE_DIR, "logs")
 
 if LOG_TO_FILE:
-    NGEN_LOGGING_DIR = os.path.join(BASE_DIR, "logs")
     print(f"File logging enabled: {NGEN_LOGGING_DIR}")
     os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
@@ -862,13 +882,6 @@ LOGGING = {
         'cerfServer': {
             'handlers': APP_HANDLERS,
             'level': NGENCERF_LOG_LEVEL,
-            'propagate': False
-        },
-
-        # Suppress AWS/ELB health check requests that use an invalid Host header.
-        # These are expected in production behind a load balancer.
-        'django.security.DisallowedHost': {
-            'handlers': [],
             'propagate': False
         },
     }
