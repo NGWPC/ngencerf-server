@@ -334,10 +334,10 @@ def get_times(run: CalibrationRun) -> tuple[TimeDict, TimeDict, TimeControlsResp
     # If time controls have been saved, populate them
     time_controls: TimeControlsResponse = {
         'simulation_start_time': run.calibration_start_period,
-        'warmup_duration': run.warmup_duration if run.warmup_duration and run.warmup_duration != 0 else 12,
-        'calibration_duration': run.calibration_duration if run.calibration_duration and run.calibration_duration != 0 else 60,
+        'warmup_duration': run.warmup_duration if run.warmup_duration is not None else 12,
+        'calibration_duration': run.calibration_duration if run.calibration_duration is not None else 60,
         'validation_window': run.validation_window,
-        'validation_duration': run.validation_duration if run.validation_duration and run.validation_duration != 0 else 36
+        'validation_duration': run.validation_duration if run.validation_duration is not None else 36
     }
 
     return calibration_times, validation_times, time_controls
