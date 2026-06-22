@@ -46,7 +46,13 @@ services:
         - EWTS_REF=${EWTS_REF:-development}
         - MSW_MGR_REF=${MSW_MGR_REF:-development}
         - NGEN_FORCING_REF=${NGEN_FORCING_REF:-development}
-        - CACHE_BUST=${CACHE_BUST:-1}
+        # Per-dependency cache-bust. Default 1 (no busting). Override with the
+        # dependency's HEAD to force a fresh install, e.g.:
+        #   EWTS_CACHE_BUST=$(git ls-remote https://github.com/NGWPC/nwm-ewts.git development | awk '{print $1}')
+        - DATA_ASSIMILATION_CACHE_BUST=${DATA_ASSIMILATION_CACHE_BUST:-1}
+        - EWTS_CACHE_BUST=${EWTS_CACHE_BUST:-1}
+        - MSW_MGR_CACHE_BUST=${MSW_MGR_CACHE_BUST:-1}
+        - NGEN_FORCING_CACHE_BUST=${NGEN_FORCING_CACHE_BUST:-1}
     image: ghcr.io/ngwpc/ngencerf-server:${NGENCERF_SERVER_TAG:-latest}
     pull_policy: build
     ports:
