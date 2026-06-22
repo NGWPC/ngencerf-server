@@ -385,11 +385,30 @@ class TimeRangeSerializerAllowEmpty(BaseSerializer):
 
 
 class TuningTimeControls(BaseSerializer):
-    simulation_start_time = serializers.DateTimeField(required=True)
+    simulation_start_time = serializers.DateTimeField(required=True,allow_null=False)
     warmup_duration = serializers.IntegerField(required=True)
     calibration_duration = serializers.IntegerField(required=True)
     validation_window = serializers.BooleanField(required=True)
     validation_duration = serializers.IntegerField(required=True)
+
+    def __init__(self, *args, allow_empty=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.allow_empty = allow_empty  # Explicitly define allow_empty attribute
+
+        # If allow_empty is True, make the fields not required
+        if allow_empty:
+            self.fields['simulation_start_time'].required = False
+            self.fields['simulation_start_time'].allow_null = True
+            self.fields['warmup_duration'].required = False
+            self.fields['calibration_duration'].required = False
+            self.fields['validation_window'].required = False
+            self.fields['validation_duration'].required = False
+        else:
+            self.fields['simulation_start_time'].required = True
+            self.fields['warmup_duration'].required = True
+            self.fields['calibration_duration'].required = True
+            self.fields['validation_window'].required = True
+            self.fields['validation_duration'].required = True
 
 
 class TuningTimeControlLimits(BaseSerializer):
@@ -636,7 +655,6 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     gage = GageSerializer(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    # forcing_source_actual = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     geopackage_image_url = serializers.CharField(required=False)
@@ -652,7 +670,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     time_range = TimeRangeSerializerAllowEmpty(required=False)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
-    time_controls = TuningTimeControls(required=False)
+    time_controls = TuningTimeControls(required=False, allow_empty=True)
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
     logging_config = LoggingConfigSerializer(required=False)
     objective_function = serializers.CharField(required=True, allow_null=True)
@@ -1276,7 +1294,7 @@ class ModuleDataListSerializer(BaseSerializer):
 class SaveTuningRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
     parameters = SaveTuningParametersSerializer(many=True, required=False)
-    time_controls = TuningTimeControls(required=True)
+    time_controls = TuningTimeControls(required=True, allow_empty=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
 
 
@@ -1287,7 +1305,7 @@ class SaveTuningResponseSerializer(GenericResponseSerializer):
 
 class ValidateTuningTimesRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
-    time_controls = TuningTimeControls(required=True)
+    time_controls = TuningTimeControls(required=True, allow_empty=False)
 
 
 class ValidateTuningTimesResponseSerializer(GenericResponseSerializer):
@@ -1303,7 +1321,7 @@ class LoadTuningResponseSerializer(BaseSerializer):
     time_range = TimeRangeSerializerAllowEmpty(required=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
-    time_controls = TuningTimeControls(required=True)
+    time_controls = TuningTimeControls(required=True, allow_empty=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
 
 
@@ -1689,9 +1707,7 @@ class ExportResponseSerializer(BaseSerializer):
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=list)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
-    time_controls = TuningTimeControls(required=False)
-    # calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
-    # validation_times = ValidationTimeControls(required=False, allow_empty=True)
+    time_controls = TuningTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     parameters = SaveTuningParametersSerializer(many=True, required=True)
@@ -1718,9 +1734,7 @@ class ImportDataSerializer(BaseSerializer):
     job_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
-    time_controls = TuningTimeControls(required=False)
-    #    calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
-    #    validation_times = ValidationTimeControls(required=False, allow_empty=True)
+    time_controls = TuningTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     parameters = SaveTuningParametersSerializer(many=True, required=False, allow_missing_bounds=True)

@@ -491,6 +491,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     # Always load formulations once, for both export and UI modes
     formulations = CalibrationFormulation.objects.filter(calibration_run=run)
 
+    # Get times both both modes (export will only include the time controls)
+    calibration_times, validation_times, time_controls = get_times(run)
+
     #############################
     # Export or Clone Mode
     #############################
@@ -557,6 +560,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
                 base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
                 calibration_run_data['geopackage_image_url'] = f'data:image/png;base64,{base64_str}'
             logger.info(f"Geopackage map generation completed in {time.perf_counter() - gpkg_map_start:.2f}s")
+        
+        calibration_run_data['calibration_times'] = calibration_times
+        calibration_run_data['validation_times'] = validation_times
 
         # Determine external data status (whether required files are available)
         data_files_status_start = time.perf_counter()
@@ -677,7 +683,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     logger.info("Processing tuning data")
     tuning_start = time.perf_counter()
 
-    calibration_times, validation_times, time_controls = get_times(run)
     calibration_run_data['time_controls'] = time_controls
 
     logger.info(f"Tuning data processed in {time.perf_counter() - tuning_start:.2f}s")
