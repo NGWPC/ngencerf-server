@@ -25,7 +25,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     validation_eval_end_period = models.DateTimeField(null=True)
     warmup_duration = models.IntegerField(null=True)
     calibration_duration = models.IntegerField(null=True)
-    validation_window = models.BooleanField(default=True)
+    validation_window = models.BooleanField(default=True, null=True)
     validation_duration = models.IntegerField(null=True)
     use_sloth = models.BooleanField(null=False, default=False)
     streamflow_threshold = models.FloatField(null=True)
