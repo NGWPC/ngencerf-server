@@ -1236,7 +1236,7 @@ class UploadUserParameterFile(BaseSerializer):
     user_parameter_files = serializers.ListField(child=serializers.FileField(required=True), required=True)
 
 
-class ParameterFileSerializer(BaseSerializer):
+class ParameterFileDataSerializer(BaseSerializer):
     param = serializers.CharField(required=True)
     min = serializers.FloatField(required=True)
     max = serializers.FloatField(required=True)
@@ -1244,10 +1244,16 @@ class ParameterFileSerializer(BaseSerializer):
     model = serializers.CharField(required=True)
 
 
+class ParameterFileSerializer(BaseSerializer):
+    name = serializers.CharField(required=True)
+    message = serializers.CharField(required=True,allow_null=True)
+    parameters = ParameterFileDataSerializer(many=True, required=True, allow_null=True)
+
+
 class UserParameterFileUploadResponse(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
-    user_parameter_files = serializers.ListField(child=ParameterFileSerializer(many=True, required=True), required=True)
+    parsed_data = ParameterFileSerializer(many=True, required=True)
 
 
 # Module object from Data Services containing module parameters and output variables

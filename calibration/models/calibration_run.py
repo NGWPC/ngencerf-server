@@ -33,7 +33,6 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     geopackage_source = models.ForeignKey('GeopackageSource', null=True, on_delete=models.RESTRICT)
     forcing_source = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT, related_name='+', related_query_name='+')
     observational_source = models.ForeignKey('ObservationalSource', null=True, on_delete=models.RESTRICT)
-    user_parameter_filename = models.TextField(null=True)
     realization_file_path = models.TextField(null=True)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
     job_name = models.CharField(max_length=100, null=True)

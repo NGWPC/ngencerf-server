@@ -539,22 +539,29 @@ def upload_user_parameters(request: Request) -> Response:
 
     files = request.FILES.getlist('user_parameter_files')
     if not files:
-        return ResponseError('No file uploaded under field "user_parameter_files".')
-    if len(files) > 1:
-        logger.warning(f'{get_caller_name()}() multiple files uploaded; using the first one')
+        return ResponseError('No files uploaded under field "user_parameter_files".')
 
     # Multiple parameter files are supported
     # Track parsed data in an array
     parsed_data = []
     for parameter_file in files:
+      parsed_file_data = {
+          "name": parameter_file.name,
+          "message": None,
+          "parameters": None
+      }
       try:
           file_contents = parameter_file.read().decode('utf-8')
       except Exception as exc:
           logger.exception('Failed to read/decode uploaded file as UTF-8')
-          return ResponseError(f'Failed to read file as UTF-8: {exc}')
+          parsed_file_data['message'] = f'Failed to read file as UTF-8: {exc}'
+          parsed_data.append(parsed_file_data)
+          continue
 
       if not file_contents.strip():
-          return ResponseError('Uploaded file is empty.')
+          parsed_file_data['message'] = 'Uploaded file is empty.'
+          parsed_data.append(parsed_file_data)
+          continue
 
       # Infer the delimiter from the header row. Comma and tab are handled as
       # explicit delimiters; otherwise fall back to whitespace so space-separated
@@ -589,18 +596,23 @@ def upload_user_parameters(request: Request) -> Response:
           # accepting renamed, reordered, or extra columns accidentally.
           header_cols = [c.strip() for c in next(csv.reader([lines[0]], delimiter=delimiter))]
           if header_cols != required_columns:
-              return ResponseError(
-                  f'Header mismatch. Expected: {required_columns}, Found: {header_cols}'
-              )
+              parsed_file_data['message'] = f"Header mismatch. Expected: {required_columns}, Found: {header_cols}"
+              parsed_data.append(parsed_file_data)
+              continue
 
           # Check each data row before pandas parsing so we can report the actual
           # offending line and avoid silent column shifting.
           for i, row in enumerate(lines[1:], start=2):  # human line numbers
               cols = next(csv.reader([row], delimiter=delimiter))
               if len(cols) != expected_cols:
-                  return ResponseError(
-                      f'Row {i} has {len(cols)} fields; expected {expected_cols}. Offending row: {row}'
-                  )
+                  message = f"Row {i} has {len(cols)} fields; expected {expected_cols}. Offending row: {row}\n"
+                  if parsed_file_data['message']:
+                      parsed_file_data['message'] += message
+                  else:
+                      parsed_file_data['message'] = message
+          if parsed_file_data['message']:
+              continue
+                  
 
       # Parse with pandas after the manual structural checks. The dtype mapping
       # forces numeric columns to be converted immediately, so invalid min/max/init
@@ -616,11 +628,15 @@ def upload_user_parameters(request: Request) -> Response:
           )
       except pd.errors.ParserError as exc:
           logger.debug(f'Pandas parser error: {exc}')
-          return Response({'error': f'Could not parse file with detected delimiter: {exc}'}, status=400)
+          parsed_file_data['message'] = f"Could not parse file with detected delimiter: {exc}"
+          parsed_data.append(parsed_file_data)
+          continue
       except ValueError as exc:
           # Typically raised when dtype conversion fails with informative message
           logger.debug(f'Pandas dtype error: {exc}')
-          return Response({'error': f'Invalid data types in file: {exc}'}, status=400)
+          parsed_file_data['message'] = f"Invalid data types in file: {exc}"
+          parsed_data.append(parsed_file_data)
+          continue
 
       # Normalize column names after parsing so headers like " param " are treated
       # as "param".
@@ -634,18 +650,24 @@ def upload_user_parameters(request: Request) -> Response:
       if missing_cols:
           # Log the actual DataFrame to inspect it
           logger.debug("DataFrame content:\n%s", df.head())
-          return ResponseError(f'Missing required columns: {missing_cols}')
+          parsed_file_data['message'] = f"Missing required columns: {missing_cols}"
+          parsed_data.append(parsed_file_data)
+          continue
 
       # Reject extra columns. Extra columns often indicate a bad delimiter or a row
       # with too many fields, both of which can corrupt the parameter mapping.
       unexpected = [c for c in df.columns if c not in required_columns]
       if unexpected:
-          return ResponseError(f'Unexpected columns present: {unexpected}. Expected only {required_columns}.')
+          parsed_file_data['message'] = f"Unexpected columns present: {unexpected}. Expected only {required_columns}."
+          parsed_data.append(parsed_file_data)
+          continue
 
       # Require at least one parameter row; a header-only file is structurally valid
       # but not useful.
       if df.empty:
-          return ResponseError('No data rows found. Provide at least one parameter row.')
+          parsed_file_data['message'] = "No data rows found. Provide at least one parameter row"
+          parsed_data.append(parsed_file_data)
+          continue
 
       # Re-check numeric fields and return exact line/value details. This protects
       # against edge cases where pandas parsing succeeds but values still become NaN.
@@ -670,7 +692,9 @@ def upload_user_parameters(request: Request) -> Response:
 
       if invalid_details:
           logger.debug(f"Invalid numeric values: {invalid_details}")
-          return Response({'error': 'Invalid numeric values', 'details': invalid_details}, status=400)
+          parsed_file_data['message'] = "Invalid numeric values. {invalid_details}"
+          parsed_data.append(parsed_file_data)
+          continue
 
       # Validate parameter bounds before returning the parsed data to the UI.
       # Each row must satisfy:
@@ -721,24 +745,22 @@ def upload_user_parameters(request: Request) -> Response:
 
       if range_errors:
           logger.debug(f"Range validation errors: {range_errors}")
-          return Response({'error': 'Range validation failed', 'details': range_errors}, status=400)
+          parsed_file_data['message'] = "Range validation failed. {range_errors}"
+          parsed_data.append(parsed_file_data)
+          continue
 
       logger.debug(f"Parsed DataFrame after stripping and numeric conversion: \n%s, df")
 
       # Return the parsed parameter rows to the caller. This endpoint validates and
       # echoes the uploaded file contents; it only persists the filename on the run.
-      parsed_data.append(df.to_dict(orient='records'))
-
-      # Persist filename on the run
-      # TO DO: Each file name is going to overwrite that previous one in the DB since it was only ever designed
-      # to record a single filename. Do we still need to do this?
-      run.user_parameter_filename = parameter_file.name
-      run.save(update_fields=['user_parameter_filename'])
+      parsed_file_data['message'] = f"Parameter file {parameter_file.name} processed successfully."
+      parsed_file_data['parameters'] = df.to_dict(orient='records')
+      parsed_data.append(parsed_file_data)
 
     response = {
-        'message': f"Parameter file '{parameter_file.name}' saved for Calibration Job {run.id}",
+        'message': f"{len(parsed_data)} Parameter file{'s' if len(parsed_data) != 1 else ''} processed for Calibration Job {run.id}",
         'calibration_run_id': run.id,
-        'user_parameter_files': parsed_data
+        'parsed_data': parsed_data
     }
 
     response_validator, error_response = validate_response(UserParameterFileUploadResponse, response)
