@@ -611,6 +611,7 @@ def upload_user_parameters(request: Request) -> Response:
                   else:
                       parsed_file_data['message'] = message
           if parsed_file_data['message']:
+              parsed_data.append(parsed_file_data)
               continue
                   
 
@@ -665,7 +666,7 @@ def upload_user_parameters(request: Request) -> Response:
       # Require at least one parameter row; a header-only file is structurally valid
       # but not useful.
       if df.empty:
-          parsed_file_data['message'] = "No data rows found. Provide at least one parameter row"
+          parsed_file_data['message'] = "No data rows found. Provide at least one parameter row."
           parsed_data.append(parsed_file_data)
           continue
 
@@ -692,7 +693,7 @@ def upload_user_parameters(request: Request) -> Response:
 
       if invalid_details:
           logger.debug(f"Invalid numeric values: {invalid_details}")
-          parsed_file_data['message'] = "Invalid numeric values. {invalid_details}"
+          parsed_file_data['message'] = f"Invalid numeric values. {invalid_details}"
           parsed_data.append(parsed_file_data)
           continue
 
@@ -745,7 +746,7 @@ def upload_user_parameters(request: Request) -> Response:
 
       if range_errors:
           logger.debug(f"Range validation errors: {range_errors}")
-          parsed_file_data['message'] = "Range validation failed. {range_errors}"
+          parsed_file_data['message'] = f"Range validation failed. {range_errors}"
           parsed_data.append(parsed_file_data)
           continue
 
