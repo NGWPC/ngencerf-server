@@ -1233,14 +1233,7 @@ class ValidateParametersResponseSerializer(BaseSerializer):
 
 class UploadUserParameterFile(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
-    user_parameter_file = serializers.FileField(required=True)
-
-    def validate_user_parameter_file(self, value):
-        request = self.context.get('request')
-        files = request.FILES.getlist('user_parameter_file')
-        if len(files) != 1:
-            raise serializers.ValidationError("Only one parameter file should be uploaded.")
-        return value
+    user_parameter_files = serializers.ListField(child=serializers.FileField(required=True), required=True)
 
 
 class ParameterFileSerializer(BaseSerializer):
@@ -1254,7 +1247,7 @@ class ParameterFileSerializer(BaseSerializer):
 class UserParameterFileUploadResponse(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
-    user_parameter_file = ParameterFileSerializer(many=True, required=True)
+    user_parameter_files = serializers.ListField(child=ParameterFileSerializer(many=True, required=True), required=True)
 
 
 # Module object from Data Services containing module parameters and output variables
