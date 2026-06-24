@@ -561,8 +561,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
                 calibration_run_data['geopackage_image_url'] = f'data:image/png;base64,{base64_str}'
             logger.info(f"Geopackage map generation completed in {time.perf_counter() - gpkg_map_start:.2f}s")
         
-        calibration_run_data['calibration_times'] = calibration_times
-        calibration_run_data['validation_times'] = validation_times
+        calibration_run_data['calibration_times'] = {} if any(value is None for value in calibration_times.values()) else calibration_times
+        calibration_run_data['validation_times'] = {} if any(value is None for value in validation_times.values()) else validation_times
 
         # Determine external data status (whether required files are available)
         data_files_status_start = time.perf_counter()
