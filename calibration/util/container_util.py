@@ -1,9 +1,10 @@
 import hashlib
 import logging
 import os
+import re
 import shutil
 import subprocess
-import shlex
+import tempfile
 import uuid
 
 from django.conf import settings
@@ -131,22 +132,98 @@ def copy_file_from_docker_image(image_name: str, container_name: str, src_path: 
     return success
 
 
-def copy_file_from_singularity_image(image_path: str, src_path: str, dest_path: str) -> bool:
+def _find_sif_squashfs_id(image_path: str) -> int:
     """
-    Copies a file from a Singularity image (.sif) using `singularity exec`.
+    Find the descriptor ID of the SquashFS root filesystem inside a SIF image.
 
-    :param image_path: Path to the Singularity image file (.sif)
-    :param src_path: Path to the file inside the container
-    :param dest_path: Destination path on the host system
-    :return: True if the copy succeeds, False otherwise
+    :param image_path: Path to the Singularity image file.
+    :return: SIF descriptor ID containing the SquashFS filesystem.
+    :raises RuntimeError: If the SIF cannot be inspected or no SquashFS
+                          filesystem descriptor is found.
     """
-    success = False  # Default to failure
+    list_cmd = ["singularity", "sif", "list", image_path]
+    logger.debug(list_cmd)
 
-    logger.info(f'Copy file {src_path} from image {image_path}')
+    try:
+        result = subprocess.run(
+            list_cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            "Unable to inspect Singularity image.\n"
+            f"Command: {' '.join(list_cmd)}\n"
+            f"STDOUT:\n{_indent_output((e.stdout or '').strip())}\n"
+            f"STDERR:\n{_indent_output((e.stderr or '').strip())}"
+        ) from e
+
+    logger.debug(
+        f"[singularity sif list stdout]\n"
+        f"{_indent_output(result.stdout.strip())}"
+    )
+
+    if result.stderr:
+        logger.debug(
+            f"[singularity sif list stderr]\n"
+            f"{_indent_output(result.stderr.strip())}"
+        )
+
+    # Typical output contains a row similar to:
+    #
+    # 4    |1     |NONE |... |FS (Squashfs/*System/amd64)
+    #
+    # Match the descriptor ID at the beginning of a row containing a
+    # SquashFS filesystem object.
+    match = re.search(
+        r"^\s*(\d+)\s*\|[^\n]*\bFS\s*\(\s*Squashfs\b",
+        result.stdout,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+
+    if not match:
+        raise RuntimeError(
+            f"No SquashFS filesystem descriptor was found in SIF image {image_path}.\n"
+            f"singularity sif list output:\n"
+            f"{_indent_output(result.stdout.strip())}"
+        )
+
+    return int(match.group(1))
+
+
+def copy_file_from_singularity_image(
+        image_path: str,
+        src_path: str,
+        dest_path: str
+) -> bool:
+    """
+    Copy a file from a Singularity image without executing the image.
+
+    The SquashFS root filesystem object is dumped from the SIF into a
+    temporary file. The requested file is then streamed directly from the
+    SquashFS filesystem using ``unsquashfs -cat``.
+
+    This approach does not require Singularity to create a user namespace,
+    mount the image, create a sandbox, or execute a command inside the image.
+
+    :param image_path: Path to the Singularity image file (.sif).
+    :param src_path: Absolute or relative path to the file inside the image.
+    :param dest_path: Destination path on the host system.
+    :return: True if the file is copied successfully; otherwise False.
+    """
+    logger.info(f"Copy file {src_path} from image {image_path}")
 
     # Quick checks that commonly cause exit=1
     if shutil.which("singularity") is None:
         logger.error("singularity binary not found on PATH.")
+        return False
+
+    if shutil.which("unsquashfs") is None:
+        logger.error(
+            "unsquashfs binary not found on PATH. "
+            "Install the squashfs-tools operating-system package."
+        )
         return False
 
     # Check if the path exists
@@ -154,55 +231,167 @@ def copy_file_from_singularity_image(image_path: str, src_path: str, dest_path: 
         # If it's a symlink, check whether it's broken
         if os.path.islink(image_path):
             target = os.readlink(image_path)
-            logger.error(f"Image path {image_path} is a symlink to {target}, but the target does not exist.")
+            logger.error(
+                f"Image path {image_path} is a symlink to {target}, "
+                "but the target does not exist."
+            )
         else:
             logger.error(f"Image {image_path} does not exist.")
+
+        return False
+
+    if not os.path.isfile(image_path):
+        logger.error(f"Image path is not a regular file: {image_path}")
         return False
 
     dest_parent = os.path.dirname(dest_path) or "."
+
     if not os.path.isdir(dest_parent):
-        logger.error(f"Destination directory does not exist on host: {dest_parent}")
+        logger.error(
+            f"Destination directory does not exist on host: {dest_parent}"
+        )
         return False
 
-    # IMPORTANT: Bind the host dest directory at the same absolute path so `cp` can write to it.
-    # We also run through /bin/sh -lc so we can use simple quoting safely.
-    quoted_src = shlex.quote(src_path)
-    quoted_dst = shlex.quote(dest_path)
-    shell_cmd = f"cp {quoted_src} {quoted_dst}"
+    # unsquashfs expects the path relative to the root of the SquashFS
+    # filesystem rather than an absolute path.
+    normalized_src_path = src_path.lstrip("/")
 
-    copy_cmd = [
-        "singularity", "exec",
-        "--bind", f"{dest_parent}:{dest_parent}",
-        image_path,
-        "/bin/sh", "-lc", shell_cmd,
-    ]
-    logger.debug(copy_cmd)
+    if not normalized_src_path:
+        logger.error("Source path cannot refer to the image root directory.")
+        return False
+
+    temporary_dest_path: str | None = None
+
     try:
-        res = subprocess.run(copy_cmd, check=True, capture_output=True, text=True)
-        if res.stdout:
-            logger.debug(f"[singularity exec cp stdout]\n{_indent_output(res.stdout.strip())}")
-        if res.stderr:
-            # Some singularity builds are chatty on stderr; still capture it
-            logger.debug(f"[singularity exec cp stderr]\n{_indent_output(res.stderr.strip())}")
-        logger.info(f"Successfully copied {src_path} from {image_path} to {dest_path}")
-        success = True
+        filesystem_id = _find_sif_squashfs_id(image_path)
+
+        logger.debug(
+            f"Using SIF SquashFS descriptor ID {filesystem_id} "
+            f"from image {image_path}"
+        )
+
+        with tempfile.TemporaryDirectory(prefix="ngencerf-sif-") as temp_dir:
+            squashfs_path = os.path.join(temp_dir, "rootfs.squashfs")
+
+            dump_cmd = [
+                "singularity",
+                "sif",
+                "dump",
+                str(filesystem_id),
+                image_path,
+            ]
+            logger.debug(dump_cmd)
+
+            with open(squashfs_path, "wb") as squashfs_file:
+                dump_result = subprocess.run(
+                    dump_cmd,
+                    check=True,
+                    stdout=squashfs_file,
+                    stderr=subprocess.PIPE,
+                )
+
+            if dump_result.stderr:
+                logger.debug(
+                    "[singularity sif dump stderr]\n"
+                    + _indent_output(
+                        dump_result.stderr.decode(
+                            errors="replace"
+                        ).strip()
+                    )
+                )
+
+            # Write to a temporary file in the destination directory first.
+            # os.replace() then makes the final update atomic and avoids
+            # leaving a partial destination file when extraction fails.
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                prefix=f".{os.path.basename(dest_path)}.",
+                suffix=".tmp",
+                dir=dest_parent,
+                delete=False,
+            ) as temporary_dest:
+                temporary_dest_path = temporary_dest.name
+
+                extract_cmd = [
+                    "unsquashfs",
+                    "-cat",
+                    squashfs_path,
+                    normalized_src_path,
+                ]
+                logger.debug(extract_cmd)
+
+                extract_result = subprocess.run(
+                    extract_cmd,
+                    check=True,
+                    stdout=temporary_dest,
+                    stderr=subprocess.PIPE,
+                )
+
+            if extract_result.stderr:
+                logger.debug(
+                    "[unsquashfs -cat stderr]\n"
+                    + _indent_output(
+                        extract_result.stderr.decode(
+                            errors="replace"
+                        ).strip()
+                    )
+                )
+
+            assert temporary_dest_path is not None
+
+            if os.path.getsize(temporary_dest_path) == 0:
+                raise RuntimeError(
+                    f"Extracted file {src_path} from {image_path} is empty."
+                )
+
+            os.replace(temporary_dest_path, dest_path)
+            temporary_dest_path = None
+
+        logger.info(
+            f"Successfully copied {src_path} from {image_path} to {dest_path}"
+        )
+        return True
+
+    except RuntimeError as e:
+        logger.error(str(e))
+
     except subprocess.CalledProcessError as e:
-        # Provide maximum context for troubleshooting bind vs. path vs. perms
+        stdout = e.stdout
+        stderr = e.stderr
+
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode(errors="replace")
+
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode(errors="replace")
+
         logger.error(
             "Error copying file from Singularity image "
             f"(exit={e.returncode}).\n"
-            f"Command: {' '.join(copy_cmd)}\n"
-            f"STDOUT:\n{_indent_output((e.stdout or '').strip())}\n"
-            f"STDERR:\n{_indent_output((e.stderr or '').strip())}"
+            f"Command: {' '.join(str(arg) for arg in e.cmd)}\n"
+            f"STDOUT:\n{_indent_output((stdout or '').strip())}\n"
+            f"STDERR:\n{_indent_output((stderr or '').strip())}"
         )
 
+    except OSError as e:
         logger.error(
-            "If STDERR shows 'No such file or directory' for the destination, "
-            "ensure the host path is bind-mounted into the container context. "
-            "If it shows 'No such file or directory' for the source, verify the path inside the image. "
-            "If 'Permission denied', check file/dir permissions and container user."
+            f"Operating-system error while copying {src_path} "
+            f"from {image_path} to {dest_path}: {e}"
         )
-    return success
+
+    finally:
+        if temporary_dest_path is not None:
+            try:
+                os.remove(temporary_dest_path)
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                logger.warning(
+                    f"Unable to remove temporary file "
+                    f"{temporary_dest_path}: {e}"
+                )
+
+    return False
 
 
 def generate_cache_key(image_name: str, container_name: str, container_file_name: str, local_file_name: str) -> str:

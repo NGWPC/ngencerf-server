@@ -25,13 +25,27 @@ ARG NGEN_ORG=${GH_ORG}
 ARG NGEN_REF=development
 ARG NGEN_FORCING_ORG=${GH_ORG}
 ARG NGEN_FORCING_REF=development
+
+############################################################################
+# Image selection
 ############################################################################
 
-# Image selection
+ARG GO_IMAGE=golang:1.25.11-bookworm
 ARG BASE_REPO=python
-ARG BASE_TAG=3.14-slim-bookworm
+ARG BASE_TAG=3.12-slim-bookworm
+ARG SINGULARITY_VERSION=4.4.2
+
+# SingularityCE 4.4 requires Go 1.25.6 or newer. Use the official Go
+# Bookworm image as the build-toolchain source rather than Debian's older
+# golang-go package.
+FROM ${GO_IMAGE} AS go-toolchain
 
 FROM ${BASE_REPO}:${BASE_TAG}
+
+# Make the current Go toolchain available while building SingularityCE.
+COPY --from=go-toolchain /usr/local/go /usr/local/go
+
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Re-expose args after FROM for the remaining build stage
 # Keeps whatever value was already set
@@ -47,6 +61,7 @@ ARG NGEN_ORG
 ARG NGEN_REF
 ARG NGEN_FORCING_ORG
 ARG NGEN_FORCING_REF
+ARG SINGULARITY_VERSION
 
 # OCI Metadata Arguments
 ARG BASE_REPO
@@ -92,30 +107,41 @@ LABEL org.opencontainers.image.base.name="${BASE_NAME}" \
     io.${IMAGE_NAMESPACE}.ngen.forcing.revision="${NGEN_FORCING_REVISION}"
 
 # Install build and runtime dependencies
+#
+# Go is copied from the official Go image above because SingularityCE 4.4
+# requires a newer Go release than Debian 12 provides.
 RUN set -eux && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         gnupg \
-        # Singularity build requirements
-        golang-go \
-        libseccomp-dev \
-        squashfs-tools \
+        # SingularityCE build and runtime requirements
+        autoconf \
+        automake \
         cryptsetup-bin \
-        wget \
-        make \
-        gcc \
-        libssl-dev \
+        fuse2fs \
+        libfuse-dev \
         libglib2.0-dev \
+        libseccomp-dev \
+        libssl-dev \
+        libtool \
+        make \
         pkg-config \
+        # Provides unsquashfs for reading files directly from SIF root filesystems
+        squashfs-tools \
+        uidmap \
+        wget \
+        zlib1g-dev \
+        # General utilities
         findutils \
         file \
         jq \
-        libpq5 \
-        libpq-dev \
         git \
         openssl \
+        # PostgreSQL requirements
+        libpq5 \
+        libpq-dev \
         # GDAL/Fiona requirements
         gdal-bin \
         libgdal-dev \
@@ -125,6 +151,7 @@ RUN set -eux && \
         build-essential \
         cmake \
         g++ \
+        gcc \
         gfortran \
         libsqlite3-dev \
         udunits-bin \
@@ -140,39 +167,53 @@ RUN set -eux && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${VERSION_CODENAME} stable" \
         > /etc/apt/sources.list.d/docker.list && \
     apt-get update && \
-    apt-get install -y --no-install-recommends docker-ce-cli && \
-    rm -rf /var/lib/apt/lists/* && \
-    # Build and install SingularityCE 3.11.4 from source
-    git clone https://github.com/sylabs/singularity.git /tmp/singularity && \
+    apt-get install -y --no-install-recommends \
+        docker-ce-cli && \
+    rm -rf /var/lib/apt/lists/*
+
+############################################################################
+# SingularityCE
+############################################################################
+
+# Build SingularityCE separately so dependency installation remains cached
+# when only the SingularityCE version or build steps change.
+#
+# libsubid support is disabled because the server does not need NSS-based
+# subordinate UID/GID configuration when reading or executing SIF images.
+RUN set -eux && \
+    go version && \
+    git clone --depth 1 --branch "v${SINGULARITY_VERSION}" \
+        https://github.com/sylabs/singularity.git /tmp/singularity && \
     cd /tmp/singularity && \
-    git checkout v3.11.4 && \
     git submodule update --init --recursive && \
-    ./mconfig && \
-    make -C builddir && \
+        ./mconfig --without-libsubid && \
+    make -C builddir -j "$(nproc)" && \
     make -C builddir install && \
+    singularity version && \
     cd / && \
     rm -rf /tmp/singularity
 
-
 # Install Boost
 ARG BOOST_VERSION=1.86.0
-RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-boost \
-    set -eux && \
+
+RUN set -eux && \
     BOOST_VERSION_UNDERSCORE="$(printf '%s' "$BOOST_VERSION" | tr . _)" && \
-    curl --location --output boost.tar.gz "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.gz" && \
+    curl --location --output boost.tar.gz \
+        "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.gz" && \
     mkdir -p /tmp/boost-src && \
     tar --extract --directory /tmp/boost-src --strip-components=1 --file boost.tar.gz && \
     rm boost.tar.gz && \
     cd /tmp/boost-src && \
     ./bootstrap.sh --prefix=/opt/boost --with-libraries=system,filesystem,serialization && \
     ./b2 install -j "$(nproc)" && \
-    cd / && rm -rf /tmp/boost-src
+    cd / && \
+    rm -rf /tmp/boost-src
 
 # Install Python virtual environment
 ENV VIRTUAL_ENV=/ngencerf/ngencerf-python
 ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
-RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
     set -eux && \
     python -m venv ${VIRTUAL_ENV}
 
@@ -181,7 +222,7 @@ WORKDIR /ngencerf/ngencerf-server/
 # Pre-copy requirements for better caching
 COPY requirements.txt .
 
-RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
     set -eux && \
     pip install --upgrade pip && \
     pip install -r requirements.txt && \
@@ -196,8 +237,8 @@ ENV CPLUS_INCLUDE_PATH=/opt/boost/include
 # OpenMPI binaries are available on PATH through Debian packages.
 
 ARG EWTS_CACHE_BUST=1
-RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-ewts \
-    --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-ewts-bookworm \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
     set -eux && \
     echo "EWTS cache bust: ${EWTS_CACHE_BUST}" && \
     ewts_dir="$(mktemp -d)" && \
@@ -222,7 +263,7 @@ WORKDIR /ngencerf/ngen-sparse
 # Cache-bust on the resolved ngen commit so a ref update isn't masked by a cached layer
 ARG NGEN_CACHE_BUST=1
 RUN --mount=type=cache,target=/ngencerf/partitionGenerator_build,id=partition-generator-build \
-    --mount=type=cache,target=/root/.cache/cmake,id=cmake-cache \
+    --mount=type=cache,target=/root/.cache/cmake,id=cmake-cache-bookworm \
     set -eux && \
     echo "ngen cache bust: ${NGEN_CACHE_BUST}" && \
     # Clone only the required directories; allow branch, tag, or commit refs
@@ -269,12 +310,14 @@ WORKDIR /ngencerf/ngencerf-server/
 # Docker layer can't reinstall an older revision (see .github/workflows/cicd.yml)
 ARG MSW_MGR_CACHE_BUST=1
 ARG DATA_ASSIMILATION_CACHE_BUST=1
-RUN set -eux && \
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
+    set -eux && \
     echo "nwm-msw-mgr cache bust: ${MSW_MGR_CACHE_BUST}" && \
-    pip3 install "git+https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git@${MSW_MGR_REF}" && \
+    python -m pip install \
+        "git+https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git@${MSW_MGR_REF}" && \
     echo "nwm-data-assimilation cache bust: ${DATA_ASSIMILATION_CACHE_BUST}" && \
-    pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}" && \
-    pip3 cache purge
+    python -m pip install \
+        "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}"
 
 # Get AWS cert for database
 ENV RDS_CERT_DIR=/ngencerf/aws_cert
@@ -414,14 +457,6 @@ RUN cli/build_cli.sh
 
 # Copy additional configuration files
 COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
-
-# cartopy has no prebuilt wheel for Python 3.14, so its trace extension is built
-# from source here and links libgcc/libc but not libstdc++. Under CPython's
-# RTLD_LOCAL extension imports, its std::ios_base::failure[abi:cxx11] symbol then
-# has no libstdc++ in scope to resolve against and the import fails at startup.
-# Preload the system libstdc++ (which exports the symbol) so it binds. Remove once
-# cartopy ships a Python 3.14 wheel.
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
 
 # Set the entry point and expose the application port
 ENTRYPOINT [ "/ngencerf/ngencerf-server/runCerf.sh" ]

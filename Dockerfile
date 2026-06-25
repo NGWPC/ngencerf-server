@@ -25,9 +25,11 @@ ARG NGEN_ORG=${GH_ORG}
 ARG NGEN_REF=development
 ARG NGEN_FORCING_ORG=${GH_ORG}
 ARG NGEN_FORCING_REF=development
+
+############################################################################
+# Image selection
 ############################################################################
 
-# Image selection
 ARG BASE_REPO=python
 ARG BASE_TAG=3.14-slim-bookworm
 
@@ -120,7 +122,7 @@ RUN set -eux && \
 ENV VIRTUAL_ENV=/ngencerf/ngencerf-python
 ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
-RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
     set -eux && \
     python -m venv ${VIRTUAL_ENV}
 
@@ -129,7 +131,7 @@ WORKDIR /ngencerf/ngencerf-server/
 # Pre-copy requirements for better caching
 COPY requirements.txt .
 
-RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
     set -eux && \
     pip install --upgrade pip && \
     pip install -r requirements.txt && \
@@ -140,7 +142,8 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
 # The dev image only needs the Python EWTS runtime. The native EWTS
 # libraries and ngen integration are built only in the production image.
 ARG EWTS_CACHE_BUST=1
-RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-ewts-bookworm \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
     set -eux && \
     echo "EWTS cache bust: ${EWTS_CACHE_BUST}" && \
     ewts_dir="$(mktemp -d)" && \
@@ -155,12 +158,14 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
 # Docker layer can't reinstall an older revision (see .github/workflows/cicd.yml)
 ARG MSW_MGR_CACHE_BUST=1
 ARG DATA_ASSIMILATION_CACHE_BUST=1
-RUN set -eux && \
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
+    set -eux && \
     echo "nwm-msw-mgr cache bust: ${MSW_MGR_CACHE_BUST}" && \
-    pip3 install "git+https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git@${MSW_MGR_REF}" && \
+    python -m pip install \
+        "git+https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git@${MSW_MGR_REF}" && \
     echo "nwm-data-assimilation cache bust: ${DATA_ASSIMILATION_CACHE_BUST}" && \
-    pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}" && \
-    pip3 cache purge
+    python -m pip install \
+        "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}"
 
 # Should parallel similar functionality in the run_cerf.sh
 COPY .git .git
