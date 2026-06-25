@@ -8,6 +8,7 @@ from typing import Literal, TypedDict
 from urllib.parse import urlparse
 
 import pandas as pd
+from datetime import timedelta
 from datetimerange import DateTimeRange
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
@@ -90,6 +91,20 @@ def load_tuning_tab(request: Request) -> Response:
 
         # Compute time range without persisting
         time_range = compute_time_range(run)
+
+        # Normalize start time to 00:00 UTC and end time to 23:00 UTC
+        # Next midnight UTC on or after start_datetime
+        normalized_start_time = time_range['start_time'].replace(hour=0, minute=0, second=0, microsecond=0)
+        if normalized_start_time < time_range['start_time']:
+            normalized_start_time += timedelta(days=1)
+        time_range['start_time'] = normalized_start_time
+
+        # Most recent 23:00 UTC on or before end_datetime
+        normalized_end_time = time_range['end_time'].replace(hour=23, minute=0, second=0, microsecond=0)
+        if normalized_end_time > time_range['end_time']:
+            normalized_end_time -= timedelta(days=1)
+        time_range['end_time'] = normalized_end_time
+        
         calibration_times, validation_times, time_controls = get_times(run)
 
         formulations = (
@@ -125,8 +140,8 @@ def load_tuning_tab(request: Request) -> Response:
         'status': run.status.name,  # reflects updated status
         'modules': module_list,
         'time_range': time_range,
-        'calibration_times': calibration_times,
-        'validation_times': validation_times,
+        'calibration_times': {} if any(value is None for value in calibration_times.values()) else calibration_times,
+        'validation_times': {} if any(value is None for value in validation_times.values()) else validation_times,
         'time_controls': time_controls
     }
 
@@ -295,7 +310,7 @@ TimeDict = dict[str, datetime]
 TimeControlsResponse = dict[str, datetime | int | bool | None]
 
 
-def get_times(run: CalibrationRun) -> tuple[TimeDict, TimeDict, TimeControlsResponse]:
+def get_times(run: CalibrationRun, default_time_controls: bool=True) -> tuple[TimeDict, TimeDict, TimeControlsResponse]:
     """
     Retrieves the saved calibration and validation time periods along with the
     time control values for a calibration run.
@@ -333,10 +348,10 @@ def get_times(run: CalibrationRun) -> tuple[TimeDict, TimeDict, TimeControlsResp
     # If time controls have been saved, populate them
     time_controls: TimeControlsResponse = {
         'simulation_start_time': run.calibration_start_period,
-        'warmup_duration': run.warmup_duration if run.warmup_duration is not None else 12,
-        'calibration_duration': run.calibration_duration if run.calibration_duration is not None else 60,
-        'validation_window': run.validation_window,
-        'validation_duration': run.validation_duration if run.validation_duration is not None else 36
+        'warmup_duration': run.warmup_duration if run.warmup_duration is not None else (12 if default_time_controls else None),
+        'calibration_duration': run.calibration_duration if run.calibration_duration is not None else (60 if default_time_controls else None),
+        'validation_window': run.validation_window if run.calibration_duration is not None else True,
+        'validation_duration': run.validation_duration if run.validation_duration is not None else (36 if default_time_controls else None)
     }
 
     return calibration_times, validation_times, time_controls

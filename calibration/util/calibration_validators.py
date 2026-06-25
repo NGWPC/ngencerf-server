@@ -400,9 +400,13 @@ class TuningTimeControls(BaseSerializer):
             self.fields['simulation_start_time'].required = False
             self.fields['simulation_start_time'].allow_null = True
             self.fields['warmup_duration'].required = False
+            self.fields['warmup_duration'].allow_null = True
             self.fields['calibration_duration'].required = False
+            self.fields['calibration_duration'].allow_null = True
             self.fields['validation_window'].required = False
+            self.fields['validation_window'].allow_null = True
             self.fields['validation_duration'].required = False
+            self.fields['validation_duration'].allow_null = True
         else:
             self.fields['simulation_start_time'].required = True
             self.fields['warmup_duration'].required = True

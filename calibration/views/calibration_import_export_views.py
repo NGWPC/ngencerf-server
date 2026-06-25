@@ -492,7 +492,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     formulations = CalibrationFormulation.objects.filter(calibration_run=run)
 
     # Get times both both modes (export will only include the time controls)
-    calibration_times, validation_times, time_controls = get_times(run)
+    calibration_times, validation_times, time_controls = get_times(run, default_time_controls=False)
 
     #############################
     # Export or Clone Mode
