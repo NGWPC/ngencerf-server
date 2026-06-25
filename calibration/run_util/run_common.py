@@ -652,9 +652,6 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
     if validation_run.validation_type != ValidationType.VALID_CONTROL.value:
         return
 
-    if not validation_run.calibration_run.automatic_validation:
-        return
-
     # We just ran Validation Control, so need to run Validation Best
     # Create the VALID_BEST run now, but don't attach the iteration yet.
     best_validation_run = create_validation_run_internal(

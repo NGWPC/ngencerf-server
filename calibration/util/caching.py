@@ -351,7 +351,7 @@ def get_filtered_plot_definitions(
     Retrieve filtered plot definitions for the specified run and plot name, with a case-insensitive match.
 
     Behavior:
-    - ValidationRun or CalibrationRun with automatic_validation → validation plots included.
+    - ValidationRun or CalibrationRun → validation plots included.
     - CalibrationRun with LSTM module → only plots with lstm_flag=True.
     - Otherwise → plots must have a valid_optimizations list containing run.optimization.name.
 
@@ -373,7 +373,7 @@ def get_filtered_plot_definitions(
 
     # Determine if validation plots should be included
     include_validation_plots = isinstance(run, ValidationRun) or (
-            isinstance(run, CalibrationRun) and run.automatic_validation
+            isinstance(run, CalibrationRun)
     )
 
     optimization = run.optimization if isinstance(run, CalibrationRun) else run.calibration_run.optimization

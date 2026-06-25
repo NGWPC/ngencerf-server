@@ -27,7 +27,7 @@ from calibration.views.calibration_gage_views import get_data_files_status, rese
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
 from calibration.views.calibration_run_views import normalize_failure_messages
-from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameter_values, \
+from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_time_controls, validate_parameter_values, \
     save_parameters, has_user_selected_tuning_parameters, compute_time_range, persist_time_range
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 def import_calibration_run_data(request: Request,
                                 calibration_run_data: dict,
                                 genesis: JobGenesis,
-                                run: CalibrationRun = None,
+                                run: CalibrationRun | None = None,
                                 is_cli: bool = False
                                 ) -> tuple[CalibrationRun | None, dict | None, Response | None]:
     """
@@ -86,9 +86,7 @@ def import_calibration_run_data(request: Request,
     use_sloth = calibration_run_data.get('use_sloth')
     parameters = calibration_run_data.get('parameters')
 
-    automatic_validation = calibration_run_data.get('automatic_validation')  # defaults handled later on run
-    calibration_times = calibration_run_data.get('calibration_times')
-    validation_times = calibration_run_data.get('validation_times')
+    time_controls = calibration_run_data.get('time_controls')
 
     optimization_name = calibration_run_data.get('optimization')
     objective_function_name = calibration_run_data.get('objective_function')
@@ -175,10 +173,6 @@ def import_calibration_run_data(request: Request,
             return None, None, ResponseError(f"If you indicate 'use_sloth', you must enter {SLOTH} parameters")
         if (not use_sloth) and sloth_parameters:
             return None, None, ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
-
-        # Validation times constraints (no DB writes here)
-        if not automatic_validation and validation_times:
-            return None, None, ResponseError('validation_times cannot be specified unless automatic_validation is True')
 
         # Optimization validations (assigns to `run` in memory only; no DB write)
         if optimization_name:
@@ -318,8 +312,6 @@ def import_calibration_run_data(request: Request,
         # -----------------------------
         # Tuning (validate & persist)
         # -----------------------------
-        run.automatic_validation = automatic_validation
-
         # Only validate parameters if we didn't hit Data Services parameter metadata errors
         if parameters and not any(error.get('name') == 'parameters' for error in eds_errors):
             # These validations read from DB; saving persists selections
@@ -334,8 +326,10 @@ def import_calibration_run_data(request: Request,
         if time_range and (not run.time_range_start or not run.time_range_end):
             persist_time_range(run, time_range)
 
-        # Times (persist)
-        error_message = validate_and_save_times(run, calibration_times, validation_times)
+        # Time controls (persist)
+        # print('SAVING TIME CONTROLS:')
+        # print(time_controls)
+        error_message = save_time_controls(run, time_controls)
         if error_message:
             return None, None, ResponseError(error_message)
 
@@ -497,6 +491,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     # Always load formulations once, for both export and UI modes
     formulations = CalibrationFormulation.objects.filter(calibration_run=run)
 
+    # Get times both both modes (export will only include the time controls)
+    calibration_times, validation_times, time_controls = get_times(run, default_time_controls=False)
+
     #############################
     # Export or Clone Mode
     #############################
@@ -563,6 +560,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
                 base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
                 calibration_run_data['geopackage_image_url'] = f'data:image/png;base64,{base64_str}'
             logger.info(f"Geopackage map generation completed in {time.perf_counter() - gpkg_map_start:.2f}s")
+        
+        calibration_run_data['calibration_times'] = {} if any(value is None for value in calibration_times.values()) else calibration_times
+        calibration_run_data['validation_times'] = {} if any(value is None for value in validation_times.values()) else validation_times
 
         # Determine external data status (whether required files are available)
         data_files_status_start = time.perf_counter()
@@ -683,11 +683,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     logger.info("Processing tuning data")
     tuning_start = time.perf_counter()
 
-    calibration_run_data['automatic_validation'] = run.automatic_validation
-
-    calibration_times, validation_times = get_times(run)
-    calibration_run_data['calibration_times'] = calibration_times
-    calibration_run_data['validation_times'] = validation_times
+    calibration_run_data['time_controls'] = time_controls
 
     logger.info(f"Tuning data processed in {time.perf_counter() - tuning_start:.2f}s")
 

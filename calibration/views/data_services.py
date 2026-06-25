@@ -279,13 +279,10 @@ def clear_times(run: CalibrationRun, cli: bool = False):
         run.time_range_start = None
         run.time_range_end = None
         run.calibration_start_period = None
-        run.calibration_end_period = None
-        run.validation_start_period = None
-        run.validation_end_period = None
-        run.calibration_eval_start_period = None
-        run.calibration_eval_end_period = None
-        run.validation_eval_start_period = None
-        run.validation_eval_end_period = None
+        run.warmup_duration = None
+        run.calibration_duration = None
+        run.validation_window = True
+        run.validation_duration = None
 
 
 def get_module_metadata_from_data_services(

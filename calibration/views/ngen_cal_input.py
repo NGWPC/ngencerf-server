@@ -409,54 +409,48 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
         job_data_dir = run.job_data_dir
         general['main_dir'] = job_data_dir
 
-        # Validate required calibration fields
-        required_calibration_fields = {
+        # Validate required time control fields
+        required_time_control_fields = {
             "calibration_start_period": run.calibration_start_period,
-            "calibration_end_period": run.calibration_end_period,
-            "calibration_eval_start_period": run.calibration_eval_start_period,
-            "calibration_eval_end_period": run.calibration_eval_end_period,
+            "warmup_duration": run.warmup_duration,
+            "calibration_duration": run.calibration_duration,
+            "validation_window": run.validation_window,
+            "validation_duration": run.validation_duration
         }
-        missing_calibration_fields = [name for name, value in required_calibration_fields.items() if value is None]
-
-        if missing_calibration_fields:
-            error_object.add_warning(f"Missing required calibration fields: {', '.join(missing_calibration_fields)}")
+        missing_time_control_fields = [name for name, value in required_time_control_fields.items() if value is None]
+        if missing_time_control_fields:
+            error_object.add_warning(f"Missing required time control fields: {', '.join(missing_time_control_fields)}")
         else:
-            calibration.update({
-                'calib_start_period': format_datetime(run.calibration_start_period),
-                'calib_end_period': format_datetime(run.calibration_end_period),
-                'calib_eval_start_period': format_datetime(run.calibration_eval_start_period),
-                'calib_eval_end_period': format_datetime(run.calibration_eval_end_period),
-            })
-
-        if run.automatic_validation:
-            # Validate required validation fields
-            required_validation_fields = {
+            # Validate required start and end period fields
+            # These are automatically calculated so they should exist when the time controls above are defined
+            required_start_end_period_fields = {
+                "calibration_end_period": run.calibration_end_period,
+                "calibration_eval_start_period": run.calibration_eval_start_period,
+                "calibration_eval_end_period": run.calibration_eval_end_period,
                 "validation_start_period": run.validation_start_period,
                 "validation_end_period": run.validation_end_period,
                 "validation_eval_start_period": run.validation_eval_start_period,
-                "validation_eval_end_period": run.validation_eval_end_period,
+                "validation_eval_end_period": run.validation_eval_end_period
             }
-            missing_validation_fields = [name for name, value in required_validation_fields.items() if value is None]
-
-            if missing_validation_fields:
-                error_object.add_warning(f"Missing required validation fields: {', '.join(missing_validation_fields)}")
+            missing_start_end_period_fields = [name for name, value in required_start_end_period_fields.items() if value is None]
+            if missing_start_end_period_fields:
+                error_object.add_warning(f"Unable to calculate time values: {', '.join(missing_start_end_period_fields)}")
             else:
-                calibration.update({
-                    'valid_start_period': format_datetime(run.validation_start_period),
-                    'valid_end_period': format_datetime(run.validation_end_period),
-                    'valid_eval_start_period': format_datetime(run.validation_eval_start_period),
-                    'valid_eval_end_period': format_datetime(run.validation_eval_end_period),
-                })
+                calibration['calib_start_period'] = format_datetime(run.calibration_start_period)
+                calibration['calib_end_period'] =  format_datetime(run.calibration_end_period)
+                calibration['calib_eval_start_period'] = format_datetime(run.calibration_eval_start_period)
+                calibration['calib_eval_end_period'] = format_datetime(run.calibration_eval_end_period)
+                calibration['valid_start_period'] = format_datetime(run.validation_start_period)
+                calibration['valid_end_period'] =  format_datetime(run.validation_end_period)
+                calibration['valid_eval_start_period'] = format_datetime(run.validation_eval_start_period)
+                calibration['valid_eval_end_period'] = format_datetime(run.validation_eval_end_period)
+                full_eval_start, full_eval_end = get_full_evaluation_date_range(
+                    run.calibration_eval_start_period, run.calibration_eval_end_period,
+                    run.validation_eval_start_period, run.validation_eval_end_period)
 
-                # Set full evaluation periods if both calibration and validation evaluation periods are present
-                if run.calibration_eval_start_period and run.calibration_eval_end_period:
-                    full_eval_start, full_eval_end = get_full_evaluation_date_range(
-                        run.calibration_eval_start_period, run.calibration_eval_end_period,
-                        run.validation_eval_start_period, run.validation_eval_end_period)
-
-                    calibration['full_eval_start_period'] = format_datetime(full_eval_start)
-                    calibration['full_eval_end_period'] = format_datetime(full_eval_end)
-
+                calibration['full_eval_start_period'] = format_datetime(full_eval_start)
+                calibration['full_eval_end_period'] = format_datetime(full_eval_end)
+        
         if not is_missing(run.objective_function, 'Objective function', error_object, have_LSTM_flag=have_LSTM_flag):
             calibration['objective_function'] = run.objective_function.name.lower()
 

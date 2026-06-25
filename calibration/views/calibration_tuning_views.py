@@ -4,11 +4,13 @@ import logging
 import os
 import time
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
-from typing import Literal
+from typing import Literal, TypedDict
 from urllib.parse import urlparse
 
 import pandas as pd
+from datetime import timedelta
 from datetimerange import DateTimeRange
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet, Prefetch
@@ -22,7 +24,9 @@ from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun
 from calibration.util import cloud_util
 from calibration.util.caching import get_cached_module_by_name, have_LSTM, get_cached_modules_by_id
-from calibration.util.calibration_validators import CalibrationRunIdSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
+from calibration.util.calibration_validators import CalibrationRunIdSerializer, \
+    SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
+    ValidateTuningTimesRequestSerializer, ValidateTuningTimesResponseSerializer, \
     ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse, \
     ValidateParametersResponseSerializer, SaveTuningResponseSerializer
 from calibration.views import ngen_cal_input
@@ -87,7 +91,21 @@ def load_tuning_tab(request: Request) -> Response:
 
         # Compute time range without persisting
         time_range = compute_time_range(run)
-        calibration_times, validation_times = get_times(run)
+
+        # Normalize start time to 00:00 UTC and end time to 23:00 UTC
+        # Next midnight UTC on or after start_datetime
+        normalized_start_time = time_range['start_time'].replace(hour=0, minute=0, second=0, microsecond=0)
+        if normalized_start_time < time_range['start_time']:
+            normalized_start_time += timedelta(days=1)
+        time_range['start_time'] = normalized_start_time
+
+        # Most recent 23:00 UTC on or before end_datetime
+        normalized_end_time = time_range['end_time'].replace(hour=23, minute=0, second=0, microsecond=0)
+        if normalized_end_time > time_range['end_time']:
+            normalized_end_time -= timedelta(days=1)
+        time_range['end_time'] = normalized_end_time
+        
+        calibration_times, validation_times, time_controls = get_times(run)
 
         formulations = (
             CalibrationFormulation.objects
@@ -122,8 +140,9 @@ def load_tuning_tab(request: Request) -> Response:
         'status': run.status.name,  # reflects updated status
         'modules': module_list,
         'time_range': time_range,
-        'calibration_times': calibration_times,
-        'validation_times': validation_times
+        'calibration_times': {} if any(value is None for value in calibration_times.values()) else calibration_times,
+        'validation_times': {} if any(value is None for value in validation_times.values()) else validation_times,
+        'time_controls': time_controls
     }
 
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
@@ -287,17 +306,26 @@ def persist_time_range(run: CalibrationRun, time_range: dict[str, datetime | Non
     run.save(update_fields=['time_range_start', 'time_range_end'])
 
 
-def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datetime]]:
-    """
-    Retrieves calibration and validation time periods for a given calibration run.
+TimeDict = dict[str, datetime]
+TimeControlsResponse = dict[str, datetime | int | bool | None]
 
-    :param run: The CalibrationRun instance containing time period information.
-    :return: A tuple containing two dictionaries:
-             - The first dictionary holds calibration time periods.
-             - The second dictionary holds validation time periods (if automatic validation is enabled).
+
+def get_times(run: CalibrationRun, default_time_controls: bool=True) -> tuple[TimeDict, TimeDict, TimeControlsResponse]:
     """
-    calibration_times = {}
-    validation_times = {}
+    Retrieves the saved calibration and validation time periods along with the
+    time control values for a calibration run.
+
+    :param run: The CalibrationRun instance containing the persisted time settings.
+    :return: A tuple containing three dictionaries:
+             - calibration_times: Simulation and evaluation start/end times for calibration.
+             - validation_times: Simulation and evaluation start/end times for validation
+             - time_controls: The UI time control values (simulation start time,
+               warmup duration, calibration duration, validation window, and
+               validation duration) from which the calibration and validation
+               periods are derived.
+    """
+    calibration_times: TimeDict = {}
+    validation_times: TimeDict = {}
 
     # If calibration times exist, assume all related fields are present
     if run.calibration_start_period:
@@ -308,15 +336,25 @@ def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datet
             'calibration_end_time': run.calibration_eval_end_period
         }
 
-    # If automatic validation is enabled and validation times exist, populate validation times
-    if run.automatic_validation and run.validation_start_period:
+    # If validation times exist, populate validation times
+    if run.validation_start_period:
         validation_times = {
             'simulation_start_time': run.validation_start_period,
             'simulation_end_time': run.validation_end_period,
             'validation_start_time': run.validation_eval_start_period,
             'validation_end_time': run.validation_eval_end_period
         }
-    return calibration_times, validation_times
+
+    # If time controls have been saved, populate them
+    time_controls: TimeControlsResponse = {
+        'simulation_start_time': run.calibration_start_period,
+        'warmup_duration': run.warmup_duration if run.warmup_duration is not None else (12 if default_time_controls else None),
+        'calibration_duration': run.calibration_duration if run.calibration_duration is not None else (60 if default_time_controls else None),
+        'validation_window': run.validation_window if run.calibration_duration is not None else True,
+        'validation_duration': run.validation_duration if run.validation_duration is not None else (36 if default_time_controls else None)
+    }
+
+    return calibration_times, validation_times, time_controls
 
 
 @extend_schema(
@@ -349,8 +387,7 @@ def save_tuning_tab(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     automatic_validation = validator.get('automatic_validation')
-    calibration_times = validator.get('calibration_times')
-    validation_times = validator.get('validation_times')
+    time_controls = validator.get('time_controls')
     parameters = validator.get('parameters')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user)
@@ -384,9 +421,11 @@ def save_tuning_tab(request: Request) -> Response:
     if have_LSTM(run) and parameters:
         return ResponseError('You cannot specify parameters when using LSTM')
 
-    run.automatic_validation = automatic_validation
+    error_message, calibration_times, validation_times, time_control_limits = calculate_times_and_limits(run, time_controls)
+    if error_message:
+        return ResponseError(error_message)
 
-    error_message = validate_and_save_times(run, calibration_times, validation_times)
+    error_message = save_time_controls(run, time_controls)
     if error_message:
         return ResponseError(error_message)
 
@@ -413,6 +452,63 @@ def save_tuning_tab(request: Request) -> Response:
         response["parameter_errors"] = parameter_rule_report.errors
 
     response_validator, error_response = validate_response(SaveTuningResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=ValidateTuningTimesRequestSerializer,
+    responses={
+        200: ValidateTuningTimesResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Calculate and validate times from tuning tab"
+)
+@api_view(['POST'])
+@handle_exceptions
+def validate_tuning_times(request: Request) -> Response:
+    """
+    Calculate and validate times set by the input values from the tuning tab
+    """
+    data = request.data
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(ValidateTuningTimesRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+    time_controls = validator.get('time_controls')
+
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
+    assert run is not None
+
+    error_message, calibration_times, validation_times, time_control_limits = calculate_times_and_limits(run, time_controls)
+    if error_message:
+        return ResponseError(error_message)
+
+    response = {
+        'message': f'Calibration Job {run.id} times validated',
+        'calibration_run_id': run.id,
+        'status': run.status.name,
+        'calibration_times': calibration_times,
+        'validation_times': validation_times,
+        'time_control_limits': time_control_limits
+    }
+
+    response_validator, error_response = validate_response(ValidateTuningTimesResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(
@@ -456,205 +552,231 @@ def upload_user_parameters(request: Request) -> Response:
         return error_return
     assert run is not None
 
-    files = request.FILES.getlist('user_parameter_file')
+    files = request.FILES.getlist('user_parameter_files')
     if not files:
-        return ResponseError('No file uploaded under field "user_parameter_file".')
-    if len(files) > 1:
-        logger.warning(f'{get_caller_name()}() multiple files uploaded; using the first one')
+        return ResponseError('No files uploaded under field "user_parameter_files".')
 
-    # Only one parameter file is supported. If the client sends multiple files,
-    # use the first file and ignore the rest.
-    parameter_file = files[0]
-    try:
-        file_contents = parameter_file.read().decode('utf-8')
-    except Exception as exc:
-        logger.exception('Failed to read/decode uploaded file as UTF-8')
-        return ResponseError(f'Failed to read file as UTF-8: {exc}')
+    # Multiple parameter files are supported
+    # Track parsed data in an array
+    parsed_data = []
+    for parameter_file in files:
+      parsed_file_data = {
+          "name": parameter_file.name,
+          "message": None,
+          "parameters": None
+      }
+      try:
+          file_contents = parameter_file.read().decode('utf-8')
+      except Exception as exc:
+          logger.exception('Failed to read/decode uploaded file as UTF-8')
+          parsed_file_data['message'] = f'Failed to read file as UTF-8: {exc}'
+          parsed_data.append(parsed_file_data)
+          continue
 
-    if not file_contents.strip():
-        return ResponseError('Uploaded file is empty.')
+      if not file_contents.strip():
+          parsed_file_data['message'] = 'Uploaded file is empty.'
+          parsed_data.append(parsed_file_data)
+          continue
 
-    # Infer the delimiter from the header row. Comma and tab are handled as
-    # explicit delimiters; otherwise fall back to whitespace so space-separated
-    # files can still be accepted.
-    first_line = file_contents.splitlines()[0]
+      # Infer the delimiter from the header row. Comma and tab are handled as
+      # explicit delimiters; otherwise fall back to whitespace so space-separated
+      # files can still be accepted.
+      first_line = file_contents.splitlines()[0]
 
-    if ',' in first_line:
-        delimiter = ','
-        logger.debug("Detected comma delimiter.")
-    elif '\t' in first_line:
-        delimiter = '\t'
-        logger.debug("Detected tab delimiter.")
-    else:
-        delimiter = r'\s+'
-        logger.debug("Detected space delimiter.")
+      if ',' in first_line:
+          delimiter = ','
+          logger.debug("Detected comma delimiter.")
+      elif '\t' in first_line:
+          delimiter = '\t'
+          logger.debug("Detected tab delimiter.")
+      else:
+          delimiter = r'\s+'
+          logger.debug("Detected space delimiter.")
 
-    # Expected columns
-    required_columns = ['param', 'min', 'max', 'init', 'model']
-    expected_cols = len(required_columns)
+      # Expected columns
+      required_columns = ['param', 'min', 'max', 'init', 'model']
+      expected_cols = len(required_columns)
 
-    # For CSV/TSV files, perform a strict pre-parse check before pandas reads
-    # the file. This catches malformed rows with too many/few fields and gives
-    # a clearer line-specific error than pandas usually provides.
-    #
-    # This is skipped for whitespace-delimited files because csv.reader cannot
-    # use a regex delimiter like r'\s+'.
-    if delimiter in (',', '\t'):
-        import csv
-        lines = file_contents.splitlines()
+      # For CSV/TSV files, perform a strict pre-parse check before pandas reads
+      # the file. This catches malformed rows with too many/few fields and gives
+      # a clearer line-specific error than pandas usually provides.
+      #
+      # This is skipped for whitespace-delimited files because csv.reader cannot
+      # use a regex delimiter like r'\s+'.
+      if delimiter in (',', '\t'):
+          import csv
+          lines = file_contents.splitlines()
 
-        # Require an exact header match after trimming whitespace. This avoids
-        # accepting renamed, reordered, or extra columns accidentally.
-        header_cols = [c.strip() for c in next(csv.reader([lines[0]], delimiter=delimiter))]
-        if header_cols != required_columns:
-            return ResponseError(
-                f'Header mismatch. Expected: {required_columns}, Found: {header_cols}'
-            )
+          # Require an exact header match after trimming whitespace. This avoids
+          # accepting renamed, reordered, or extra columns accidentally.
+          header_cols = [c.strip() for c in next(csv.reader([lines[0]], delimiter=delimiter))]
+          if header_cols != required_columns:
+              parsed_file_data['message'] = f"Header mismatch. Expected: {required_columns}, Found: {header_cols}"
+              parsed_data.append(parsed_file_data)
+              continue
 
-        # Check each data row before pandas parsing so we can report the actual
-        # offending line and avoid silent column shifting.
-        for i, row in enumerate(lines[1:], start=2):  # human line numbers
-            cols = next(csv.reader([row], delimiter=delimiter))
-            if len(cols) != expected_cols:
-                return ResponseError(
-                    f'Row {i} has {len(cols)} fields; expected {expected_cols}. Offending row: {row}'
-                )
+          # Check each data row before pandas parsing so we can report the actual
+          # offending line and avoid silent column shifting.
+          for i, row in enumerate(lines[1:], start=2):  # human line numbers
+              cols = next(csv.reader([row], delimiter=delimiter))
+              if len(cols) != expected_cols:
+                  message = f"Row {i} has {len(cols)} fields; expected {expected_cols}. Offending row: {row}\n"
+                  if parsed_file_data['message']:
+                      parsed_file_data['message'] += message
+                  else:
+                      parsed_file_data['message'] = message
+          if parsed_file_data['message']:
+              parsed_data.append(parsed_file_data)
+              continue
+                  
 
-    # Parse with pandas after the manual structural checks. The dtype mapping
-    # forces numeric columns to be converted immediately, so invalid min/max/init
-    # values fail early instead of being carried forward as strings.
-    try:
-        # Handle file parsing based on detected delimiter
-        df = pd.read_csv(
-            io.StringIO(file_contents),
-            sep=delimiter,
-            engine='python',
-            skipinitialspace=True,
-            dtype={'param': str, 'min': float, 'max': float, 'init': float, 'model': str},
-        )
-    except pd.errors.ParserError as exc:
-        logger.debug(f'Pandas parser error: {exc}')
-        return Response({'error': f'Could not parse file with detected delimiter: {exc}'}, status=400)
-    except ValueError as exc:
-        # Typically raised when dtype conversion fails with informative message
-        logger.debug(f'Pandas dtype error: {exc}')
-        return Response({'error': f'Invalid data types in file: {exc}'}, status=400)
+      # Parse with pandas after the manual structural checks. The dtype mapping
+      # forces numeric columns to be converted immediately, so invalid min/max/init
+      # values fail early instead of being carried forward as strings.
+      try:
+          # Handle file parsing based on detected delimiter
+          df = pd.read_csv(
+              io.StringIO(file_contents),
+              sep=delimiter,
+              engine='python',
+              skipinitialspace=True,
+              dtype={'param': str, 'min': float, 'max': float, 'init': float, 'model': str},
+          )
+      except pd.errors.ParserError as exc:
+          logger.debug(f'Pandas parser error: {exc}')
+          parsed_file_data['message'] = f"Could not parse file with detected delimiter: {exc}"
+          parsed_data.append(parsed_file_data)
+          continue
+      except ValueError as exc:
+          # Typically raised when dtype conversion fails with informative message
+          logger.debug(f'Pandas dtype error: {exc}')
+          parsed_file_data['message'] = f"Invalid data types in file: {exc}"
+          parsed_data.append(parsed_file_data)
+          continue
 
-    # Normalize column names after parsing so headers like " param " are treated
-    # as "param".
-    df.columns = df.columns.str.strip()
+      # Normalize column names after parsing so headers like " param " are treated
+      # as "param".
+      df.columns = df.columns.str.strip()
 
-    # Log detected columns for debugging
-    logger.debug(f"Detected columns: {df.columns.tolist()}")
+      # Log detected columns for debugging
+      logger.debug(f"Detected columns: {df.columns.tolist()}")
 
-    # Confirm that all required columns are present after parsing.
-    missing_cols = [col for col in required_columns if col not in df.columns]
-    if missing_cols:
-        # Log the actual DataFrame to inspect it
-        logger.debug(f"DataFrame content:\n{df.head()}")
-        return ResponseError(f'Missing required columns: {missing_cols}')
+      # Confirm that all required columns are present after parsing.
+      missing_cols = [col for col in required_columns if col not in df.columns]
+      if missing_cols:
+          # Log the actual DataFrame to inspect it
+          logger.debug("DataFrame content:\n%s", df.head())
+          parsed_file_data['message'] = f"Missing required columns: {missing_cols}"
+          parsed_data.append(parsed_file_data)
+          continue
 
-    # Reject extra columns. Extra columns often indicate a bad delimiter or a row
-    # with too many fields, both of which can corrupt the parameter mapping.
-    unexpected = [c for c in df.columns if c not in required_columns]
-    if unexpected:
-        return ResponseError(f'Unexpected columns present: {unexpected}. Expected only {required_columns}.')
+      # Reject extra columns. Extra columns often indicate a bad delimiter or a row
+      # with too many fields, both of which can corrupt the parameter mapping.
+      unexpected = [c for c in df.columns if c not in required_columns]
+      if unexpected:
+          parsed_file_data['message'] = f"Unexpected columns present: {unexpected}. Expected only {required_columns}."
+          parsed_data.append(parsed_file_data)
+          continue
 
-    # Require at least one parameter row; a header-only file is structurally valid
-    # but not useful.
-    if df.empty:
-        return ResponseError('No data rows found. Provide at least one parameter row.')
+      # Require at least one parameter row; a header-only file is structurally valid
+      # but not useful.
+      if df.empty:
+          parsed_file_data['message'] = "No data rows found. Provide at least one parameter row."
+          parsed_data.append(parsed_file_data)
+          continue
 
-    # Re-check numeric fields and return exact line/value details. This protects
-    # against edge cases where pandas parsing succeeds but values still become NaN.
-    invalid_details: dict[str, list[dict[str, object]]] = {}
-    for col in ['min', 'max', 'init']:
-        # Re-coerce to catch NaN in case dtype enforcement was bypassed by space sep quirks
-        coerced = pd.to_numeric(df[col], errors='coerce')
-        bad_mask = pd.isna(coerced)
-        if bad_mask.any():
-            bad_rows = df[bad_mask]
+      # Re-check numeric fields and return exact line/value details. This protects
+      # against edge cases where pandas parsing succeeds but values still become NaN.
+      invalid_details: dict[str, list[dict[str, object]]] = {}
+      for col in ['min', 'max', 'init']:
+          # Re-coerce to catch NaN in case dtype enforcement was bypassed by space sep quirks
+          coerced = pd.to_numeric(df[col], errors='coerce')
+          bad_mask = pd.isna(coerced)
+          if bad_mask.any():
+              bad_rows = df[bad_mask]
 
-            # Add 2 because line 1 is the header and DataFrame index 0
-            # corresponds to source file line 2.
-            invalid_details[col] = [
-                {
-                    'line': offset + 2,
-                    'param': str(row['param']),
-                    'value': row.get(col)
-                }
-                for offset, (_, row) in enumerate(bad_rows.iterrows())
-            ]
+              # Add 2 because line 1 is the header and DataFrame index 0
+              # corresponds to source file line 2.
+              invalid_details[col] = [
+                  {
+                      'line': offset + 2,
+                      'param': str(row['param']),
+                      'value': row.get(col)
+                  }
+                  for offset, (_, row) in enumerate(bad_rows.iterrows())
+              ]
 
-    if invalid_details:
-        logger.debug(f"Invalid numeric values: {invalid_details}")
-        return Response({'error': 'Invalid numeric values', 'details': invalid_details}, status=400)
+      if invalid_details:
+          logger.debug(f"Invalid numeric values: {invalid_details}")
+          parsed_file_data['message'] = f"Invalid numeric values. {invalid_details}"
+          parsed_data.append(parsed_file_data)
+          continue
 
-    # Validate parameter bounds before returning the parsed data to the UI.
-    # Each row must satisfy:
-    #   min <= max
-    #   min <= init <= max
-    range_errors = {}
+      # Validate parameter bounds before returning the parsed data to the UI.
+      # Each row must satisfy:
+      #   min <= max
+      #   min <= init <= max
+      range_errors = {}
 
-    bad_minmax_mask = df['min'] > df['max']
-    if bad_minmax_mask.any():
-        rows = df[bad_minmax_mask]
-        range_errors['min_gt_max'] = [
-            {
-                'line': offset + 2,
-                'param': str(row['param']),
-                'min': row['min'],
-                'max': row['max']
-            }
-            for offset, (_, row) in enumerate(rows.iterrows())
-        ]
+      bad_minmax_mask = df['min'] > df['max']
+      if bad_minmax_mask.any():
+          rows = df[bad_minmax_mask]
+          range_errors['min_gt_max'] = [
+              {
+                  'line': offset + 2,
+                  'param': str(row['param']),
+                  'min': row['min'],
+                  'max': row['max']
+              }
+              for offset, (_, row) in enumerate(rows.iterrows())
+          ]
 
-    bad_init_low = df['init'] < df['min']
-    if bad_init_low.any():
-        rows = df[bad_init_low]
-        range_errors.setdefault('init_lt_min', [])
-        range_errors['init_lt_min'].extend(
-            {
-                'line': offset + 2,
-                'param': str(row['param']),
-                'init': row['init'],
-                'min': row['min']
-            }
-            for offset, (_, row) in enumerate(rows.iterrows())
-        )
+      bad_init_low = df['init'] < df['min']
+      if bad_init_low.any():
+          rows = df[bad_init_low]
+          range_errors.setdefault('init_lt_min', [])
+          range_errors['init_lt_min'].extend(
+              {
+                  'line': offset + 2,
+                  'param': str(row['param']),
+                  'init': row['init'],
+                  'min': row['min']
+              }
+              for offset, (_, row) in enumerate(rows.iterrows())
+          )
 
-    bad_init_high = df['init'] > df['max']
-    if bad_init_high.any():
-        rows = df[bad_init_high]
-        range_errors.setdefault('init_gt_max', [])
-        range_errors['init_gt_max'].extend(
-            {
-                'line': offset + 2,
-                'param': str(row['param']),
-                'init': row['init'],
-                'max': row['max']
-            }
-            for offset, (_, row) in enumerate(rows.iterrows())
-        )
+      bad_init_high = df['init'] > df['max']
+      if bad_init_high.any():
+          rows = df[bad_init_high]
+          range_errors.setdefault('init_gt_max', [])
+          range_errors['init_gt_max'].extend(
+              {
+                  'line': offset + 2,
+                  'param': str(row['param']),
+                  'init': row['init'],
+                  'max': row['max']
+              }
+              for offset, (_, row) in enumerate(rows.iterrows())
+          )
 
-    if range_errors:
-        logger.debug(f"Range validation errors: {range_errors}")
-        return Response({'error': 'Range validation failed', 'details': range_errors}, status=400)
+      if range_errors:
+          logger.debug(f"Range validation errors: {range_errors}")
+          parsed_file_data['message'] = f"Range validation failed. {range_errors}"
+          parsed_data.append(parsed_file_data)
+          continue
 
-    logger.debug(f"Parsed DataFrame after stripping and numeric conversion: \n{df}")
+      logger.debug(f"Parsed DataFrame after stripping and numeric conversion: \n%s, df")
 
-    # Return the parsed parameter rows to the caller. This endpoint validates and
-    # echoes the uploaded file contents; it only persists the filename on the run.
-    parsed_data = df.to_dict(orient='records')
-
-    # Persist filename on the run
-    run.user_parameter_filename = parameter_file.name
-    run.save(update_fields=['user_parameter_filename'])
+      # Return the parsed parameter rows to the caller. This endpoint validates and
+      # echoes the uploaded file contents; it only persists the filename on the run.
+      parsed_file_data['message'] = f"Parameter file {parameter_file.name} processed successfully."
+      parsed_file_data['parameters'] = df.to_dict(orient='records')
+      parsed_data.append(parsed_file_data)
 
     response = {
-        'message': f"Parameter file '{parameter_file.name}' saved for Calibration Job {run.id}",
+        'message': f"{len(parsed_data)} Parameter file{'s' if len(parsed_data) != 1 else ''} processed for Calibration Job {run.id}",
         'calibration_run_id': run.id,
-        'user_parameter_file': parsed_data
+        'parsed_data': parsed_data
     }
 
     response_validator, error_response = validate_response(UserParameterFileUploadResponse, response)
@@ -805,137 +927,209 @@ def validate_time_range_against_data(
     validation_start = validation_times.get('simulation_start_time') if validation_times else run.validation_start_period
     validation_end = validation_times.get('simulation_end_time') if validation_times else run.validation_end_period
 
-    if run.automatic_validation and validation_start and validation_end:
+    if validation_start and validation_end:
         return validate_simulation_within_range(data_start, data_end, validation_start, validation_end, JobType.VALIDATION)
 
     return None
 
 
-def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, datetime] | None,
-                            validation_times: dict[str, datetime] | None) -> str | None:
+class TimeControls(TypedDict, total=False):
+    simulation_start_time: datetime
+    warmup_duration: int
+    calibration_duration: int
+    validation_window: bool
+    validation_duration: int
+
+
+def calculate_times_and_limits(
+        run: CalibrationRun,
+        time_controls: TimeControls | None
+) -> tuple[
+    str,
+    dict[str, datetime],
+    dict[str, datetime],
+    dict[str, datetime | int]
+]:
     """
-    Validates calibration and validation time ranges, ensuring they fall within the allowable data range.
-    If valid, updates the `CalibrationRun` instance with the provided times.
+    Calculate derived calibration/validation periods from the tuning time controls and
+    return the valid UI limits for those controls.
 
-    :param run: The calibration run being validated and updated.
-    :param calibration_times: Dictionary containing calibration start, end, and evaluation periods.
-    :param validation_times: Dictionary containing validation start, end, and evaluation periods.
-    :return: A list of error messages if validation fails; otherwise, an empty list.
+    The controls persisted on the run are:
+      - simulation_start_time: the calibration simulation start time, saved as
+        calibration_start_period and normalized to midnight.
+      - warmup_duration: months between simulation_start_time and the calibration
+        evaluation start.
+      - calibration_duration: months in the calibration evaluation period.
+      - validation_window: True when validation follows calibration; False when
+        validation precedes calibration.
+      - validation_duration: months in the validation evaluation period.
+
+    The remaining calibration/validation start/end times are derived from these
+    controls by CalibrationRun properties.
+
+    :param run: CalibrationRun being validated. Requires time_range_start and time_range_end.
+    :param time_controls: UI time controls to validate.
+    :return: Tuple of error messages, calibration times, validation times, and UI control limits.
     """
 
-    messages = []
+    simulation_start_time = time_controls.get('simulation_start_time', run.time_range_start)
+    warmup_duration = time_controls.get('warmup_duration')
+    calibration_duration = time_controls.get('calibration_duration')
+    validation_window = time_controls.get('validation_window', True)
+    validation_duration = time_controls.get('validation_duration')
 
-    # Validation against forcing and observational data intersection
-    error_message = validate_time_range_against_data(run, calibration_times, validation_times)
-    if error_message:
-        messages.append(error_message)
+    assert isinstance(simulation_start_time, datetime)
+    assert isinstance(warmup_duration, int)
+    assert isinstance(calibration_duration, int)
+    assert isinstance(validation_duration, int)
 
-    if calibration_times:
-        error_message, calibration_simulation_range = validate_time_range(
-            calibration_times.get('simulation_start_time'),
-            calibration_times.get('simulation_end_time'),
-            'calibration simulation'
+    # Normalize UI-selected dates to midnight because durations are whole-month windows.
+    simulation_start_time = simulation_start_time.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0
+    )
+
+    # If midnight moved us before the allowed start, advance one day
+    if simulation_start_time < run.time_range_start:
+        simulation_start_time += relativedelta(days=1)
+
+    error_messages = []
+
+    if simulation_start_time < run.time_range_start or simulation_start_time > run.time_range_end:
+        error_messages.append("Simulation start time must be within the allowed range.")
+
+    # Set time control values - model methods will set the rest dynamically
+    run.calibration_start_period = simulation_start_time
+    run.warmup_duration = warmup_duration
+    run.calibration_duration = calibration_duration
+    run.validation_window = validation_window
+    run.validation_duration = validation_duration
+
+    calibration_times = {
+        'calibration_start_time': run.calibration_eval_start_period,
+        'calibration_end_time': run.calibration_eval_end_period,
+        'simulation_start_time': run.calibration_start_period,
+        'simulation_end_time': run.calibration_end_period
+    }
+    validation_times = {
+        'validation_start_time': run.validation_eval_start_period,
+        'validation_end_time': run.validation_eval_end_period,
+        'simulation_start_time': run.validation_start_period,
+        'simulation_end_time': run.validation_end_period
+    }
+
+    if run.calibration_start_period < run.time_range_start or run.calibration_start_period > run.time_range_end:
+        error_messages.append(
+            f'Cal Sim Start {run.calibration_start_period.date()} falls outside the allowed range.'
         )
-        if error_message:
-            messages.append(error_message)
-
-        error_message, calibration_evaluation_range = validate_time_range(
-            calibration_times.get('calibration_start_time'),
-            calibration_times.get('calibration_end_time'),
-            'calibration evaluation'
+    if run.calibration_end_period < run.time_range_start or run.calibration_end_period > run.time_range_end:
+        error_messages.append(
+            f'Cal Sim End {run.calibration_end_period.date()} falls outside the allowed range.'
         )
-        if error_message:
-            messages.append(error_message)
+    if run.calibration_eval_start_period < run.time_range_start or run.calibration_eval_start_period > run.time_range_end:
+        error_messages.append(
+            f'Calibration Start {run.calibration_eval_start_period.date()} falls outside the allowed range.'
+        )
+    if run.calibration_eval_end_period < run.time_range_start or run.calibration_eval_end_period > run.time_range_end:
+        error_messages.append(
+            f'Calibration End {run.calibration_eval_end_period.date()} falls outside the allowed range.'
+        )
+    if run.validation_start_period < run.time_range_start or run.validation_start_period > run.time_range_end:
+        error_messages.append(
+            f'Val Sim Start {run.validation_start_period.date()} falls outside the allowed range.'
+        )
+    if run.validation_end_period < run.time_range_start or run.validation_end_period > run.time_range_end:
+        error_messages.append(
+            f'Val Sim End {run.validation_end_period.date()} falls outside the allowed range.'
+        )
+    if run.validation_eval_start_period < run.time_range_start or run.validation_eval_start_period > run.time_range_end:
+        error_messages.append(
+            f'Validation Start {run.validation_eval_start_period.date()} falls outside the allowed range.'
+        )
+    if run.validation_eval_end_period < run.time_range_start or run.validation_eval_end_period > run.time_range_end:
+        error_messages.append(
+            f'Validation End {run.validation_eval_end_period.date()} falls outside the allowed range.'
+        )
+
+    # Compute input limits
+
+    # these mins are constant
+    warmup_duration_min = 0
+    calibration_duration_min = 1
+    validation_duration_min = 1
+    if validation_window:
+        # Validation follows calibration. The calibration simulation start is the
+        # earliest time used by either simulation. Warmup, calibration, and
+        # validation must all fit before the available data end.
+        simulation_start_time_min = run.time_range_start
+        simulation_start_time_max = run.time_range_end - relativedelta(months=warmup_duration + calibration_duration + validation_duration)
+        warmup_duration_max = delta_months(
+            simulation_start_time,
+            run.time_range_end - relativedelta(months=calibration_duration + validation_duration)
+        )
+        calibration_duration_max = delta_months(
+            simulation_start_time,
+            run.time_range_end - relativedelta(months=warmup_duration + validation_duration)
+        )
+        validation_duration_max = delta_months(
+            simulation_start_time,
+            run.time_range_end - relativedelta(months=warmup_duration + calibration_duration)
+        )
     else:
-        calibration_simulation_range = None
-        calibration_evaluation_range = None
-
-    if validation_times:
-        error_message, validation_simulation_range = validate_time_range(
-            validation_times.get('simulation_start_time'),
-            validation_times.get('simulation_end_time'),
-            'validation simulation'
+        # Validation precedes calibration. The validation simulation starts
+        # validation_duration months before the calibration simulation start.
+        # Warmup and calibration must fit after the calibration simulation start.
+        simulation_start_time_min = run.time_range_start + relativedelta(months=validation_duration)
+        simulation_start_time_max = run.time_range_end - relativedelta(months=warmup_duration + calibration_duration)
+        warmup_duration_max = delta_months(
+            simulation_start_time,
+            run.time_range_end - relativedelta(months=calibration_duration)
         )
-        if error_message:
-            messages.append(error_message)
-
-        error_message, validation_evaluation_range = validate_time_range(
-            validation_times.get('validation_start_time'),
-            validation_times.get('validation_end_time'),
-            'validation evaluation'
+        calibration_duration_max = delta_months(
+            simulation_start_time + relativedelta(months=warmup_duration),
+            run.time_range_end
         )
-        if error_message:
-            messages.append(error_message)
-    else:
-        validation_simulation_range = None
-        validation_evaluation_range = None
-
-    # If any of the ranges are invalid, return JSON list immediately
-    if messages:
-        return json.dumps(messages)
-
-    # Define full evaluation range from minimum and maximum evaluation start/end times
-    full_evaluation_start_date: datetime | None = None
-    full_evaluation_end_date: datetime | None = None
-
-    # Define the expanded evaluation range from the minimum and maximum evaluation start/end times
-    if validation_evaluation_range is not None and calibration_evaluation_range is not None:
-        full_evaluation_start_date, full_evaluation_end_date = get_full_evaluation_date_range_from_ranges(
-            calibration_evaluation_range,
-            validation_evaluation_range
+        validation_duration_max = delta_months(
+            run.time_range_start,
+            simulation_start_time
         )
 
-    # Ensure calibration simulation range contains the calibration evaluation range
-    if calibration_evaluation_range and calibration_simulation_range:
-        start_outside_range = calibration_evaluation_range[0] < calibration_simulation_range[0]
-        end_outside_range = calibration_evaluation_range[1] > calibration_simulation_range[1]
+    time_control_limits = {
+        'simulation_start_time_min': simulation_start_time_min,
+        'simulation_start_time_max': simulation_start_time_max,
+        'warmup_duration_min': warmup_duration_min,
+        'warmup_duration_max': warmup_duration_max,
+        'calibration_duration_min': calibration_duration_min,
+        'calibration_duration_max': calibration_duration_max,
+        'validation_duration_min': validation_duration_min,
+        'validation_duration_max': validation_duration_max
+    }
 
-        if start_outside_range or end_outside_range:
-            messages.append(
-                f'Calibration simulation range from {format_datetime(calibration_simulation_range[0])} to '
-                f'{format_datetime(calibration_simulation_range[1])} must contain the calibration evaluation range from '
-                f'{format_datetime(calibration_evaluation_range[0])} to {format_datetime(calibration_evaluation_range[1])}.'
-            )
+    return '\n'.join(error_messages), calibration_times, validation_times, time_control_limits
 
-    # Ensure validation simulation range contains both the calibration and validation evaluation ranges
-    if validation_simulation_range:
-        valid_simulation_start, valid_simulation_end = validation_simulation_range
 
-        if full_evaluation_start_date is not None and full_evaluation_end_date is not None:
-            if valid_simulation_start > full_evaluation_start_date or valid_simulation_end < full_evaluation_end_date:
-                messages.append(
-                    f'Validation simulation range from {format_datetime(valid_simulation_start)} to '
-                    f'{format_datetime(valid_simulation_end)} must contain the calibration and validation evaluation ranges from '
-                    f'{format_datetime(full_evaluation_start_date)} to {format_datetime(full_evaluation_end_date)}.'
-                )
+def save_time_controls(run: CalibrationRun, time_controls: TimeControls | None) -> str | None:
+    """
+    Copy validated UI time controls onto the run.
 
-    # Check for overlap between calibration and validation evaluation ranges
-    if validation_evaluation_range and calibration_evaluation_range:
-        overlap_exists = (
-                validation_evaluation_range[0] <= calibration_evaluation_range[1] and
-                validation_evaluation_range[1] >= calibration_evaluation_range[0]
-        )
+    Only the control values are persisted. The simulation/evaluation end times are
+    derived by CalibrationRun properties from calibration_start_period, durations,
+    and validation_window.
 
-        if overlap_exists:
-            messages.append(
-                f"Calibration evaluation range from {format_datetime(calibration_evaluation_range[0])} to "
-                f"{format_datetime(calibration_evaluation_range[1])} cannot intersect the validation evaluation range from "
-                f"{format_datetime(validation_evaluation_range[0])} to {format_datetime(validation_evaluation_range[1])}."
-            )
+    :param run: CalibrationRun to update.
+    :param time_controls: Validated UI time controls.
+    :return: None, or an error message if saving is not possible.
+    """
+    if not time_controls:
+        return None
 
-    # Save times if no errors found
-    if not messages:
-        if calibration_times:
-            run.calibration_start_period = calibration_times.get('simulation_start_time')
-            run.calibration_end_period = calibration_times.get('simulation_end_time')
-            run.calibration_eval_start_period = calibration_times.get('calibration_start_time')
-            run.calibration_eval_end_period = calibration_times.get('calibration_end_time')
-
-        if run.automatic_validation and validation_times:
-            run.validation_start_period = validation_times.get('simulation_start_time')
-            run.validation_end_period = validation_times.get('simulation_end_time')
-            run.validation_eval_start_period = validation_times.get('validation_start_time')
-            run.validation_eval_end_period = validation_times.get('validation_end_time')
+    run.calibration_start_period = time_controls.get('simulation_start_time')
+    run.warmup_duration = time_controls.get('warmup_duration')
+    run.calibration_duration = time_controls.get('calibration_duration')
+    run.validation_window = time_controls.get('validation_window', True)
+    run.validation_duration = time_controls.get('validation_duration')
 
     return None
 
@@ -958,23 +1152,23 @@ def get_full_evaluation_date_range_from_ranges(
 
 
 def get_full_evaluation_date_range(
-        calibration_evaluation_start_time: datetime,
-        calibration_evaluation_end_time: datetime,
-        validation_evaluation_start_time: datetime,
-        validation_evaluation_end_time: datetime
+        calibration_eval_start_time: datetime,
+        calibration_eval_end_time: datetime,
+        validation_eval_start_time: datetime,
+        validation_eval_end_time: datetime
 ) -> tuple[datetime, datetime]:
     """
     Calculates the overall evaluation date range by taking the earliest start time and latest end time
     from both calibration and validation evaluation periods.
 
-    :param calibration_evaluation_start_time: Start time of the calibration evaluation period.
-    :param calibration_evaluation_end_time: End time of the calibration evaluation period.
-    :param validation_evaluation_start_time: Start time of the validation evaluation period.
-    :param validation_evaluation_end_time: End time of the validation evaluation period.
+    :param calibration_eval_start_time: Start time of the calibration evaluation period.
+    :param calibration_eval_end_time: End time of the calibration evaluation period.
+    :param validation_eval_start_time: Start time of the validation evaluation period.
+    :param validation_eval_end_time: End time of the validation evaluation period.
     :return: A tuple containing the start and end times of the combined evaluation period.
     """
-    start_date = min(calibration_evaluation_start_time, validation_evaluation_start_time)
-    end_date = max(calibration_evaluation_end_time, validation_evaluation_end_time)
+    start_date = min(calibration_eval_start_time, validation_eval_start_time)
+    end_date = max(calibration_eval_end_time, validation_eval_end_time)
     return start_date, end_date
 
 
@@ -1409,3 +1603,8 @@ def validate_parameter_rules(
 
     if has_topoflow and has_non_topoflow_modules and not has_non_topoflow_param:
         error_object.add_warning("At least one non-Topoflow-Glacier parameter must be specified")
+
+
+def delta_months(date1, date2):
+    delta = relativedelta(date2, date1)
+    return (delta.years * 12) + delta.months
