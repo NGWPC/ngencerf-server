@@ -793,6 +793,12 @@ LOGGING = {
         'level': ROOT_LOG_LEVEL,
     },
 
+    'filters': {
+        'suppress_successful_health_check': {
+            '()': 'calibration.util.logging_filters.SuppressSuccessfulHealthCheckFilter',
+        },
+    },
+
     'formatters': {
         'dev_format': {
             'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {message}',
@@ -811,6 +817,7 @@ LOGGING = {
             'level': DEFAULT_LOG_LEVEL,
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
+            'filters': ['suppress_successful_health_check'],
         },
         # Only define file handlers when file logging is enabled.
         # Production logs are written to stdout/stderr and collected by CloudWatch.
@@ -821,6 +828,7 @@ LOGGING = {
                    'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf.log'),
                    'formatter': 'dev_format',
                    'encoding': 'utf-8',
+                   'filters': ['suppress_successful_health_check'],
                },
                'file_db': {
                    'level': DATABASE_LOG_LEVEL,
@@ -883,7 +891,7 @@ LOGGING = {
             'handlers': APP_HANDLERS,
             'level': NGENCERF_LOG_LEVEL,
             'propagate': False
-        },
+        }
     }
 }
 
