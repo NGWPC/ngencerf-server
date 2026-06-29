@@ -4,11 +4,11 @@ import logging
 import os
 import time
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
+from datetime import timedelta
 from typing import Literal, TypedDict
 from urllib.parse import urlparse
 
 import pandas as pd
-from datetime import timedelta
 from datetimerange import DateTimeRange
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
@@ -104,7 +104,7 @@ def load_tuning_tab(request: Request) -> Response:
         if normalized_end_time > time_range['end_time']:
             normalized_end_time -= timedelta(days=1)
         time_range['end_time'] = normalized_end_time
-        
+
         calibration_times, validation_times, time_controls = get_times(run)
 
         formulations = (
@@ -310,19 +310,27 @@ TimeDict = dict[str, datetime]
 TimeControlsResponse = dict[str, datetime | int | bool | None]
 
 
-def get_times(run: CalibrationRun, default_time_controls: bool=True) -> tuple[TimeDict, TimeDict, TimeControlsResponse]:
+def get_times(run: CalibrationRun, default_time_controls: bool = True) -> tuple[TimeDict, TimeDict, TimeControlsResponse]:
     """
-    Retrieves the saved calibration and validation time periods along with the
-    time control values for a calibration run.
+    Return the persisted calibration and validation periods and the UI time controls
+    for a calibration run.
 
-    :param run: The CalibrationRun instance containing the persisted time settings.
-    :return: A tuple containing three dictionaries:
-             - calibration_times: Simulation and evaluation start/end times for calibration.
-             - validation_times: Simulation and evaluation start/end times for validation
-             - time_controls: The UI time control values (simulation start time,
-               warmup duration, calibration duration, validation window, and
-               validation duration) from which the calibration and validation
-               periods are derived.
+    Calibration and validation period dictionaries are returned only when their
+    respective persisted start times are present. Time-control values are read from
+    the run. When ``default_time_controls`` is True, missing duration values use the
+    UI defaults of 12 months for warmup, 60 months for calibration, and 36 months for
+    validation. When it is False, missing duration values remain None.
+
+    :param run: CalibrationRun containing the persisted time periods and controls.
+    :param default_time_controls: Whether to substitute UI defaults for missing
+                                  duration values.
+    :return: A tuple containing:
+             - calibration_times: Calibration simulation and evaluation start/end
+               times, or an empty dictionary if they have not been saved.
+             - validation_times: Validation simulation and evaluation start/end
+               times, or an empty dictionary if they have not been saved.
+             - time_controls: Persisted UI time-control values, with optional default
+               durations substituted for missing values.
     """
     calibration_times: TimeDict = {}
     validation_times: TimeDict = {}
@@ -350,7 +358,7 @@ def get_times(run: CalibrationRun, default_time_controls: bool=True) -> tuple[Ti
         'simulation_start_time': run.calibration_start_period,
         'warmup_duration': run.warmup_duration if run.warmup_duration is not None else (12 if default_time_controls else None),
         'calibration_duration': run.calibration_duration if run.calibration_duration is not None else (60 if default_time_controls else None),
-        'validation_window': run.validation_window if run.calibration_duration is not None else True,
+        'validation_window_after_calibration': run.validation_window_after_calibration if run.calibration_duration is not None else True,
         'validation_duration': run.validation_duration if run.validation_duration is not None else (36 if default_time_controls else None)
     }
 
@@ -559,218 +567,217 @@ def upload_user_parameters(request: Request) -> Response:
     # Track parsed data in an array
     parsed_data = []
     for parameter_file in files:
-      parsed_file_data = {
-          "name": parameter_file.name,
-          "message": None,
-          "parameters": None
-      }
-      try:
-          file_contents = parameter_file.read().decode('utf-8')
-      except Exception as exc:
-          logger.exception('Failed to read/decode uploaded file as UTF-8')
-          parsed_file_data['message'] = f'Failed to read file as UTF-8: {exc}'
-          parsed_data.append(parsed_file_data)
-          continue
+        parsed_file_data = {
+            "name": parameter_file.name,
+            "message": None,
+            "parameters": None
+        }
+        try:
+            file_contents = parameter_file.read().decode('utf-8')
+        except Exception as exc:
+            logger.exception('Failed to read/decode uploaded file as UTF-8')
+            parsed_file_data['message'] = f'Failed to read file as UTF-8: {exc}'
+            parsed_data.append(parsed_file_data)
+            continue
 
-      if not file_contents.strip():
-          parsed_file_data['message'] = 'Uploaded file is empty.'
-          parsed_data.append(parsed_file_data)
-          continue
+        if not file_contents.strip():
+            parsed_file_data['message'] = 'Uploaded file is empty.'
+            parsed_data.append(parsed_file_data)
+            continue
 
-      # Infer the delimiter from the header row. Comma and tab are handled as
-      # explicit delimiters; otherwise fall back to whitespace so space-separated
-      # files can still be accepted.
-      first_line = file_contents.splitlines()[0]
+        # Infer the delimiter from the header row. Comma and tab are handled as
+        # explicit delimiters; otherwise fall back to whitespace so space-separated
+        # files can still be accepted.
+        first_line = file_contents.splitlines()[0]
 
-      if ',' in first_line:
-          delimiter = ','
-          logger.debug("Detected comma delimiter.")
-      elif '\t' in first_line:
-          delimiter = '\t'
-          logger.debug("Detected tab delimiter.")
-      else:
-          delimiter = r'\s+'
-          logger.debug("Detected space delimiter.")
+        if ',' in first_line:
+            delimiter = ','
+            logger.debug("Detected comma delimiter.")
+        elif '\t' in first_line:
+            delimiter = '\t'
+            logger.debug("Detected tab delimiter.")
+        else:
+            delimiter = r'\s+'
+            logger.debug("Detected space delimiter.")
 
-      # Expected columns
-      required_columns = ['param', 'min', 'max', 'init', 'model']
-      expected_cols = len(required_columns)
+        # Expected columns
+        required_columns = ['param', 'min', 'max', 'init', 'model']
+        expected_cols = len(required_columns)
 
-      # For CSV/TSV files, perform a strict pre-parse check before pandas reads
-      # the file. This catches malformed rows with too many/few fields and gives
-      # a clearer line-specific error than pandas usually provides.
-      #
-      # This is skipped for whitespace-delimited files because csv.reader cannot
-      # use a regex delimiter like r'\s+'.
-      if delimiter in (',', '\t'):
-          import csv
-          lines = file_contents.splitlines()
+        # For CSV/TSV files, perform a strict pre-parse check before pandas reads
+        # the file. This catches malformed rows with too many/few fields and gives
+        # a clearer line-specific error than pandas usually provides.
+        #
+        # This is skipped for whitespace-delimited files because csv.reader cannot
+        # use a regex delimiter like r'\s+'.
+        if delimiter in (',', '\t'):
+            import csv
+            lines = file_contents.splitlines()
 
-          # Require an exact header match after trimming whitespace. This avoids
-          # accepting renamed, reordered, or extra columns accidentally.
-          header_cols = [c.strip() for c in next(csv.reader([lines[0]], delimiter=delimiter))]
-          if header_cols != required_columns:
-              parsed_file_data['message'] = f"Header mismatch. Expected: {required_columns}, Found: {header_cols}"
-              parsed_data.append(parsed_file_data)
-              continue
+            # Require an exact header match after trimming whitespace. This avoids
+            # accepting renamed, reordered, or extra columns accidentally.
+            header_cols = [c.strip() for c in next(csv.reader([lines[0]], delimiter=delimiter))]
+            if header_cols != required_columns:
+                parsed_file_data['message'] = f"Header mismatch. Expected: {required_columns}, Found: {header_cols}"
+                parsed_data.append(parsed_file_data)
+                continue
 
-          # Check each data row before pandas parsing so we can report the actual
-          # offending line and avoid silent column shifting.
-          for i, row in enumerate(lines[1:], start=2):  # human line numbers
-              cols = next(csv.reader([row], delimiter=delimiter))
-              if len(cols) != expected_cols:
-                  message = f"Row {i} has {len(cols)} fields; expected {expected_cols}. Offending row: {row}\n"
-                  if parsed_file_data['message']:
-                      parsed_file_data['message'] += message
-                  else:
-                      parsed_file_data['message'] = message
-          if parsed_file_data['message']:
-              parsed_data.append(parsed_file_data)
-              continue
-                  
+            # Check each data row before pandas parsing so we can report the actual
+            # offending line and avoid silent column shifting.
+            for i, row in enumerate(lines[1:], start=2):  # human line numbers
+                cols = next(csv.reader([row], delimiter=delimiter))
+                if len(cols) != expected_cols:
+                    message = f"Row {i} has {len(cols)} fields; expected {expected_cols}. Offending row: {row}\n"
+                    if parsed_file_data['message']:
+                        parsed_file_data['message'] += message
+                    else:
+                        parsed_file_data['message'] = message
+            if parsed_file_data['message']:
+                parsed_data.append(parsed_file_data)
+                continue
 
-      # Parse with pandas after the manual structural checks. The dtype mapping
-      # forces numeric columns to be converted immediately, so invalid min/max/init
-      # values fail early instead of being carried forward as strings.
-      try:
-          # Handle file parsing based on detected delimiter
-          df = pd.read_csv(
-              io.StringIO(file_contents),
-              sep=delimiter,
-              engine='python',
-              skipinitialspace=True,
-              dtype={'param': str, 'min': float, 'max': float, 'init': float, 'model': str},
-          )
-      except pd.errors.ParserError as exc:
-          logger.debug(f'Pandas parser error: {exc}')
-          parsed_file_data['message'] = f"Could not parse file with detected delimiter: {exc}"
-          parsed_data.append(parsed_file_data)
-          continue
-      except ValueError as exc:
-          # Typically raised when dtype conversion fails with informative message
-          logger.debug(f'Pandas dtype error: {exc}')
-          parsed_file_data['message'] = f"Invalid data types in file: {exc}"
-          parsed_data.append(parsed_file_data)
-          continue
+        # Parse with pandas after the manual structural checks. The dtype mapping
+        # forces numeric columns to be converted immediately, so invalid min/max/init
+        # values fail early instead of being carried forward as strings.
+        try:
+            # Handle file parsing based on detected delimiter
+            df = pd.read_csv(
+                io.StringIO(file_contents),
+                sep=delimiter,
+                engine='python',
+                skipinitialspace=True,
+                dtype={'param': str, 'min': float, 'max': float, 'init': float, 'model': str},
+            )
+        except pd.errors.ParserError as exc:
+            logger.debug(f'Pandas parser error: {exc}')
+            parsed_file_data['message'] = f"Could not parse file with detected delimiter: {exc}"
+            parsed_data.append(parsed_file_data)
+            continue
+        except ValueError as exc:
+            # Typically raised when dtype conversion fails with informative message
+            logger.debug(f'Pandas dtype error: {exc}')
+            parsed_file_data['message'] = f"Invalid data types in file: {exc}"
+            parsed_data.append(parsed_file_data)
+            continue
 
-      # Normalize column names after parsing so headers like " param " are treated
-      # as "param".
-      df.columns = df.columns.str.strip()
+        # Normalize column names after parsing so headers like " param " are treated
+        # as "param".
+        df.columns = df.columns.str.strip()
 
-      # Log detected columns for debugging
-      logger.debug(f"Detected columns: {df.columns.tolist()}")
+        # Log detected columns for debugging
+        logger.debug(f"Detected columns: {df.columns.tolist()}")
 
-      # Confirm that all required columns are present after parsing.
-      missing_cols = [col for col in required_columns if col not in df.columns]
-      if missing_cols:
-          # Log the actual DataFrame to inspect it
-          logger.debug("DataFrame content:\n%s", df.head())
-          parsed_file_data['message'] = f"Missing required columns: {missing_cols}"
-          parsed_data.append(parsed_file_data)
-          continue
+        # Confirm that all required columns are present after parsing.
+        missing_cols = [col for col in required_columns if col not in df.columns]
+        if missing_cols:
+            # Log the actual DataFrame to inspect it
+            logger.debug("DataFrame content:\n%s", df.head())
+            parsed_file_data['message'] = f"Missing required columns: {missing_cols}"
+            parsed_data.append(parsed_file_data)
+            continue
 
-      # Reject extra columns. Extra columns often indicate a bad delimiter or a row
-      # with too many fields, both of which can corrupt the parameter mapping.
-      unexpected = [c for c in df.columns if c not in required_columns]
-      if unexpected:
-          parsed_file_data['message'] = f"Unexpected columns present: {unexpected}. Expected only {required_columns}."
-          parsed_data.append(parsed_file_data)
-          continue
+        # Reject extra columns. Extra columns often indicate a bad delimiter or a row
+        # with too many fields, both of which can corrupt the parameter mapping.
+        unexpected = [c for c in df.columns if c not in required_columns]
+        if unexpected:
+            parsed_file_data['message'] = f"Unexpected columns present: {unexpected}. Expected only {required_columns}."
+            parsed_data.append(parsed_file_data)
+            continue
 
-      # Require at least one parameter row; a header-only file is structurally valid
-      # but not useful.
-      if df.empty:
-          parsed_file_data['message'] = "No data rows found. Provide at least one parameter row."
-          parsed_data.append(parsed_file_data)
-          continue
+        # Require at least one parameter row; a header-only file is structurally valid
+        # but not useful.
+        if df.empty:
+            parsed_file_data['message'] = "No data rows found. Provide at least one parameter row."
+            parsed_data.append(parsed_file_data)
+            continue
 
-      # Re-check numeric fields and return exact line/value details. This protects
-      # against edge cases where pandas parsing succeeds but values still become NaN.
-      invalid_details: dict[str, list[dict[str, object]]] = {}
-      for col in ['min', 'max', 'init']:
-          # Re-coerce to catch NaN in case dtype enforcement was bypassed by space sep quirks
-          coerced = pd.to_numeric(df[col], errors='coerce')
-          bad_mask = pd.isna(coerced)
-          if bad_mask.any():
-              bad_rows = df[bad_mask]
+        # Re-check numeric fields and return exact line/value details. This protects
+        # against edge cases where pandas parsing succeeds but values still become NaN.
+        invalid_details: dict[str, list[dict[str, object]]] = {}
+        for col in ['min', 'max', 'init']:
+            # Re-coerce to catch NaN in case dtype enforcement was bypassed by space sep quirks
+            coerced = pd.to_numeric(df[col], errors='coerce')
+            bad_mask = pd.isna(coerced)
+            if bad_mask.any():
+                bad_rows = df[bad_mask]
 
-              # Add 2 because line 1 is the header and DataFrame index 0
-              # corresponds to source file line 2.
-              invalid_details[col] = [
-                  {
-                      'line': offset + 2,
-                      'param': str(row['param']),
-                      'value': row.get(col)
-                  }
-                  for offset, (_, row) in enumerate(bad_rows.iterrows())
-              ]
+                # Add 2 because line 1 is the header and DataFrame index 0
+                # corresponds to source file line 2.
+                invalid_details[col] = [
+                    {
+                        'line': offset + 2,
+                        'param': str(row['param']),
+                        'value': row.get(col)
+                    }
+                    for offset, (_, row) in enumerate(bad_rows.iterrows())
+                ]
 
-      if invalid_details:
-          logger.debug(f"Invalid numeric values: {invalid_details}")
-          parsed_file_data['message'] = f"Invalid numeric values. {invalid_details}"
-          parsed_data.append(parsed_file_data)
-          continue
+        if invalid_details:
+            logger.debug(f"Invalid numeric values: {invalid_details}")
+            parsed_file_data['message'] = f"Invalid numeric values. {invalid_details}"
+            parsed_data.append(parsed_file_data)
+            continue
 
-      # Validate parameter bounds before returning the parsed data to the UI.
-      # Each row must satisfy:
-      #   min <= max
-      #   min <= init <= max
-      range_errors = {}
+        # Validate parameter bounds before returning the parsed data to the UI.
+        # Each row must satisfy:
+        #   min <= max
+        #   min <= init <= max
+        range_errors = {}
 
-      bad_minmax_mask = df['min'] > df['max']
-      if bad_minmax_mask.any():
-          rows = df[bad_minmax_mask]
-          range_errors['min_gt_max'] = [
-              {
-                  'line': offset + 2,
-                  'param': str(row['param']),
-                  'min': row['min'],
-                  'max': row['max']
-              }
-              for offset, (_, row) in enumerate(rows.iterrows())
-          ]
+        bad_minmax_mask = df['min'] > df['max']
+        if bad_minmax_mask.any():
+            rows = df[bad_minmax_mask]
+            range_errors['min_gt_max'] = [
+                {
+                    'line': offset + 2,
+                    'param': str(row['param']),
+                    'min': row['min'],
+                    'max': row['max']
+                }
+                for offset, (_, row) in enumerate(rows.iterrows())
+            ]
 
-      bad_init_low = df['init'] < df['min']
-      if bad_init_low.any():
-          rows = df[bad_init_low]
-          range_errors.setdefault('init_lt_min', [])
-          range_errors['init_lt_min'].extend(
-              {
-                  'line': offset + 2,
-                  'param': str(row['param']),
-                  'init': row['init'],
-                  'min': row['min']
-              }
-              for offset, (_, row) in enumerate(rows.iterrows())
-          )
+        bad_init_low = df['init'] < df['min']
+        if bad_init_low.any():
+            rows = df[bad_init_low]
+            range_errors.setdefault('init_lt_min', [])
+            range_errors['init_lt_min'].extend(
+                {
+                    'line': offset + 2,
+                    'param': str(row['param']),
+                    'init': row['init'],
+                    'min': row['min']
+                }
+                for offset, (_, row) in enumerate(rows.iterrows())
+            )
 
-      bad_init_high = df['init'] > df['max']
-      if bad_init_high.any():
-          rows = df[bad_init_high]
-          range_errors.setdefault('init_gt_max', [])
-          range_errors['init_gt_max'].extend(
-              {
-                  'line': offset + 2,
-                  'param': str(row['param']),
-                  'init': row['init'],
-                  'max': row['max']
-              }
-              for offset, (_, row) in enumerate(rows.iterrows())
-          )
+        bad_init_high = df['init'] > df['max']
+        if bad_init_high.any():
+            rows = df[bad_init_high]
+            range_errors.setdefault('init_gt_max', [])
+            range_errors['init_gt_max'].extend(
+                {
+                    'line': offset + 2,
+                    'param': str(row['param']),
+                    'init': row['init'],
+                    'max': row['max']
+                }
+                for offset, (_, row) in enumerate(rows.iterrows())
+            )
 
-      if range_errors:
-          logger.debug(f"Range validation errors: {range_errors}")
-          parsed_file_data['message'] = f"Range validation failed. {range_errors}"
-          parsed_data.append(parsed_file_data)
-          continue
+        if range_errors:
+            logger.debug(f"Range validation errors: {range_errors}")
+            parsed_file_data['message'] = f"Range validation failed. {range_errors}"
+            parsed_data.append(parsed_file_data)
+            continue
 
-      logger.debug(f"Parsed DataFrame after stripping and numeric conversion: \n%s, df")
+        logger.debug(f"Parsed DataFrame after stripping and numeric conversion: \n%s, df")
 
-      # Return the parsed parameter rows to the caller. This endpoint validates and
-      # echoes the uploaded file contents; it only persists the filename on the run.
-      parsed_file_data['message'] = f"Parameter file {parameter_file.name} processed successfully."
-      parsed_file_data['parameters'] = df.to_dict(orient='records')
-      parsed_data.append(parsed_file_data)
+        # Return the parsed parameter rows to the caller. This endpoint validates and
+        # echoes the uploaded file contents; it only persists the filename on the run.
+        parsed_file_data['message'] = f"Parameter file {parameter_file.name} processed successfully."
+        parsed_file_data['parameters'] = df.to_dict(orient='records')
+        parsed_data.append(parsed_file_data)
 
     response = {
         'message': f"{len(parsed_data)} Parameter file{'s' if len(parsed_data) != 1 else ''} processed for Calibration Job {run.id}",
@@ -936,7 +943,7 @@ class TimeControls(TypedDict, total=False):
     simulation_start_time: datetime
     warmup_duration: int
     calibration_duration: int
-    validation_window: bool
+    validation_window_after_calibration: bool
     validation_duration: int
 
 
@@ -959,7 +966,7 @@ def calculate_times_and_limits(
       - warmup_duration: months between simulation_start_time and the calibration
         evaluation start.
       - calibration_duration: months in the calibration evaluation period.
-      - validation_window: True when validation follows calibration; False when
+      - validation_window_after_calibration: True when validation follows calibration; False when
         validation precedes calibration.
       - validation_duration: months in the validation evaluation period.
 
@@ -974,7 +981,7 @@ def calculate_times_and_limits(
     simulation_start_time = time_controls.get('simulation_start_time', run.time_range_start)
     warmup_duration = time_controls.get('warmup_duration')
     calibration_duration = time_controls.get('calibration_duration')
-    validation_window = time_controls.get('validation_window', True)
+    validation_window_afer_calibration = time_controls.get('validation_window_after_calibration', True)
     validation_duration = time_controls.get('validation_duration')
 
     assert isinstance(simulation_start_time, datetime)
@@ -1003,7 +1010,7 @@ def calculate_times_and_limits(
     run.calibration_start_period = simulation_start_time
     run.warmup_duration = warmup_duration
     run.calibration_duration = calibration_duration
-    run.validation_window = validation_window
+    run.validation_window_after_calibration = validation_window_afer_calibration
     run.validation_duration = validation_duration
 
     calibration_times = {
@@ -1058,7 +1065,7 @@ def calculate_times_and_limits(
     warmup_duration_min = 0
     calibration_duration_min = 1
     validation_duration_min = 1
-    if validation_window:
+    if validation_window_afer_calibration:
         # Validation follows calibration. The calibration simulation start is the
         # earliest time used by either simulation. Warmup, calibration, and
         # validation must all fit before the available data end.
@@ -1115,7 +1122,7 @@ def save_time_controls(run: CalibrationRun, time_controls: TimeControls | None) 
 
     Only the control values are persisted. The simulation/evaluation end times are
     derived by CalibrationRun properties from calibration_start_period, durations,
-    and validation_window.
+    and validation_window_after_calibration.
 
     :param run: CalibrationRun to update.
     :param time_controls: Validated UI time controls.
@@ -1127,7 +1134,7 @@ def save_time_controls(run: CalibrationRun, time_controls: TimeControls | None) 
     run.calibration_start_period = time_controls.get('simulation_start_time')
     run.warmup_duration = time_controls.get('warmup_duration')
     run.calibration_duration = time_controls.get('calibration_duration')
-    run.validation_window = time_controls.get('validation_window', True)
+    run.validation_window_after_calibration = time_controls.get('validation_window_after_calibration', True)
     run.validation_duration = time_controls.get('validation_duration')
 
     return None
