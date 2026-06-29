@@ -105,7 +105,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
 
         # Simulation starts at 00:00, preceding warmup duration
         validation_eval_start = self.validation_eval_start_period
-        if validation_eval_start is None or self.validation_window_gap.validation_window_gap is None or self.warmup_duration is None:
+        if validation_eval_start is None or self.validation_window_gap is None or self.warmup_duration is None:
             return None
 
         return validation_eval_start + relativedelta(
