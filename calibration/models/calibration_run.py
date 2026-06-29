@@ -18,6 +18,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     calibration_start_period = models.DateTimeField(null=True)
     warmup_duration = models.IntegerField(null=True)
     calibration_duration = models.IntegerField(null=True)
+    validation_window_gap = models.IntegerField(null=True)
     validation_window_after_calibration = models.BooleanField(null=True, default=True)
     validation_duration = models.IntegerField(null=True)
     use_sloth = models.BooleanField(null=False, default=False)
@@ -104,11 +105,11 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
 
         # Simulation starts at 00:00, preceding warmup duration
         validation_eval_start = self.validation_eval_start_period
-        if validation_eval_start is None or self.warmup_duration is None:
+        if validation_eval_start is None or self.validation_window_gap.validation_window_gap is None or self.warmup_duration is None:
             return None
 
         return validation_eval_start + relativedelta(
-            months=-self.warmup_duration
+            months=-(self.validation_window_gap+self.warmup_duration)
         )
 
     @property
@@ -127,11 +128,11 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
 
         if self.validation_window_after_calibration:
             # Validation starts at 00:00, an hour after calibration ends
-            if self.calibration_duration is None or self.warmup_duration is None:
+            if self.calibration_duration is None or self.validation_window_gap is None or self.warmup_duration is None:
                 return None
 
             cal_start = self.calibration_start_period + relativedelta(
-                months=self.warmup_duration
+                months=self.validation_window_gap+self.warmup_duration
             )
             cal_end = cal_start + relativedelta(
                 months=self.calibration_duration,
@@ -140,14 +141,14 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
             return cal_end + relativedelta(hours=1)
 
         # Validation starts at 00:00, preceding validation duration
-        if self.validation_duration is None or self.warmup_duration is None:
+        if self.validation_duration is None or self.validation_window_gap is None or self.warmup_duration is None:
             return None
 
         calibration_eval_start = self.calibration_start_period + relativedelta(
             months=self.warmup_duration
         )
         return calibration_eval_start + relativedelta(
-            months=-self.validation_duration
+            months=-(self.validation_window_gap+self.warmup_duration)
         )
 
     @property
@@ -160,6 +161,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
             if (
                 self.calibration_duration is None
                 or self.validation_duration is None
+                or self.validation_window_gap is None
                 or self.warmup_duration is None
             ):
                 return None
@@ -172,7 +174,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
                 hours=-1
             )
             return cal_end + relativedelta(
-                months=self.validation_duration
+                months=(self.validation_window_gap+self.validation_duration)
             )
 
         # Validation ends at 23:00, an hour before calibration starts
@@ -180,6 +182,6 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
             return None
 
         return self.calibration_start_period + relativedelta(
-            months=self.warmup_duration,
+            months=(self.warmup_duration+self.validation_window_gap),
             hours=-1
         )
