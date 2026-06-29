@@ -414,6 +414,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
             "calibration_start_period": run.calibration_start_period,
             "warmup_duration": run.warmup_duration,
             "calibration_duration": run.calibration_duration,
+            "validation_window_gap": run.validation_window_gap,
             "validation_window_after_calibration": run.validation_window_after_calibration,
             "validation_duration": run.validation_duration
         }

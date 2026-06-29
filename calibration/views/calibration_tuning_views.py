@@ -358,6 +358,7 @@ def get_times(run: CalibrationRun, default_time_controls: bool = True) -> tuple[
         'simulation_start_time': run.calibration_start_period,
         'warmup_duration': run.warmup_duration if run.warmup_duration is not None else (12 if default_time_controls else None),
         'calibration_duration': run.calibration_duration if run.calibration_duration is not None else (60 if default_time_controls else None),
+        'validation_window_gap': run.validation_window_gap if run.validation_window_gap is not None else (0 if default_time_controls else None),
         'validation_window_after_calibration': run.validation_window_after_calibration if run.calibration_duration is not None else True,
         'validation_duration': run.validation_duration if run.validation_duration is not None else (36 if default_time_controls else None)
     }
@@ -943,6 +944,7 @@ class TimeControls(TypedDict, total=False):
     simulation_start_time: datetime
     warmup_duration: int
     calibration_duration: int
+    validation_window_gap: int
     validation_window_after_calibration: bool
     validation_duration: int
 
@@ -966,6 +968,7 @@ def calculate_times_and_limits(
       - warmup_duration: months between simulation_start_time and the calibration
         evaluation start.
       - calibration_duration: months in the calibration evaluation period.
+      - validation_window_gap: months in the gap between calibration and validation periods.
       - validation_window_after_calibration: True when validation follows calibration; False when
         validation precedes calibration.
       - validation_duration: months in the validation evaluation period.
@@ -981,7 +984,8 @@ def calculate_times_and_limits(
     simulation_start_time = time_controls.get('simulation_start_time', run.time_range_start)
     warmup_duration = time_controls.get('warmup_duration')
     calibration_duration = time_controls.get('calibration_duration')
-    validation_window_afer_calibration = time_controls.get('validation_window_after_calibration', True)
+    validation_window_gap = time_controls.get('validation_window_gap')
+    validation_window_after_calibration = time_controls.get('validation_window_after_calibration', True)
     validation_duration = time_controls.get('validation_duration')
 
     assert isinstance(simulation_start_time, datetime)
@@ -1010,7 +1014,8 @@ def calculate_times_and_limits(
     run.calibration_start_period = simulation_start_time
     run.warmup_duration = warmup_duration
     run.calibration_duration = calibration_duration
-    run.validation_window_after_calibration = validation_window_afer_calibration
+    run.validation_window_gap = validation_window_gap
+    run.validation_window_after_calibration = validation_window_after_calibration
     run.validation_duration = validation_duration
 
     calibration_times = {
@@ -1064,31 +1069,37 @@ def calculate_times_and_limits(
     # these mins are constant
     warmup_duration_min = 0
     calibration_duration_min = 1
+    validation_window_gap_min = 0
     validation_duration_min = 1
-    if validation_window_afer_calibration:
+    # always allow the user to enter any date within range
+    # the validator will warn them if any calculated dates fall out of range, 
+    # but will not enforce a narrower date range based on the other inputs
+    simulation_start_time_min = run.time_range_start
+    simulation_start_time_max = run.time_range_end
+    if validation_window_after_calibration:
         # Validation follows calibration. The calibration simulation start is the
         # earliest time used by either simulation. Warmup, calibration, and
         # validation must all fit before the available data end.
-        simulation_start_time_min = run.time_range_start
-        simulation_start_time_max = run.time_range_end - relativedelta(months=warmup_duration + calibration_duration + validation_duration)
         warmup_duration_max = delta_months(
             simulation_start_time,
-            run.time_range_end - relativedelta(months=calibration_duration + validation_duration)
+            run.time_range_end - relativedelta(months=calibration_duration + validation_window_gap + validation_duration)
         )
         calibration_duration_max = delta_months(
             simulation_start_time,
-            run.time_range_end - relativedelta(months=warmup_duration + validation_duration)
+            run.time_range_end - relativedelta(months=warmup_duration + validation_window_gap + validation_duration)
+        )
+        validation_window_gap_max = delta_months(
+            simulation_start_time,
+            run.time_range_end - relativedelta(months=warmup_duration + calibration_duration + validation_duration)
         )
         validation_duration_max = delta_months(
             simulation_start_time,
-            run.time_range_end - relativedelta(months=warmup_duration + calibration_duration)
+            run.time_range_end - relativedelta(months=warmup_duration + validation_window_gap + calibration_duration)
         )
     else:
         # Validation precedes calibration. The validation simulation starts
         # validation_duration months before the calibration simulation start.
         # Warmup and calibration must fit after the calibration simulation start.
-        simulation_start_time_min = run.time_range_start + relativedelta(months=validation_duration)
-        simulation_start_time_max = run.time_range_end - relativedelta(months=warmup_duration + calibration_duration)
         warmup_duration_max = delta_months(
             simulation_start_time,
             run.time_range_end - relativedelta(months=calibration_duration)
@@ -1097,9 +1108,13 @@ def calculate_times_and_limits(
             simulation_start_time + relativedelta(months=warmup_duration),
             run.time_range_end
         )
+        validation_window_gap_max = delta_months(
+            run.time_range_start,
+            simulation_start_time + relativedelta(months=validation_duration)
+        )
         validation_duration_max = delta_months(
             run.time_range_start,
-            simulation_start_time
+            simulation_start_time + relativedelta(months=validation_window_gap)
         )
 
     time_control_limits = {
@@ -1109,6 +1124,8 @@ def calculate_times_and_limits(
         'warmup_duration_max': warmup_duration_max,
         'calibration_duration_min': calibration_duration_min,
         'calibration_duration_max': calibration_duration_max,
+        'validation_window_gap_min': validation_window_gap_min,
+        'validation_window_gap_max': validation_window_gap_max,
         'validation_duration_min': validation_duration_min,
         'validation_duration_max': validation_duration_max
     }
@@ -1134,6 +1151,7 @@ def save_time_controls(run: CalibrationRun, time_controls: TimeControls | None) 
     run.calibration_start_period = time_controls.get('simulation_start_time')
     run.warmup_duration = time_controls.get('warmup_duration')
     run.calibration_duration = time_controls.get('calibration_duration')
+    run.validation_window_gap = time_controls.get('validation_window_gap')
     run.validation_window_after_calibration = time_controls.get('validation_window_after_calibration', True)
     run.validation_duration = time_controls.get('validation_duration')
 
