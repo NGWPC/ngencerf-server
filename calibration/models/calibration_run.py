@@ -18,7 +18,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     calibration_start_period = models.DateTimeField(null=True)
     warmup_duration = models.IntegerField(null=True)
     calibration_duration = models.IntegerField(null=True)
-    validation_window = models.BooleanField(null=True, default=True)
+    validation_window_after_calibration = models.BooleanField(null=True, default=True)
     validation_duration = models.IntegerField(null=True)
     use_sloth = models.BooleanField(null=False, default=False)
     streamflow_threshold = models.FloatField(null=True)
@@ -98,7 +98,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
         if self.calibration_start_period is None:
             return None
 
-        if self.validation_window:
+        if self.validation_window_after_calibration:
             # Both simulations start at the same time, 00:00
             return self.calibration_start_period
 
@@ -113,7 +113,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
 
     @property
     def validation_end_period(self):
-        if self.validation_window:
+        if self.validation_window_after_calibration:
             # Simulation ends when validation ends, at 23:00
             return self.validation_eval_end_period
 
@@ -125,7 +125,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
         if self.calibration_start_period is None:
             return None
 
-        if self.validation_window:
+        if self.validation_window_after_calibration:
             # Validation starts at 00:00, an hour after calibration ends
             if self.calibration_duration is None or self.warmup_duration is None:
                 return None
@@ -155,7 +155,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
         if self.calibration_start_period is None:
             return None
 
-        if self.validation_window:
+        if self.validation_window_after_calibration:
             # Validation ends at 23:00, following validation duration
             if (
                 self.calibration_duration is None
