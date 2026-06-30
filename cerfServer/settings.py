@@ -48,6 +48,20 @@ NGENCERF_COPYRIGHT = f"© 2024-{datetime.now().year}, RTX"
 # used to find ngencerf-ui Docker image
 NGENCERF_UI_TAG = os.getenv("NGENCERF_UI_TAG", "latest")
 
+# Base URL of the running ngencerf-ui service.
+# Local development normally serves the UI on port 3000.
+NGENCERF_UI_URL = os.getenv(
+    "NGENCERF_UI_URL",
+    "http://localhost:3000",
+).strip().rstrip("/")
+
+# URL of the build-time Git-information file published by ngencerf-ui.
+# This may be overridden independently if the file is served elsewhere.
+NGENCERF_UI_GIT_INFO_URL = os.getenv(
+    "NGENCERF_UI_GIT_INFO_URL",
+    f"{NGENCERF_UI_URL}/ngencerf-ui_git_info.json",
+).strip()
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
@@ -145,7 +159,7 @@ CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
         "CORS_ALLOWED_ORIGINS",
-        "http://localhost:3000,http://localhost:3001",
+        "http://localhost:3000",
     ).split(",")
     if origin.strip()
 ]
@@ -733,6 +747,12 @@ LOGGING = {
         'level': ROOT_LOG_LEVEL,
     },
 
+    'filters': {
+        'suppress_successful_health_check': {
+            '()': 'calibration.util.logging_filters.SuppressSuccessfulHealthCheckFilter',
+        },
+    },
+
     'formatters': {
         'dev_format': {
             'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {message}',
@@ -751,6 +771,7 @@ LOGGING = {
             'level': DEFAULT_LOG_LEVEL,
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
+            'filters': ['suppress_successful_health_check'],
         },
         # Only define file handlers when file logging is enabled.
         # Production logs are written to stdout/stderr and collected by CloudWatch.
@@ -761,6 +782,7 @@ LOGGING = {
                    'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf.log'),
                    'formatter': 'dev_format',
                    'encoding': 'utf-8',
+                   'filters': ['suppress_successful_health_check'],
                },
                'file_db': {
                    'level': DATABASE_LOG_LEVEL,

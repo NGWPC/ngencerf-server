@@ -2,15 +2,18 @@ import json
 import logging
 import os
 import shutil
+import tempfile
+import urllib.error
+import urllib.request
 from functools import cache
 
 from django.conf import settings 
 
 from calibration.enums_vanilla import JobExecutionMode
+from calibration.util.container_util import copy_file_from_image, copy_files_from_image
+from calibration.util.file_util import copy_file
 from calibration.util.git_info_cache import get_cached_git_info, acquire_git_info_cache_lock, release_git_info_cache_lock, wait_for_cached_git_info, \
     set_cached_git_info
-from calibration.util.container_util import copy_file_from_image, copy_file_from_docker_image, copy_files_from_image
-from calibration.util.file_util import copy_file
 
 logger = logging.getLogger(__name__)
 
@@ -76,18 +79,20 @@ def _load_git_info_internal() -> dict[str, dict[str, str]]:
       1. Clears and recreates the temporary ``git_info`` directory under
          ``BASE_DIR``.
       2. Copies the local server and nwm-msw-mgr Git-information files into it.
-      3. Copies Git-information files from:
+      3. Extracts Git-information files from:
            - nwm-cal-mgr, including ngen and ngen-bmi-forcing metadata
            - nwm-fcst-mgr
            - nwm-verf
-           - ngencerf-ui
-      4. Merges all successfully retrieved JSON files found in the temporary
+      4. Retrieves ngencerf-ui metadata from the running UI service over HTTP
+         in SLURM/AWS mode, or reads it from the sibling local ngencerf-ui
+         repository in Docker development mode.
+      5. Merges all successfully retrieved JSON files found in the temporary
          directory.
-      5. Normalizes each component using ``transform_component()``.
+      6. Normalizes each component using ``transform_component()``.
 
-    Required image-copy failures are logged and cause an empty result to be
-    returned. Failure to retrieve the UI metadata is logged but does not
-    prevent the remaining metadata from being returned.
+    Required application-image extraction failures are logged and cause an
+    empty result to be returned. Failure to retrieve the optional UI metadata
+    is logged but does not prevent the remaining metadata from being returned.
 
     :return: Merged and normalized Git metadata keyed by component name, or an
              empty dictionary if a required image file cannot be retrieved.
@@ -128,8 +133,8 @@ def _load_git_info_internal() -> dict[str, dict[str, str]]:
     # Track failures while retrieving metadata from required application images.
     required_images_success = True
 
-    # Extract ngen-bmi-forcing, ngen, and nwm-cal-mgr metadata from one
-    # nwm-cal-mgr SIF filesystem dump.
+    # Extract ngen-bmi-forcing, ngen, and nwm-cal-mgr metadata directly from
+    # the SquashFS filesystem embedded in the nwm-cal-mgr SIF image.
     image_name = "nwm-cal-mgr"
     container_name = f"{image_name}_temp_container"
 
@@ -200,53 +205,58 @@ def _load_git_info_internal() -> dict[str, dict[str, str]]:
         )
         required_images_success = False
 
-    if settings.JOB_EXECUTION_MODE == JobExecutionMode.SLURM:
-        image_name = (
-            f"ghcr.io/ngwpc/ngencerf-ui:{settings.NGENCERF_UI_TAG}"
-        )
-        container_name = "ngencerf-ui_temp_container"
-        container_file_name = (
-            "/var/www/ngencerf/nuxt-app/"
-            "ngencerf-ui_git_info.json"
-        )
-        local_file_name = os.path.join(
-            git_info_directory,
-            "ngencerf-ui_git_info.json",
-        )
+    # Retrieve ngencerf-ui metadata.
+    #
+    # In SLURM/AWS mode, the UI runs as a separate Docker-based ECS service.
+    # The Django ECS task cannot inspect that container through Docker because
+    # Fargate does not expose a Docker daemon or Docker socket. The UI image
+    # therefore publishes its build-time Git-information file as a static HTTP
+    # resource, and Django downloads that file from the configured UI URL.
+    #
+    # In local Docker development mode, the ngencerf-server and ngencerf-ui
+    # repositories are expected to be sibling directories under the same
+    # parent directory:
+    #
+    #     <parent>/
+    #       ngencerf-server/
+    #       ngencerf-ui/
+    #
+    # The UI Git-information file is read directly from the checked-out
+    # ngencerf-ui repository on the shared local filesystem. It is not copied
+    # from the running UI Docker container.
+    local_file_name = os.path.join(
+        git_info_directory,
+        "ngencerf-ui_git_info.json",
+    )
 
-        # The UI remains a Docker image even when compute jobs use SLURM/SIF
-        # images. This currently requires a Docker daemon, which is not
-        # available in the AWS ECS server container.
-        if not copy_file_from_docker_image(
-                image_name,
-                container_name,
-                container_file_name,
+    if settings.JOB_EXECUTION_MODE == JobExecutionMode.SLURM:
+        if not copy_file_from_url(
+                settings.NGENCERF_UI_GIT_INFO_URL,
                 local_file_name,
         ):
             logger.error(
                 "Failed to retrieve the ngencerf-ui Git-information file "
-                "from its Docker image."
+                f"from {settings.NGENCERF_UI_GIT_INFO_URL}."
             )
     else:
-        ui_directory = os.path.join(
+        ui_git_info_file = os.path.join(
             os.path.dirname(base_dir),
             "ngencerf-ui",
-        )
-        git_info = os.path.join(
-            ui_directory,
             "ngencerf-ui_git_info.json",
         )
 
         try:
             copy_file(
-                git_info,
-                os.path.join(
-                    git_info_directory,
-                    os.path.basename(git_info),
-                ),
+                ui_git_info_file,
+                local_file_name,
             )
         except FileNotFoundError:
-            logger.warning(f"File {git_info} not found.")
+            logger.warning(
+                "The local ngencerf-ui Git-information file was not found at "
+                f"{ui_git_info_file}. In Docker development mode, the "
+                "ngencerf-ui repository is expected to be a sibling of "
+                "ngencerf-server."
+            )
 
     # Do not return incomplete metadata when a required image could not be read.
     if not required_images_success:
@@ -409,3 +419,122 @@ def print_git_info_all() -> None:
 
     print_git_info(GIT_INFO_FILE)
     logger.info(' ')
+
+
+def copy_file_from_url(
+        url: str,
+        dest_path: str,
+        timeout: float = 10.0,
+) -> bool:
+    """
+    Download a file over HTTP and atomically replace the destination file.
+
+    The response is validated as JSON before the destination file is replaced.
+
+    :param url: URL from which to retrieve the file.
+    :param dest_path: Local destination path.
+    :param timeout: HTTP connection and read timeout in seconds.
+    :return: True if the file was downloaded and validated; otherwise False.
+    """
+    destination_directory = os.path.dirname(dest_path) or "."
+
+    try:
+        os.makedirs(
+            destination_directory,
+            exist_ok=True,
+        )
+    except OSError as e:
+        logger.error(
+            f"Failed to create destination directory "
+            f"{destination_directory}: {e}"
+        )
+        return False
+
+    temporary_file_name: str | None = None
+
+    try:
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "ngencerf-server",
+            },
+        )
+
+        with urllib.request.urlopen(
+                request,
+                timeout=timeout,
+        ) as response:
+            if response.status != 200:
+                logger.error(
+                    f"Failed to retrieve {url}: "
+                    f"HTTP status {response.status}"
+                )
+                return False
+
+            content = response.read()
+
+        if not content:
+            logger.error(f"Received an empty response from {url}.")
+            return False
+
+        # Validate the file before replacing the current destination.
+        json.loads(content)
+
+        file_descriptor, created_temporary_file_name = tempfile.mkstemp(
+            prefix=f".{os.path.basename(dest_path)}.",
+            suffix=".tmp",
+            dir=destination_directory,
+        )
+
+        temporary_file_name = created_temporary_file_name
+
+        with os.fdopen(file_descriptor, "wb") as temporary_file:
+            temporary_file.write(content)
+
+        os.replace(
+            created_temporary_file_name,
+            dest_path,
+        )
+        temporary_file_name = None
+
+        logger.info(
+            f"Successfully downloaded {url} to {dest_path}"
+        )
+        return True
+
+    except urllib.error.HTTPError as e:
+        logger.error(
+            f"Failed to retrieve {url}: "
+            f"HTTP {e.code} {e.reason}"
+        )
+    except urllib.error.URLError as e:
+        logger.error(
+            f"Failed to retrieve {url}: {e.reason}"
+        )
+    except TimeoutError:
+        logger.error(
+            f"Timed out retrieving {url} after {timeout} seconds."
+        )
+    except json.JSONDecodeError as e:
+        logger.error(
+            f"Response from {url} is not valid JSON: {e}"
+        )
+    except OSError as e:
+        logger.error(
+            f"Failed to store file retrieved from {url}: {e}"
+        )
+
+    finally:
+        if temporary_file_name:
+            try:
+                os.remove(temporary_file_name)
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                logger.warning(
+                    f"Failed to remove temporary file "
+                    f"{temporary_file_name}: {e}"
+                )
+
+    return False
