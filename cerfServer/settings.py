@@ -47,6 +47,20 @@ NGENCERF_COPYRIGHT = f"© 2024-{datetime.now().year}, RTX"
 # used to find ngencerf-ui Docker image
 NGENCERF_UI_TAG = os.getenv("NGENCERF_UI_TAG", "latest")
 
+# Base URL of the running ngencerf-ui service.
+# Local development normally serves the UI on port 3000.
+NGENCERF_UI_URL = os.getenv(
+    "NGENCERF_UI_URL",
+    "http://localhost:3000",
+).strip().rstrip("/")
+
+# URL of the build-time Git-information file published by ngencerf-ui.
+# This may be overridden independently if the file is served elsewhere.
+NGENCERF_UI_GIT_INFO_URL = os.getenv(
+    "NGENCERF_UI_GIT_INFO_URL",
+    f"{NGENCERF_UI_URL}/ngencerf-ui_git_info.json",
+).strip()
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
@@ -144,7 +158,7 @@ CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
         "CORS_ALLOWED_ORIGINS",
-        "http://localhost:3000,http://localhost:3001",
+        "http://localhost:3000",
     ).split(",")
     if origin.strip()
 ]
