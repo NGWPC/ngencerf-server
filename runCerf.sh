@@ -943,18 +943,12 @@ fi
 #=======================================================================
 # Flush Redis cache at startup (all environments)
 #   - Redis is cache-only; safe to clear on every server start
-#   - In Docker, Redis is reached via the service name "redis"
+#   - Uses Django's configured cache (REDIS_URL + TLS) via the clear_cache
+#     management command, so it works on AWS ElastiCache and local
+#     docker-compose alike.
 #=======================================================================
 echo "Flushing Redis cache..."
-if command -v redis-cli >/dev/null 2>&1; then
-    if [ "$IN_DOCKER" = true ]; then
-        redis-cli -h redis -p 6379 FLUSHALL || echo "WARNING: Redis FLUSHALL failed"
-    else
-        redis-cli FLUSHALL || echo "WARNING: Redis FLUSHALL failed"
-    fi
-else
-    echo "WARNING: redis-cli not found; skipping Redis flush"
-fi
+python manage.py clear_cache || echo "WARNING: Redis cache clear failed"
 
 
 
