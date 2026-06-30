@@ -755,7 +755,6 @@ run_migrate_with_showmigrations
 echo
 echo --------------------------------------------------------
 ensure_superuser
-echo
 
 echo
 echo --------------------------------------------------------
@@ -895,31 +894,25 @@ else
     rm -rf tmp-ngen-forcing
 
     echo "bmi_forcing_templates updated successfully in $TARGET_DIR (non-Docker)."
-    echo
 fi
 
 #=======================================================================
 # Flush Redis cache at startup (all environments)
 #   - Redis is cache-only; safe to clear on every server start
-#   - In Docker, Redis is reached via the service name "redis"
+#   - Uses Django's configured cache (REDIS_URL + TLS) via the clear_cache
+#     management command, so it works on AWS ElastiCache and local
+#     docker-compose alike.
 #=======================================================================
+echo
+echo --------------------------------------------------------
 echo "Flushing Redis cache..."
-if command -v redis-cli >/dev/null 2>&1; then
-    if [ "$IN_DOCKER" = true ]; then
-        redis-cli -h redis -p 6379 FLUSHALL || echo "WARNING: Redis FLUSHALL failed"
-    else
-        redis-cli FLUSHALL || echo "WARNING: Redis FLUSHALL failed"
-    fi
-else
-    echo "WARNING: redis-cli not found; skipping Redis flush"
-fi
-
-
+run_manage_command clear_cache || echo "WARNING: Redis cache clear failed"
 
 #=======================================================================
 # Pre-start hook and start server
 #=======================================================================
 echo
+echo --------------------------------------------------------
 run_manage_command pre_start
 status=$?
 
