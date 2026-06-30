@@ -990,6 +990,7 @@ def calculate_times_and_limits(
 
     assert isinstance(simulation_start_time, datetime)
     assert isinstance(warmup_duration, int)
+    assert isinstance(validation_window_gap, int)
     assert isinstance(calibration_duration, int)
     assert isinstance(validation_duration, int)
 
