@@ -388,7 +388,8 @@ class TuningTimeControls(BaseSerializer):
     simulation_start_time = serializers.DateTimeField(required=True,allow_null=False)
     warmup_duration = serializers.IntegerField(required=True)
     calibration_duration = serializers.IntegerField(required=True)
-    validation_window = serializers.BooleanField(required=True)
+    validation_window_gap = serializers.IntegerField(required=True)
+    validation_window_after_calibration = serializers.BooleanField(required=True)
     validation_duration = serializers.IntegerField(required=True)
 
     def __init__(self, *args, allow_empty=False, **kwargs):
@@ -403,15 +404,18 @@ class TuningTimeControls(BaseSerializer):
             self.fields['warmup_duration'].allow_null = True
             self.fields['calibration_duration'].required = False
             self.fields['calibration_duration'].allow_null = True
-            self.fields['validation_window'].required = False
-            self.fields['validation_window'].allow_null = True
+            self.fields['validation_window_gap'].required = False
+            self.fields['validation_window_gap'].allow_null = True
+            self.fields['validation_window_after_calibration'].required = False
+            self.fields['validation_window_after_calibration'].allow_null = True
             self.fields['validation_duration'].required = False
             self.fields['validation_duration'].allow_null = True
         else:
             self.fields['simulation_start_time'].required = True
             self.fields['warmup_duration'].required = True
             self.fields['calibration_duration'].required = True
-            self.fields['validation_window'].required = True
+            self.fields['validation_window_gap'].required = True
+            self.fields['validation_window_after_calibration'].required = True
             self.fields['validation_duration'].required = True
 
 
@@ -420,6 +424,8 @@ class TuningTimeControlLimits(BaseSerializer):
     simulation_start_time_max = serializers.DateTimeField()
     warmup_duration_min = serializers.IntegerField()
     warmup_duration_max = serializers.IntegerField()
+    validation_window_gap_min = serializers.IntegerField()
+    validation_window_gap_max = serializers.IntegerField()
     calibration_duration_min = serializers.IntegerField()
     calibration_duration_max = serializers.IntegerField()
     validation_duration_min = serializers.IntegerField()

@@ -414,7 +414,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
             "calibration_start_period": run.calibration_start_period,
             "warmup_duration": run.warmup_duration,
             "calibration_duration": run.calibration_duration,
-            "validation_window": run.validation_window,
+            "validation_window_gap": run.validation_window_gap,
+            "validation_window_after_calibration": run.validation_window_after_calibration,
             "validation_duration": run.validation_duration
         }
         missing_time_control_fields = [name for name, value in required_time_control_fields.items() if value is None]

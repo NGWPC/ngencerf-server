@@ -281,7 +281,8 @@ def clear_times(run: CalibrationRun, cli: bool = False):
         run.calibration_start_period = None
         run.warmup_duration = None
         run.calibration_duration = None
-        run.validation_window = True
+        run.validation_window_gap = None
+        run.validation_window_after_calibration = True
         run.validation_duration = None
 
 

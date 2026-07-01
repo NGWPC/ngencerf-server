@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db import models
@@ -18,7 +20,8 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     calibration_start_period = models.DateTimeField(null=True)
     warmup_duration = models.IntegerField(null=True)
     calibration_duration = models.IntegerField(null=True)
-    validation_window = models.BooleanField(null=True, default=True)
+    validation_window_gap = models.IntegerField(null=True)
+    validation_window_after_calibration = models.BooleanField(null=True, default=True)
     validation_duration = models.IntegerField(null=True)
     use_sloth = models.BooleanField(null=False, default=False)
     streamflow_threshold = models.FloatField(null=True)
@@ -61,125 +64,136 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
         )
 
     @property
-    def calibration_end_period(self):
-        # Simulation ends when calibration ends, also at 23:00
+    def calibration_end_period(self) -> datetime | None:
+        # Calibration simulation ends when calibration evaluation ends, at 23:00.
         return self.calibration_eval_end_period
 
     @property
-    def calibration_eval_start_period(self):
-        # Calibration starts at 00:00, following warmup duration
+    def calibration_eval_start_period(self) -> datetime | None:
+        # Calibration evaluation starts at 00:00 after the warmup period.
         if self.calibration_start_period is None or self.warmup_duration is None:
             return None
 
-        return self.calibration_start_period + relativedelta(
+        return relativedelta(
             months=self.warmup_duration
-        )
+        ) + self.calibration_start_period
 
     @property
-    def calibration_eval_end_period(self):
-        # Calibration ends at 23:00, following calibration duration
+    def calibration_eval_end_period(self) -> datetime | None:
+        # Calibration evaluation ends at 23:00 after calibration_duration months.
         if (
-            self.calibration_start_period is None
-            or self.warmup_duration is None
-            or self.calibration_duration is None
+                self.calibration_start_period is None
+                or self.warmup_duration is None
+                or self.calibration_duration is None
         ):
             return None
 
-        start = self.calibration_start_period + relativedelta(
+        start = relativedelta(
             months=self.warmup_duration
-        )
-        return start + relativedelta(
+        ) + self.calibration_start_period
+
+        return relativedelta(
             months=self.calibration_duration,
-            hours=-1
-        )
+            hours=-1,
+        ) + start
 
     @property
-    def validation_start_period(self):
+    def validation_start_period(self) -> datetime | None:
         if self.calibration_start_period is None:
             return None
 
-        if self.validation_window:
-            # Both simulations start at the same time, 00:00
+        if self.validation_window_after_calibration:
+            # Calibration and validation simulations both start at 00:00
+            # on the calibration start date.
             return self.calibration_start_period
 
-        # Simulation starts at 00:00, preceding warmup duration
+        # When validation precedes calibration, the validation simulation starts
+        # at 00:00, warmup_duration months before validation evaluation begins.
         validation_eval_start = self.validation_eval_start_period
         if validation_eval_start is None or self.warmup_duration is None:
             return None
 
-        return validation_eval_start + relativedelta(
+        return relativedelta(
             months=-self.warmup_duration
-        )
+        ) + validation_eval_start
 
     @property
-    def validation_end_period(self):
-        if self.validation_window:
-            # Simulation ends when validation ends, at 23:00
+    def validation_end_period(self) -> datetime | None:
+        if self.validation_window_after_calibration:
+            # When validation period follows calibration, the simulation ends when
+            # validation evaluation ends, at 23:00.
             return self.validation_eval_end_period
 
-        # Simulation ends when calibration ends, at 23:00
+        # When validation period precedes calibration, the simulation continues through
+        # calibration evaluation and ends at 23:00.
         return self.calibration_eval_end_period
 
     @property
-    def validation_eval_start_period(self):
+    def validation_eval_start_period(self) -> datetime | None:
         if self.calibration_start_period is None:
             return None
 
-        if self.validation_window:
-            # Validation starts at 00:00, an hour after calibration ends
-            if self.calibration_duration is None or self.warmup_duration is None:
+        if self.validation_window_after_calibration:
+            # Validation evaluation starts at 00:00 after the configured gap
+            # following calibration evaluation.
+            if self.validation_window_gap is None:
                 return None
 
-            cal_start = self.calibration_start_period + relativedelta(
-                months=self.warmup_duration
-            )
-            cal_end = cal_start + relativedelta(
-                months=self.calibration_duration,
-                hours=-1,
-            )
-            return cal_end + relativedelta(hours=1)
+            calibration_eval_end = self.calibration_eval_end_period
+            if calibration_eval_end is None:
+                return None
 
-        # Validation starts at 00:00, preceding validation duration
-        if self.validation_duration is None or self.warmup_duration is None:
+            return relativedelta(
+                hours=1,
+                months=self.validation_window_gap,
+            ) + calibration_eval_end
+
+        # When validation precedes calibration, validation evaluation starts at
+        # 00:00 validation_duration months before its end, with the configured
+        # gap between validation and calibration evaluation.
+        if (
+                self.validation_duration is None
+                or self.validation_window_gap is None
+        ):
             return None
 
-        calibration_eval_start = self.calibration_start_period + relativedelta(
-            months=self.warmup_duration
-        )
-        return calibration_eval_start + relativedelta(
-            months=-self.validation_duration
-        )
+        calibration_eval_start = self.calibration_eval_start_period
+        if calibration_eval_start is None:
+            return None
+
+        return relativedelta(
+            months=-(self.validation_window_gap + self.validation_duration)
+        ) + calibration_eval_start
 
     @property
-    def validation_eval_end_period(self):
+    def validation_eval_end_period(self) -> datetime | None:
         if self.calibration_start_period is None:
             return None
 
-        if self.validation_window:
-            # Validation ends at 23:00, following validation duration
-            if (
-                self.calibration_duration is None
-                or self.validation_duration is None
-                or self.warmup_duration is None
-            ):
+        if self.validation_window_after_calibration:
+            # Validation evaluation ends at 23:00 after validation_duration months.
+            if self.validation_duration is None:
                 return None
 
-            cal_start = self.calibration_start_period + relativedelta(
-                months=self.warmup_duration
-            )
-            cal_end = cal_start + relativedelta(
-                months=self.calibration_duration,
-                hours=-1
-            )
-            return cal_end + relativedelta(
-                months=self.validation_duration
-            )
+            validation_eval_start = self.validation_eval_start_period
+            if validation_eval_start is None:
+                return None
 
-        # Validation ends at 23:00, an hour before calibration starts
-        if self.warmup_duration is None:
+            return relativedelta(
+                months=self.validation_duration,
+                hours=-1,
+            ) + validation_eval_start
+
+        # When validation precedes calibration, validation evaluation ends at
+        # 23:00 immediately before the configured gap begins.
+        if self.validation_window_gap is None:
             return None
 
-        return self.calibration_start_period + relativedelta(
-            months=self.warmup_duration,
-            hours=-1
-        )
+        calibration_eval_start = self.calibration_eval_start_period
+        if calibration_eval_start is None:
+            return None
+
+        return relativedelta(
+            months=-self.validation_window_gap,
+            hours=-1,
+        ) + calibration_eval_start
