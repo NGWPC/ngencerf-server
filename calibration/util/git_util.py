@@ -10,7 +10,7 @@ from functools import cache
 from django.conf import settings 
 
 from calibration.enums_vanilla import JobExecutionMode
-from calibration.util.container_util import copy_file_from_image, copy_files_from_image
+from calibration.util.container_util import copy_files_from_image, copy_file_from_image
 from calibration.util.file_util import copy_file
 from calibration.util.git_info_cache import get_cached_git_info, acquire_git_info_cache_lock, release_git_info_cache_lock, wait_for_cached_git_info, \
     set_cached_git_info

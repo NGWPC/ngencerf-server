@@ -157,6 +157,7 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
     parsed_or_none, ok = check_http_error(
         first_resp.status_code,
         first_resp.text,
+        first_resp.url,
         first_resp.headers.get("Content-Type")
     )
 
@@ -185,6 +186,7 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
             _ = check_http_error(
                 retry_resp.status_code,
                 retry_resp.text,
+                retry_resp.url,
                 retry_resp.headers.get("Content-Type")
             )
             return None, False

@@ -6,7 +6,6 @@ from django.apps import AppConfig
 from django.conf import settings
 
 from calibration.auth.active_directory_config import validate_active_directory_settings
-# from calibration.auth.active_directory_config import validate_active_directory_settings
 from calibration.util.db_diagnostics import patch_ensure_connection_with_diagnostics
 from calibration.util.git_util import print_git_info_all
 
@@ -87,13 +86,15 @@ class CalibrationConfig(AppConfig):
         if running_dev_server or running_gunicorn:
             logger.info(f'NGENCERF_BASE_URL: {settings.NGENCERF_BASE_URL}\n')
             logger.info(f'ENTERPRISE_DATA_URL: {settings.ENTERPRISE_DATA_URL}\n')
-            logger.info(f'NGEN_CAL_MOUNT_POINT: {settings.NGEN_CAL_MOUNT_POINT}')
+            logger.info(f'CONTAINER_DATA_ROOT: {settings.CONTAINER_DATA_ROOT}')
+            logger.info(f'HOST_DATA_ROOT: {settings.HOST_DATA_ROOT}')
             logger.info(f'NGEN_STATIC_DIR: {settings.NGEN_STATIC_DIR}')
             logger.info(f'NGENCERF_ARCHIVE_S3_PATH: {settings.NGENCERF_ARCHIVE_S3_PATH}')
             logger.info(f'NGENCERF_ZIPS_S3_PATH: {settings.NGENCERF_ZIPS_S3_PATH}')
             logger.info(f"FORCING_AORC_CONUS_BMI_DATE_RANGE: {settings.FORCING_AORC_CONUS_BMI_DATE_RANGE}")
             logger.info(f'DJANGO DEBUG: {settings.DEBUG}')
-            log_mpi_rules()
+            logger.info(f"MPI_NODE_RULES: {settings.MPI_NODE_RULES}")
+            logger.info(f"NODE_TYPE_RULES: {settings.SLURM_NODE_TYPE_RULES}")
 
             from calibration.util.ngen_locations import check_files
 
