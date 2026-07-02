@@ -385,38 +385,50 @@ class TimeRangeSerializerAllowEmpty(BaseSerializer):
 
 
 class TuningTimeControls(BaseSerializer):
-    simulation_start_time = serializers.DateTimeField(required=True,allow_null=False)
-    warmup_duration = serializers.IntegerField(required=True)
-    calibration_duration = serializers.IntegerField(required=True)
-    validation_window_gap = serializers.IntegerField(required=True)
+    simulation_start_time = serializers.DateTimeField(required=True, allow_null=False)
+    warmup_duration = serializers.IntegerField(required=True, min_value=0)
+    calibration_duration = serializers.IntegerField(required=True, min_value=1)
+    validation_window_gap = serializers.IntegerField(required=True, min_value=0)
     validation_window_after_calibration = serializers.BooleanField(required=True)
-    validation_duration = serializers.IntegerField(required=True)
+    validation_duration = serializers.IntegerField(required=True, min_value=1)
 
-    def __init__(self, *args, allow_empty=False, **kwargs):
+    def __init__(
+            self,
+            *args,
+            allow_partial=False,
+            apply_defaults=False,
+            **kwargs
+    ):
         super().__init__(*args, **kwargs)
-        self.allow_empty = allow_empty  # Explicitly define allow_empty attribute
 
-        # If allow_empty is True, make the fields not required
-        if allow_empty:
-            self.fields['simulation_start_time'].required = False
-            self.fields['simulation_start_time'].allow_null = True
-            self.fields['warmup_duration'].required = False
-            self.fields['warmup_duration'].allow_null = True
-            self.fields['calibration_duration'].required = False
-            self.fields['calibration_duration'].allow_null = True
-            self.fields['validation_window_gap'].required = False
-            self.fields['validation_window_gap'].allow_null = True
-            self.fields['validation_window_after_calibration'].required = False
-            self.fields['validation_window_after_calibration'].allow_null = True
-            self.fields['validation_duration'].required = False
-            self.fields['validation_duration'].allow_null = True
-        else:
-            self.fields['simulation_start_time'].required = True
-            self.fields['warmup_duration'].required = True
-            self.fields['calibration_duration'].required = True
-            self.fields['validation_window_gap'].required = True
-            self.fields['validation_window_after_calibration'].required = True
-            self.fields['validation_duration'].required = True
+        # Applying defaults requires missing fields to be permitted.
+        if apply_defaults:
+            allow_partial = True
+
+        # Partial representations, such as loading or importing an incomplete
+        # calibration run, may omit controls that have not been saved.
+        if allow_partial:
+            for field in self.fields.values():
+                field.required = False
+                field.allow_null = True
+
+        # The tuning-tab load response supplies UI defaults for controls that
+        # have not yet been persisted. Defaults apply only to missing fields.
+        if apply_defaults:
+            self.fields['warmup_duration'].allow_null = False
+            self.fields['warmup_duration'].default = 12
+
+            self.fields['calibration_duration'].allow_null = False
+            self.fields['calibration_duration'].default = 60
+
+            self.fields['validation_window_gap'].allow_null = False
+            self.fields['validation_window_gap'].default = 0
+
+            self.fields['validation_window_after_calibration'].allow_null = False
+            self.fields['validation_window_after_calibration'].default = True
+
+            self.fields['validation_duration'].allow_null = False
+            self.fields['validation_duration'].default = 36
 
 
 class TuningTimeControlLimits(BaseSerializer):
@@ -673,7 +685,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     time_range = TimeRangeSerializerAllowEmpty(required=False)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
-    time_controls = TuningTimeControls(required=False, allow_empty=True)
+    time_controls = TuningTimeControls(required=False, allow_partial=True)
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
     logging_config = LoggingConfigSerializer(required=False)
     objective_function = serializers.CharField(required=True, allow_null=True)
@@ -1249,7 +1261,7 @@ class ParameterFileDataSerializer(BaseSerializer):
 
 class ParameterFileSerializer(BaseSerializer):
     name = serializers.CharField(required=True)
-    message = serializers.CharField(required=True,allow_null=True)
+    message = serializers.CharField(required=True, allow_null=True)
     parameters = ParameterFileDataSerializer(many=True, required=True, allow_null=True)
 
 
@@ -1296,7 +1308,7 @@ class ModuleDataListSerializer(BaseSerializer):
 class SaveTuningRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
     parameters = SaveTuningParametersSerializer(many=True, required=False)
-    time_controls = TuningTimeControls(required=True, allow_empty=False)
+    time_controls = TuningTimeControls(required=True)
 
 
 class SaveTuningResponseSerializer(GenericResponseSerializer):
@@ -1306,7 +1318,7 @@ class SaveTuningResponseSerializer(GenericResponseSerializer):
 
 class ValidateTuningTimesRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, min_value=1)
-    time_controls = TuningTimeControls(required=True, allow_empty=False)
+    time_controls = TuningTimeControls(required=True)
 
 
 class ValidateTuningTimesResponseSerializer(GenericResponseSerializer):
@@ -1322,7 +1334,7 @@ class LoadTuningResponseSerializer(BaseSerializer):
     time_range = TimeRangeSerializerAllowEmpty(required=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
-    time_controls = TuningTimeControls(required=True, allow_empty=True)
+    time_controls = TuningTimeControls(required=True, apply_defaults=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum, allow_blank=False)])
 
 
@@ -1707,7 +1719,7 @@ class ExportResponseSerializer(BaseSerializer):
     job_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=list)
-    time_controls = TuningTimeControls(required=False, allow_empty=True)
+    time_controls = TuningTimeControls(required=False, allow_partial=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     parameters = SaveTuningParametersSerializer(many=True, required=True)
@@ -1733,7 +1745,7 @@ class ImportDataSerializer(BaseSerializer):
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     job_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)
-    time_controls = TuningTimeControls(required=False, allow_empty=True)
+    time_controls = TuningTimeControls(required=False, allow_partial=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     parameters = SaveTuningParametersSerializer(many=True, required=False, allow_missing_bounds=True)
