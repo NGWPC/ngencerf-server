@@ -18,6 +18,21 @@ function Cleanup {
     Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue
 }
 
+#=======================================================================
+# Verify CLI and server enums are in sync before building
+#=======================================================================
+# NOTE:
+# This build step assumes we are executing from inside the CLI directory:
+#     /ngencerf/ngencerf-server/cli
+#
+# That’s the default Docker build context (RUN cli/build_cli.sh).
+# If the script is ever run manually from another directory, relative paths
+# to `check_enum_consistency.py` will not resolve correctly.
+#
+# To prevent path errors, we reference the file explicitly as "./check_enum_consistency.py"
+# and fail fast if it's missing.
+#=======================================================================
+
 try {
     Write-Host "==> Checking CalibrationSortField consistency..."
 
@@ -35,7 +50,8 @@ try {
     python -m venv $BUILD_VENV
     . "$BUILD_VENV\Scripts\Activate.ps1"
 
-    Write-Host "==> Installing PyInstaller..."
+    Write-Host "==> Upgrading pip and installing PyInstaller..."
+    python -m pip install --upgrade pip
     python -m pip install pyinstaller
 
     Write-Host "==> Installing build dependencies from pyproject.toml..."

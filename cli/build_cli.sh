@@ -8,6 +8,26 @@ APP_NAME="ngencerf"
 ENTRY_POINT="ngencerf/run_cli.py"
 BUILD_VENV=".venv-build"
 
+OS_NAME="$(uname -s)"
+ARCH_NAME="$(uname -m)"
+
+PYINSTALLER_PLATFORM_ARGS=()
+
+case "$OS_NAME" in
+  Linux)
+    PLATFORM_DIR="linux"
+    ;;
+  Darwin)
+    PLATFORM_DIR="macos"
+    PYINSTALLER_PLATFORM_ARGS+=(--target-arch x86_64)
+    ;;
+  *)
+    echo "ERROR: Unsupported OS: $OS_NAME"
+    echo "This script supports Linux and macOS only."
+    exit 1
+    ;;
+esac
+
 cleanup() {
   echo "==> Cleaning up..."
   command -v deactivate &>/dev/null && deactivate || true
@@ -16,7 +36,8 @@ cleanup() {
 
 trap cleanup EXIT
 
-echo "==> Creating build virtual environment..."
+echo "==> Building $APP_NAME for $PLATFORM_DIR ($ARCH_NAME)..."
+
 #=======================================================================
 # Verify CLI and server enums are in sync before building
 #=======================================================================
@@ -44,15 +65,29 @@ python "./check_enum_consistency.py" || {
     exit 1
 }
 
+cleanup
+
+echo "==> Creating build virtual environment..."
 python -m venv "$BUILD_VENV"
 source "$BUILD_VENV/bin/activate"
 
+if [[ "$OS_NAME" == "Darwin" ]]; then
+  PYTHON_ARCH="$(python -c 'import platform; print(platform.machine())')"
+
+  if [[ "$PYTHON_ARCH" != "x86_64" ]]; then
+    echo "WARNING: macOS Intel build requested, but active Python reports architecture: $PYTHON_ARCH"
+    echo "For the most reliable Intel-compatible macOS build, run this script with an x86_64 Python under Rosetta."
+    echo "The build will continue, but verify the result with:"
+    echo "  file ../downloads/latest/macos/$APP_NAME"
+  fi
+fi
+
 echo "==> Upgrading pip and installing PyInstaller..."
-pip install --upgrade pip
-pip install pyinstaller
+python -m pip install --upgrade pip
+python -m pip install pyinstaller
 
 echo "==> Installing build dependencies from pyproject.toml..."
-pip install .
+python -m pip install .
 
 echo "Virtual environment: $VIRTUAL_ENV"
 
@@ -72,18 +107,24 @@ cat > ngencerf/git_info.json <<EOF
 EOF
 
 echo "==> Running PyInstaller..."
+
 if ! pyinstaller --onefile \
   --name "$APP_NAME" \
-  --strip \
+  "${PYINSTALLER_PLATFORM_ARGS[@]}" \
   --add-data "ngencerf/git_info.json:ngencerf" \
   "$ENTRY_POINT"; then
   echo "❌ PyInstaller build failed."
   exit 1
 fi
 
-mkdir -p ../downloads/latest/linux
+mkdir -p "../downloads/latest/$PLATFORM_DIR"
 
 cp "dist/$APP_NAME" \
-   "../downloads/latest/linux/$APP_NAME"
+   "../downloads/latest/$PLATFORM_DIR/$APP_NAME"
 
-echo "==> Build complete. Executable located at: ../downloads/latest/linux/$APP_NAME"
+echo "==> Build complete. Executable located at: ../downloads/latest/$PLATFORM_DIR/$APP_NAME"
+
+if [[ "$OS_NAME" == "Darwin" ]]; then
+  echo "==> macOS executable architecture:"
+  file "../downloads/latest/$PLATFORM_DIR/$APP_NAME"
+fi

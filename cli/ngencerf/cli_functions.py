@@ -233,6 +233,19 @@ def about(output_path: str | None = None) -> int:
     return 0
 
 
+def version() -> int:
+    """
+    Display local CLI version/build information without contacting the server.
+
+    Returns:
+        int: Exit code 0.
+    """
+    cli_git_info = _get_bundled_cli_git_info()
+
+    print(json.dumps(cli_git_info, indent=2))
+    return 0
+
+
 def download_zip(calibration_run_id: int, output_path: str | None = None) -> int:
     """
     Downloads the ZIP archive for a calibration run from the server.

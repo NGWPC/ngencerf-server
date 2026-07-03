@@ -24,6 +24,7 @@ from ngencerf.cli_functions import (
     handle_export_display,
     list_jobs,
     download_zip, archive_job, unarchive_job, about, generate_regionalization_files, job_status, update_and_get_gage_status, lock_job, unlock_job,
+    version,
 )
 from ngencerf.cli_user import ngen_login, ngen_register, create_local_user, change_password, get_auth_config
 from ngencerf.cli_util import configure_terminal_backspace
@@ -139,7 +140,7 @@ def str_to_bool(value):
 
 
 # Commands that do not require authentication
-COMMANDS_AUTH_EXEMPT = {"register", "url"}
+COMMANDS_AUTH_EXEMPT = {"register", "url", "version"}
 
 
 def main():
@@ -508,6 +509,9 @@ def main():
         metavar="",
         required=True
     )
+    
+    version_parser = add_parser("version", "Show local CLI version information")
+    version_parser.set_defaults(func=lambda cmd_args: version())
 
     # ------------------------------------------------------------------
     # ngencerf url add <url>
