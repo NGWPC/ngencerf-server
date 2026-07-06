@@ -1152,45 +1152,49 @@ def calculate_times_and_limits(
 
     error_messages: list[str] = []
 
-    if calibration_start_period < data_start or calibration_start_period > data_end:
-        error_messages.append(
-            f'Cal Sim Start {calibration_start_period.date()} falls outside the allowed range.'
-        )
+    allowed_range = (
+        f"{format_datetime(data_start)} to {format_datetime(data_end)}"
+    )
 
-    if calibration_end_period < data_start or calibration_end_period > data_end:
-        error_messages.append(
-            f'Cal Sim End {calibration_end_period.date()} falls outside the allowed range.'
-        )
+    def add_out_of_range_error(field_label: str, value: datetime) -> None:
+        if value < data_start or value > data_end:
+            error_messages.append(
+                f"{field_label} {format_datetime(value)} falls outside the allowed range "
+                f"({allowed_range})."
+            )
 
-    if calibration_eval_start_period < data_start or calibration_eval_start_period > data_end:
-        error_messages.append(
-            f'Calibration Start {calibration_eval_start_period.date()} falls outside the allowed range.'
-        )
-
-    if calibration_eval_end_period < data_start or calibration_eval_end_period > data_end:
-        error_messages.append(
-            f'Calibration End {calibration_eval_end_period.date()} falls outside the allowed range.'
-        )
-
-    if validation_start_period < data_start or validation_start_period > data_end:
-        error_messages.append(
-            f'Val Sim Start {validation_start_period.date()} falls outside the allowed range.'
-        )
-
-    if validation_end_period < data_start or validation_end_period > data_end:
-        error_messages.append(
-            f'Val Sim End {validation_end_period.date()} falls outside the allowed range.'
-        )
-
-    if validation_eval_start_period < data_start or validation_eval_start_period > data_end:
-        error_messages.append(
-            f'Validation Start {validation_eval_start_period.date()} falls outside the allowed range.'
-        )
-
-    if validation_eval_end_period < data_start or validation_eval_end_period > data_end:
-        error_messages.append(
-            f'Validation End {validation_eval_end_period.date()} falls outside the allowed range.'
-        )
+    add_out_of_range_error(
+        "Calibration Simulation Start",
+        calibration_start_period
+    )
+    add_out_of_range_error(
+        "Calibration Simulation End",
+        calibration_end_period
+    )
+    add_out_of_range_error(
+        "Calibration Start",
+        calibration_eval_start_period
+    )
+    add_out_of_range_error(
+        "Calibration End",
+        calibration_eval_end_period
+    )
+    add_out_of_range_error(
+        "Validation Simulation Start",
+        validation_start_period
+    )
+    add_out_of_range_error(
+        "Validation Simulation End",
+        validation_end_period
+    )
+    add_out_of_range_error(
+        "Validation Start",
+        validation_eval_start_period
+    )
+    add_out_of_range_error(
+        "Validation End",
+        validation_eval_end_period
+    )
 
     # Minimum values are constant.
     warmup_duration_min: int = 0
