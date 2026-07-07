@@ -24,8 +24,12 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     validation_window_after_calibration = models.BooleanField(null=True, default=True)
     validation_duration = models.IntegerField(null=True)
     use_sloth = models.BooleanField(null=False, default=False)
+    # Remove old fields
     streamflow_threshold = models.FloatField(null=True)
     peak_flow_threshold = models.FloatField(null=True)
+    # New fields
+    threshold_categorical = models.FloatField(null=True)
+    threshold_event = models.FloatField(null=True)
     geopackage_source = models.ForeignKey('GeopackageSource', null=True, on_delete=models.RESTRICT)
     forcing_source = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT, related_name='+', related_query_name='+')
     observational_source = models.ForeignKey('ObservationalSource', null=True, on_delete=models.RESTRICT)
