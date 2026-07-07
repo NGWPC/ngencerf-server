@@ -90,8 +90,8 @@ def import_calibration_run_data(request: Request,
 
     optimization_name = calibration_run_data.get('optimization')
     objective_function_name = calibration_run_data.get('objective_function')
-    streamflow_threshold = calibration_run_data.get('streamflow_threshold')
-    peak_flow_threshold = calibration_run_data.get('peak_flow_threshold')
+    threshold_categorical = calibration_run_data.get('threshold_categorical')
+    threshold_event = calibration_run_data.get('threshold_event')
     raw_optimization_inputs = calibration_run_data.get('optimization_inputs')
 
     if isinstance(raw_optimization_inputs, list):
@@ -134,12 +134,12 @@ def import_calibration_run_data(request: Request,
             return None, None, ResponseError("You cannot specify sloth_parameters or use_sloth when using LSTM")
         if have_lstm and (
                 optimization_name or objective_function_name or
-                streamflow_threshold is not None or peak_flow_threshold is not None or
+                threshold_categorical is not None or threshold_event is not None or
                 stop_criteria is not None or
                 save_plot_iteration_frequency is not None or save_output_iteration
         ):
             return None, None, ResponseError(
-                "You cannot specify optimization_name, objective_function_name, streamflow_threshold, peak_flow_threshold, "
+                "You cannot specify optimization_name, objective_function_name, threshold_categorical, threshold_event, "
                 "stop_criteria, save_plot_iteration_frequency or save_output_iteration when using LSTM"
             )
 
@@ -185,7 +185,7 @@ def import_calibration_run_data(request: Request,
                 return None, None, ResponseError('Optimization inputs cannot be specified without an optimization name')
 
         # Objective function validation (assigns to `run` in memory only; no DB write)
-        error_message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
+        error_message = validate_objective_function(run, objective_function_name, threshold_categorical, threshold_event)
         if error_message:
             return None, None, ResponseError(error_message)
 
@@ -343,8 +343,8 @@ def import_calibration_run_data(request: Request,
         # Thresholds & iteration save flags
         run.save_plot_iteration_frequency = save_plot_iteration_frequency
         run.save_output_iteration = bool(save_output_iteration) if save_output_iteration is not None else False
-        run.streamflow_threshold = streamflow_threshold
-        run.peak_flow_threshold = peak_flow_threshold
+        run.threshold_categorical = threshold_categorical
+        run.threshold_event = threshold_event
 
         if stop_criteria is not None:
             # assuming single CalibrationStopCriteria
@@ -694,8 +694,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     optimization_start = time.perf_counter()
 
     calibration_run_data['objective_function'] = run.objective_function.name if run.objective_function else None
-    calibration_run_data['streamflow_threshold'] = run.streamflow_threshold
-    calibration_run_data['peak_flow_threshold'] = run.peak_flow_threshold
+    calibration_run_data['threshold_categorical'] = run.threshold_categorical
+    calibration_run_data['threshold_event'] = run.threshold_event
 
     # Fetch optimization details
     optimization, optimization_inputs = get_user_optimization(run)

@@ -146,18 +146,18 @@ mv NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates ../bmi_forci
 cd .. && rm -rf tmp-ngen-forcing
 ```
 
-From the directory `https://github.com/NGWPC/nwm-verf/tree/development/data/inputs`,
-copy only the *.parquet files to the `/ngencerf/data/ngen-static-files/verfication_data` directory
+From the directory `https://github.com/NGWPC/nwm-eval/tree/development/data/inputs`,
+copy only the *.parquet files to the `/ngencerf/data/ngen-static-files/verification_data` directory
 
 ```
 cd /ngencerf/data/ngen-static-files (for PW, use /ngencerf-app/data/ngen-cal-data/ngen-static-files)
 rm -rf verification_data
-git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/nwm-verf.git tmp-ngen-verf && \
-cd tmp-ngen-verf && \
+git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/nwm-eval.git tmp-ngen-eval && \
+cd tmp-ngen-eval && \
 git sparse-checkout set data/inputs && \
 mkdir -p ../verification_data && \
 find data/inputs -type f -name '*.parquet' -exec cp {} ../verification_data/ \; && \
-cd .. && rm -rf tmp-ngen-verf
+cd .. && rm -rf tmp-ngen-eval
 ```
 
 When done, your `ngen-static-files` directory should look something like this

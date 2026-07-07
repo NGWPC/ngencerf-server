@@ -302,7 +302,7 @@ NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
 CAL_MGR_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-cal-mgr')
 NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-fcst-mgr')
 NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
-NWM_VERF_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-verf')
+NWM_EVAL_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-eval-mgr')
 
 # This must match the data location in the ngen/nwm-cal-mgr docker
 # Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data
@@ -334,9 +334,6 @@ FORCING_ENGINE_ENV = 'ngen_forcings_engine_bmi'
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
-# Directory where verification runs are stored
-NWM_VERF_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_verif')
-
 # Directory containing the nwm-cal-mgr virtual environment
 # This is used only if we are running with NGEN_ENVIRONMENT=LOCAL and not in a separate container
 NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
@@ -346,13 +343,13 @@ NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 # Use {name} placeholder for the container name, which will be substituted at runtime
 CAL_MGR_DOCKER_CMD = f'docker run --rm --network host --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-cal-mgr'
 NGEN_FORECAST_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-fcst-mgr'
-NWM_VERF_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-verf'
+NWM_EVAL_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-eval-mgr'
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
 CAL_MGR_SCRIPT = os.path.join(CAL_MGR_REPO_ROOT, 'docker', 'run-nwm-cal-mgr.sh')
 NGEN_FORECAST_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
 NGEN_COLD_START_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
-VERIFICATION_SCRIPT = os.path.join(NWM_VERF_REPO_ROOT, 'docker', 'run-nwm-verf.sh')
+EVALUATION_SCRIPT = os.path.join(NWM_EVAL_REPO_ROOT, 'docker', 'run-nwm-eval-mgr.sh')
 
 RUNTIME_INFO = {
     ScriptEnum.CALIBRATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
@@ -361,7 +358,7 @@ RUNTIME_INFO = {
     ScriptEnum.COLD_START: (NGEN_FORECAST_DOCKER_CMD, NGEN_COLD_START_SCRIPT),
     ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
     ScriptEnum.HINDCAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
-    ScriptEnum.VERIFICATION: (NWM_VERF_DOCKER_CMD, VERIFICATION_SCRIPT)
+    ScriptEnum.VERIFICATION: (NWM_EVAL_DOCKER_CMD, EVALUATION_SCRIPT)
 }
 
 # -----------------------------

@@ -445,8 +445,8 @@ Here is an example of exported data:
         "simulation_start_time": "2014-10-01T00:00:00Z",
         "simulation_end_time": "2017-09-01T00:00:00Z"
     },
-    "streamflow_threshold": 3.88,
-    "peak_flow_threshold": null,
+    "threshold_categorical": 3.88,
+    "threshold_event": null,
     "parameters": [
         {
             "name": "b",

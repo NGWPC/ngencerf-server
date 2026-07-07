@@ -52,8 +52,14 @@ CONFIG_TEMPLATE = {
         "overwrite": True,
         "library": "nwm.eval",
         "metric_subset": "all",
-        "flow_threshold_categorical": 0.9,
-        "flow_threshold_event": 0.9,
+        "threshold_categorical": {
+            "value": 0.9,  # threshold value to be used for categorical metrics in nwm.eval
+            "type": "quantile"  # type of threshold for categorical metrics in nwm.eval; options are 'quantile' or 'absolute'
+        },
+        "threshold_event": {
+            "value": 0.9,  # threshold value to be used for event-based metrics in nwm.eval
+            "type": "quantile"  # type of threshold for event-based metrics in nwm.eval; options are 'quantile' or 'absolute'
+        },
         "lead_times": ['all_aggregated'],
         "file_format": "parquet"
     },
