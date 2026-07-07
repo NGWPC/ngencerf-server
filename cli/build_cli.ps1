@@ -61,29 +61,51 @@ try {
 
     Write-Host "==> Generating CLI git info..."
 
-    $branch = git rev-parse --abbrev-ref HEAD 2>$null
-    if (-not $branch) { $branch = "unknown" }
+    git fetch --force --tags origin "+refs/tags/*:refs/tags/*" 2>$null
 
     $commitHash = git rev-parse HEAD 2>$null
     if (-not $commitHash) { $commitHash = "unknown" }
 
-    $commitDate = git log -1 --pretty=format:'%cI' 2>$null
-    if (-not $commitDate) { $commitDate = "unknown" }
+    $branch = git rev-parse --abbrev-ref HEAD 2>$null
+    if (-not $branch) { $branch = "unknown" }
+
+    $tags = git tag --points-at HEAD 2>$null
+    if ($tags) {
+        $tags = ($tags -join " ").Trim()
+    } else {
+        $tags = ""
+    }
 
     $author = git log -1 --pretty=format:'%an' 2>$null
     if (-not $author) { $author = "unknown" }
 
+    $commitTimestamp = git log -1 --pretty=format:'%ct' 2>$null
+    if ($commitTimestamp) {
+        $commitDate = ([DateTimeOffset]::FromUnixTimeSeconds([int64]$commitTimestamp)).
+            UtcDateTime.
+            ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
+    } else {
+        $commitDate = "unknown"
+    }
+
     $message = git log -1 --pretty=format:'%s' 2>$null
-    if (-not $message) { $message = "unknown" }
+    if ($message) {
+        $message = $message -replace "`r?`n", ";"
+    } else {
+        $message = "unknown"
+    }
+
+    $buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
 
     $gitInfo = @{
         "ngencerf-cli" = @{
-            release = "dev ($branch)"
-            build_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
             commit_hash = $commitHash
-            commit_date = $commitDate
+            branch = $branch
+            tags = $tags
             author = $author
+            commit_date = $commitDate
             message = $message
+            build_date = $buildDate
         }
     } | ConvertTo-Json -Depth 3
 
