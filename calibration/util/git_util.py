@@ -32,21 +32,24 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
     :return: A dictionary containing the merged and transformed Git information with the same
              top-level keys as the original merged data.
     """
-    git_info_directory = os.path.join(settings.BASE_DIR, 'git_info')
+    base_dir = str(settings.BASE_DIR)
+    repo_root = str(settings.REPO_ROOT)
+
+    git_info_directory = os.path.join(base_dir, 'git_info')
     if os.path.exists(git_info_directory):
         shutil.rmtree(git_info_directory)
 
     os.mkdir(git_info_directory)
 
     # Copy our local git_info.json into the shared directory.
-    src_git_info = os.path.join(settings.BASE_DIR, 'ngencerf-server_git_info.json')
+    src_git_info = os.path.join(base_dir, 'ngencerf-server_git_info.json')
     dest_git_info = os.path.join(git_info_directory, 'ngencerf-server_git_info.json')
     if os.path.exists(src_git_info):
         copy_file(src_git_info, dest_git_info)
 
     # Copy our local nwm-msw-mgr_git_info.json into the shared directory.
-    src_git_info = os.path.join(settings.BASE_DIR, 'nwm-msw-mgr_git_info.json')
-    dest_git_info = os.path.join(git_info_directory, 'nwm-msw-mgr_git_info_git_info.json')
+    src_git_info = os.path.join(base_dir, 'nwm-msw-mgr_git_info.json')
+    dest_git_info = os.path.join(git_info_directory, 'nwm-msw-mgr_git_info.json')
     if os.path.exists(src_git_info):
         copy_file(src_git_info, dest_git_info)
 
@@ -56,19 +59,19 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
     image_name = 'nwm-cal-mgr'
     container_name = f'{image_name}_temp_container'
     for git_info_file in ('ngen-bmi-forcing_git_info.json', 'ngen_git_info.json', 'nwm-cal-mgr_git_info.json'):
-        container_file_name = os.path.join(settings.REPO_ROOT, git_info_file)
+        container_file_name = os.path.join(repo_root, git_info_file)
         local_file_name = os.path.join(git_info_directory, git_info_file)
         copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
     image_name = 'nwm-fcst-mgr'
     container_name = f'{image_name}_temp_container'
-    container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name}_git_info.json")
+    container_file_name = os.path.join(repo_root, f"{image_name}_git_info.json")
     local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
     copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
-    image_name = 'nwm-verf'
+    image_name = 'nwm-eval-mgr'
     container_name = f'{image_name}_temp_container'
-    container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name}_git_info.json")
+    container_file_name = os.path.join(repo_root, f"{image_name}_git_info.json")
     local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
     copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
@@ -76,11 +79,11 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
         image_name = f'ghcr.io/ngwpc/ngencerf-ui:{settings.NGENCERF_UI_TAG}'
         container_name = 'ngencerf-ui_temp_container'
         container_file_name = "/var/www/ngencerf/nuxt-app/ngencerf-ui_git_info.json"
-        local_file_name = os.path.join(git_info_directory, "ngencerf-ui_git_info.json")  # ← FIX HERE
+        local_file_name = os.path.join(git_info_directory, "ngencerf-ui_git_info.json")
         # This will always be from docker
         copy_file_from_docker_image(image_name, container_name, container_file_name, local_file_name)
     else:
-        ui_directory = os.path.join(os.path.dirname(settings.BASE_DIR), 'ngencerf-ui')
+        ui_directory = os.path.join(os.path.dirname(base_dir), 'ngencerf-ui')
         git_info = os.path.join(ui_directory, 'ngencerf-ui_git_info.json')
         try:
             copy_file(git_info, os.path.join(git_info_directory, os.path.basename(git_info)))

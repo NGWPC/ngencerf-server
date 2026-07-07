@@ -86,11 +86,6 @@ def no_space_validator(value):
         raise serializers.ValidationError("This field must not contain spaces.")
 
 
-def greater_than_zero(value):
-    if value <= 0:
-        raise serializers.ValidationError("This field must be greater than 0.")
-
-
 class ModuleNameField(serializers.CharField):
     """
     Validates a single module name against the cached active module set.
@@ -689,8 +684,8 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
     logging_config = LoggingConfigSerializer(required=False)
     objective_function = serializers.CharField(required=True, allow_null=True)
-    streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
-    peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
+    threshold_categorical = serializers.FloatField(required=False, allow_null=True)
+    threshold_event = serializers.FloatField(required=False, allow_null=True, min_value=0, max_value=100)
     optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[enum_validator(OptimizationEnum)])
     optimization_inputs = OptimizationInputsSerializer(many=True, default=[])
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=True, allow_null=True)
@@ -1348,8 +1343,8 @@ class SaveOptimizationRequestSerializer(BaseSerializer):
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False, validators=[enum_validator(OptimizationEnum)])
     objective_function = serializers.CharField(allow_blank=False, required=False)
-    streamflow_threshold = serializers.FloatField(required=False, validators=[greater_than_zero])
-    peak_flow_threshold = serializers.FloatField(required=False, validators=[greater_than_zero])
+    threshold_categorical = serializers.FloatField(required=False, allow_null=True)
+    threshold_event = serializers.FloatField(required=False, allow_null=True, min_value=0, max_value=100)
     stop_criteria = serializers.IntegerField(required=False, min_value=2)
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False)
     save_output_iteration = serializers.BooleanField(required=False)
@@ -1720,8 +1715,8 @@ class ExportResponseSerializer(BaseSerializer):
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=list)
     time_controls = TuningTimeControls(required=False, allow_partial=True)
-    streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
-    peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
+    threshold_categorical = serializers.FloatField(required=False, allow_null=True)
+    threshold_event = serializers.FloatField(required=False, allow_null=True, min_value=0, max_value=100)
     parameters = SaveTuningParametersSerializer(many=True, required=True)
     objective_function = serializers.CharField(required=True, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, default=list)
@@ -1746,8 +1741,8 @@ class ImportDataSerializer(BaseSerializer):
     job_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)
     time_controls = TuningTimeControls(required=False, allow_partial=True)
-    streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
-    peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
+    threshold_categorical = serializers.FloatField(required=False, allow_null=True)
+    threshold_event = serializers.FloatField(required=False, allow_null=True, min_value=0, max_value=100)
     parameters = SaveTuningParametersSerializer(many=True, required=False, allow_missing_bounds=True)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)

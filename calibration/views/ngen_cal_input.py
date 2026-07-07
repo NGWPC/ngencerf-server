@@ -95,8 +95,10 @@ CONFIG_TEMPLATE = {
         # Iteration interval to save plots
         # This entry is optional and specified with the default value.
         "save_plot_iter_freq": 0,
-        "streamflow_threshold": 0.0,
-        "peak_flow_threshold": 0.0,
+        "threshold_categorical": 0.0,
+        "threshold_categorical_type": 'absolute',
+        "threshold_event": 0.0,
+        "threshold_event_type": 'quantile',
         "station_name": "",
 
         # Parameter file, dynamically built based on user input
@@ -516,11 +518,11 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
 
         calibration['start_iteration'] = 0
 
-        if run.streamflow_threshold:
-            calibration['streamflow_threshold'] = run.streamflow_threshold
+        if run.threshold_categorical:
+            calibration['threshold_categorical'] = run.threshold_categorical
 
-        if run.peak_flow_threshold:
-            calibration['peak_flow_threshold'] = run.peak_flow_threshold
+        if run.threshold_event:
+            calibration['threshold_event'] = run.threshold_event / 100.0
 
         if run.use_sloth:
             sloth_params = list(
