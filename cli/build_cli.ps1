@@ -43,6 +43,13 @@ try {
     }
 
     python "./check_enum_consistency.py"
+    # PowerShell does NOT throw on a native command's nonzero exit, even under
+    # $ErrorActionPreference = "Stop", so check $LASTEXITCODE explicitly. Without
+    # this, an enum mismatch (check_enum_consistency.py exits 1) is ignored and a
+    # stale-enum Windows binary would ship. Mirrors `|| exit 1` in build_cli.sh.
+    if ($LASTEXITCODE -ne 0) {
+        throw "Enum consistency check failed. Fix mismatch before building."
+    }
 
     Cleanup
 

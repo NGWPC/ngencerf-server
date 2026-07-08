@@ -31,7 +31,7 @@ ARG NGEN_FORCING_REF=development
 ############################################################################
 
 ARG BASE_REPO=python
-ARG BASE_TAG=3.14-slim-bookworm
+ARG BASE_TAG=3.12-slim-bookworm
 
 FROM ${BASE_REPO}:${BASE_TAG}
 
@@ -292,9 +292,6 @@ RUN set -eux && \
     \
     cd /ngencerf/ngencerf-server && \
     rm -rf tmp-ngen-forcing || true
-
-# Build CLI executable in cli/dist
-RUN cli/build_cli.sh
 
 # Copy additional configuration files
 COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env

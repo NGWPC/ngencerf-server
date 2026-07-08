@@ -470,8 +470,16 @@ RUN set -eux && \
 #
 # It copies those files into STATIC_ROOT so WhiteNoise can serve them when
 # DEBUG=False.
+#
+# Guard: fail the build if ANY platform's CLI binary is missing from the build
+# context (a build-cli matrix leg failed, or the artifact download dropped it).
+# We use `test -f` rather than `manage.py findstatic` because findstatic exits 0
+# even when a file is NOT found (Django 5.2), so it can't fail the build; test -f
+# is a real check and costs no Django startup.
 RUN set -eux && \
-    python manage.py findstatic latest/linux/ngencerf --verbosity 2 && \
+    test -f downloads/latest/linux/ngencerf && \
+    test -f downloads/latest/macos/ngencerf && \
+    test -f downloads/latest/windows/ngencerf.exe && \
     python manage.py collectstatic --noinput --verbosity 2
 
 # Copy additional configuration files
