@@ -452,8 +452,27 @@ RUN set -eux && \
     cd /ngencerf/ngencerf-server && \
     rm -rf tmp-ngen-forcing || true
 
-# Build CLI executable in cli/dist
-RUN cli/build_cli.sh
+# NOTE:
+# CLI builds are now performed outside this Dockerfile.
+# The prebuilt CLI download artifacts must already exist in the Docker build context
+# before COPY . /ngencerf/ngencerf-server/ runs.
+#
+# Expected files:
+#   downloads/latest/linux/ngencerf
+#   downloads/latest/macos/ngencerf
+#   downloads/latest/windows/ngencerf.exe
+#
+
+# Collect static files for production
+#
+# collectstatic must run after the prebuilt CLI files have been copied into
+# /ngencerf/ngencerf-server/downloads.
+#
+# It copies those files into STATIC_ROOT so WhiteNoise can serve them when
+# DEBUG=False.
+RUN set -eux && \
+    python manage.py findstatic latest/linux/ngencerf --verbosity 2 && \
+    python manage.py collectstatic --noinput --verbosity 2
 
 # Copy additional configuration files
 COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
