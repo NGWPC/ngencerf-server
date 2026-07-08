@@ -116,8 +116,8 @@ There are some static files that are required for Ngen to run.  They should be i
 The data for the `ngen-static-files` directory is in several locations.  Execute the following commands to copy everything
 to`/ngencerf/data/ngen-static-files` (dev) or `/ngencerf-app/data/ngen-cal-data/ngen-static-files` (prod)
 ```
-aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
-aws s3 cp s3://ngwpc-dev/rte-test-data/esmf/ /ngencerf/data/ngen-static-files/forcing_static_dir/ --recursive
+aws s3 cp --recursive s3://ngwpc-dev/nwm-tools-data/nwm_retrospective/ /ngencerf/data/ngen-static-files/nwm_retrospective/
+aws s3 cp --recursive s3://ngwpc-dev/nwm-tools-data/esmf/ /ngencerf/data/ngen-static-files/forcing_static_dir/ 
 ```
 
 In addition, copy the directory `module_parameter_files` and all its contents from
