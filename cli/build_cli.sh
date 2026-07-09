@@ -91,30 +91,26 @@ python -m pip install .
 
 echo "Virtual environment: $VIRTUAL_ENV"
 
-echo "==> Generating CLI git info..."
-
-git fetch --force --tags origin '+refs/tags/*:refs/tags/*' 2>/dev/null || true
-
-jq -n \
-  --arg commit_hash "$(git rev-parse HEAD 2>/dev/null || echo unknown)" \
-  --arg branch "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)" \
-  --arg tags "$(git tag --points-at HEAD 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')" \
-  --arg author "$(git log -1 --pretty=format:'%an' 2>/dev/null || echo unknown)" \
-  --arg commit_date "$(git log -1 --pretty=format:'%cI' 2>/dev/null || echo unknown)" \
-  --arg message "$(git log -1 --pretty=format:'%s' 2>/dev/null | tr '\n' ';' || echo unknown)" \
-  --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
-  '{
-    "ngencerf-cli": {
-      commit_hash: $commit_hash,
-      branch: $branch,
-      tags: $tags,
-      author: $author,
-      commit_date: $commit_date,
-      message: $message,
-      build_date: $build_date
-    }
-  }' \
-  > ngencerf/git_info.json
+# CLI git info (ngencerf/git_info.json), embedded via --add-data below and read at
+# runtime by `ngencerf version` / `ngencerf about`. Two paths reach this point:
+#
+#   1. Linux CI build: this script runs INSIDE the manylinux2014 container, which has
+#      no jq and not the full git checkout. The workflow already ran gen_git_info.sh
+#      on the host beforehand, so git_info.json exists -> reuse it in the if block. The
+#      container must NOT try to regenerate, or the jq call would fail the build.
+#
+#   2. macOS CI build and any standalone/local run: nothing pre-generated it, so the
+#      `else` generates it now. jq + git are present in these environments. This is
+#      exactly what build_cli.sh did before the Linux build moved into the container,
+#      so standalone behavior is unchanged.
+#
+# The `else` is what keeps a plain `bash cli/build_cli.sh` self-contained; without it,
+# only the Linux-CI path (which pre-generates on the host) would produce git info.
+if [[ -f ngencerf/git_info.json ]]; then
+  echo "==> Reusing ngencerf/git_info.json generated earlier on the host"
+else
+  bash ./gen_git_info.sh
+fi
 
 echo "==> Running PyInstaller..."
 

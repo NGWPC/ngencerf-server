@@ -83,6 +83,15 @@ jobs:
       (github.event_name == 'push') ||
       (github.event_name == 'workflow_dispatch')
     runs-on: ${{ matrix.runner }}
+    # Linux CLI build + verify images, named here so there are no buried hardcoded
+    # values (the interpreter version stays single-sourced in the top-level
+    # PYTHON_VERSION). glibc is forward-compatible only, so the BUILD image pins the
+    # OLDEST glibc we support: manylinux2014 = glibc 2.17, the widest distro reach
+    # (Amazon Linux 2, RHEL 7+, all current Ubuntu/Debian). The SMOKE image is a
+    # realistic old-glibc target used only to prove the binary loads.
+    env:
+      CLI_MANYLINUX_IMAGE: quay.io/pypa/manylinux2014_x86_64
+      CLI_SMOKE_IMAGE: amazonlinux:2
     strategy:
       fail-fast: false
       matrix:
@@ -108,10 +117,45 @@ jobs:
       # The `matrix` context is NOT available in a step's `shell:` key, so pick the
       # shell per-OS with `if: runner.os` and literal shell values (bash for
       # linux/macOS, pwsh for Windows). Do not put matrix.shell back here.
-      - name: Build CLI executable (bash)
-        if: runner.os != 'Windows'
+      - name: Build CLI executable (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: bash cli/build_cli.sh
+      - name: Build CLI executable (Linux, manylinux for broad glibc compat)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          # Build the Linux onefile inside CLI_MANYLINUX_IMAGE (an old-glibc base) so the
+          # bundled libpython and the PyInstaller bootloader target the OLDEST glibc we
+          # support. glibc is forward-compatible only, so building on the oldest base
+          # makes the binary run on the widest range of Linux distros. Building on
+          # ubuntu-latest (glibc 2.39) produced a binary that failed on older machines:
+          #   GLIBC_2.38 not found (required by .../libpython3.12.so.1.0)
+          #
+          # Generate git info on the host first; the container has neither jq nor the
+          # full tag history, and build_cli.sh reuses the file when it already exists.
+          bash cli/gen_git_info.sh
+          # manylinux ships each interpreter at /opt/python/<cp-tag>-<cp-tag>. Derive the
+          # cp-tag from PYTHON_VERSION (expects MAJOR.MINOR, e.g. 3.12 -> cp312) so the
+          # Python version stays single-sourced in the top-level env.
+          CP_TAG="cp${PYTHON_VERSION//./}"
+          # Do NOT switch to a job-level `container:`: the Node20 actions
+          # (checkout/setup-python/upload-artifact) can't run on glibc 2.17, so they
+          # stay on the host runner and only the build runs inside the container.
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/io" -w /io \
+            "$CLI_MANYLINUX_IMAGE" \
+            bash -c "export PATH=/opt/python/${CP_TAG}-${CP_TAG}/bin:\$PATH && bash cli/build_cli.sh"
+      - name: Smoke-test Linux binary on old glibc
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          # Prove the freshly built binary loads and runs on CLI_SMOKE_IMAGE, an old-glibc
+          # distro with no system Python. `ngencerf version` is local-only (no network).
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}/downloads/latest/linux:/cli:ro" \
+            "$CLI_SMOKE_IMAGE" \
+            /cli/ngencerf version
       - name: Build CLI executable (PowerShell)
         if: runner.os == 'Windows'
         shell: pwsh
