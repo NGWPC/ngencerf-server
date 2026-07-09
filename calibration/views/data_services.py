@@ -224,6 +224,11 @@ def get_observational_date_range_from_data_services(run: CalibrationRun) -> Date
             "Observational info from Data Services returned non-JSON response"
         )
 
+    total_records = observational_info_json.get("total_records")
+
+    if total_records is None or total_records == 0:
+        raise DataServicesException("No observational records are available from Data Services")
+
     dr = observational_info_json.get("date_range") or {}
 
     start_raw = dr.get("start")
