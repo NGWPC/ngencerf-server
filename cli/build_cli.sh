@@ -126,6 +126,19 @@ jq -n \
   }' \
   > ngencerf/git_info.json
 
+# staticx rejects the absolute DT_RUNPATH that actions/setup-python's Python and
+# its stdlib extension modules carry (it points at the hostedtoolcache lib dir), because
+# staticx cannot rewrite libraries that are already inside the PyInstaller archive. Strip
+# that RUNPATH from the libs PyInstaller is about to bundle so staticx accepts the result.
+# Linux-only (staticx is Linux-only); a no-op on libs that carry no rpath.
+if [[ "$OS_NAME" == "Linux" ]]; then
+  PY_LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR") or "")')"
+  if [[ -n "$PY_LIBDIR" && -d "$PY_LIBDIR" ]]; then
+    echo "==> Stripping absolute RPATH/RUNPATH from Python libs under $PY_LIBDIR (staticx #188)..."
+    find "$PY_LIBDIR" -name '*.so*' -exec patchelf --remove-rpath {} + 2>/dev/null || true
+  fi
+fi
+
 echo "==> Running PyInstaller..."
 
 if ! pyinstaller --onefile \
