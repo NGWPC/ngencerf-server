@@ -86,31 +86,45 @@ echo "==> Upgrading pip and installing PyInstaller..."
 python -m pip install --upgrade pip
 python -m pip install pyinstaller
 
+# On Linux, also install staticx. PyInstaller bundles the build host's libpython, which
+# links against the host's glibc, so a binary built on a modern runner fails on older
+# machines ("GLIBC_2.xx not found"). staticx wraps the onefile into a fully static
+# executable that carries its own libc, so it runs on any glibc (Amazon Linux 2, RHEL 7+)
+# and on musl. It is Linux-only and needs objcopy (binutils) + patchelf on PATH, which
+# the CI job installs.
+if [[ "$OS_NAME" == "Linux" ]]; then
+  python -m pip install staticx
+fi
+
 echo "==> Installing build dependencies from pyproject.toml..."
 python -m pip install .
 
 echo "Virtual environment: $VIRTUAL_ENV"
 
-# CLI git info (ngencerf/git_info.json), embedded via --add-data below and read at
-# runtime by `ngencerf version` / `ngencerf about`. Two paths reach this point:
-#
-#   1. Linux CI build: this script runs INSIDE the manylinux2014 container, which has
-#      no jq and not the full git checkout. The workflow already ran gen_git_info.sh
-#      on the host beforehand, so git_info.json exists -> reuse it in the if block. The
-#      container must NOT try to regenerate, or the jq call would fail the build.
-#
-#   2. macOS CI build and any standalone/local run: nothing pre-generated it, so the
-#      `else` generates it now. jq + git are present in these environments. This is
-#      exactly what build_cli.sh did before the Linux build moved into the container,
-#      so standalone behavior is unchanged.
-#
-# The `else` is what keeps a plain `bash cli/build_cli.sh` self-contained; without it,
-# only the Linux-CI path (which pre-generates on the host) would produce git info.
-if [[ -f ngencerf/git_info.json ]]; then
-  echo "==> Reusing ngencerf/git_info.json generated earlier on the host"
-else
-  bash ./gen_git_info.sh
-fi
+echo "==> Generating CLI git info..."
+
+git fetch --force --tags origin '+refs/tags/*:refs/tags/*' 2>/dev/null || true
+
+jq -n \
+  --arg commit_hash "$(git rev-parse HEAD 2>/dev/null || echo unknown)" \
+  --arg branch "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)" \
+  --arg tags "$(git tag --points-at HEAD 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')" \
+  --arg author "$(git log -1 --pretty=format:'%an' 2>/dev/null || echo unknown)" \
+  --arg commit_date "$(git log -1 --pretty=format:'%cI' 2>/dev/null || echo unknown)" \
+  --arg message "$(git log -1 --pretty=format:'%s' 2>/dev/null | tr '\n' ';' || echo unknown)" \
+  --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
+  '{
+    "ngencerf-cli": {
+      commit_hash: $commit_hash,
+      branch: $branch,
+      tags: $tags,
+      author: $author,
+      commit_date: $commit_date,
+      message: $message,
+      build_date: $build_date
+    }
+  }' \
+  > ngencerf/git_info.json
 
 echo "==> Running PyInstaller..."
 
@@ -125,8 +139,15 @@ fi
 
 mkdir -p "../downloads/latest/$PLATFORM_DIR"
 
-cp "dist/$APP_NAME" \
-   "../downloads/latest/$PLATFORM_DIR/$APP_NAME"
+if [[ "$OS_NAME" == "Linux" ]]; then
+  # Wrap the onefile into a fully static binary so it runs on old glibc and musl.
+  # The build host's glibc no longer matters; staticx bundles it into the binary.
+  echo "==> Wrapping with staticx for broad Linux compatibility..."
+  staticx "dist/$APP_NAME" "../downloads/latest/$PLATFORM_DIR/$APP_NAME"
+else
+  cp "dist/$APP_NAME" \
+     "../downloads/latest/$PLATFORM_DIR/$APP_NAME"
+fi
 
 echo "==> Build complete. Executable located at: ../downloads/latest/$PLATFORM_DIR/$APP_NAME"
 
