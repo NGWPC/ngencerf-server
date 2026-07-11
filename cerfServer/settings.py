@@ -1,5 +1,5 @@
 """
-Django settings for cerfServer project. 
+Django settings for cerfServer project.
 
 For more information on this file, see
 https://docs.djangoproject.com/en/5.0/topics/settings/
@@ -7,9 +7,8 @@ https://docs.djangoproject.com/en/5.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
-import codecs
+import json
 import os
-import re
 from datetime import timedelta, datetime, timezone
 from enum import StrEnum, auto
 from urllib.parse import urlparse, urlunparse
@@ -255,10 +254,6 @@ SIMPLE_JWT = {
 
 WSGI_APPLICATION = 'cerfServer.wsgi.application'
 
-# Password validation
-# https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
-
-
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -267,8 +262,6 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Internationalization
-# https://docs.djangoproject.com/en/5.0/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
@@ -311,6 +304,7 @@ NGENCERF_ARCHIVE_S3_PATH = os.getenv('NGENCERF_ARCHIVE_S3_PATH')
 
 # Location of download zip files on S3
 NGENCERF_ZIPS_S3_PATH = os.getenv('NGENCERF_ZIPS_S3_PATH')
+
 # AWS Profile to use for r/w buckets (.e.g, for archives and zips)
 # Use None for AWS Dev (uses default profile)
 NGENCERF_RW_PROFILE = os.getenv('NGENCERF_RW_PROFILE') or None
@@ -326,42 +320,105 @@ ZIP_DOWNLOAD_URL_TTL_SECONDS = 300
 ZIP_RETENTION_SECONDS = 3600
 
 # -----------------------------
-# ngen/nwm-cal-mgr Locations
+# Data / working directories
 # -----------------------------
-
-# Locations for running nwm-cal-mgr
-
 # Must match the repo root used in the docker container.
 # It is not necessary for you to have local copies of the ngen and nwm-cal-mgr repos if you are using Docker
 # But these directories still need to be set to reflect the directory of the repos in the docker container.
 REPO_ROOT = '/ngen-app'
-# Directory that Ngen is cloned into
 NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
-# directory that nwm-cal-mgr is cloned into
-CAL_MGR_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-cal-mgr')
-NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-fcst-mgr')
-NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
-NWM_EVAL_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-eval-mgr')
 
-# This must match the data location in the ngen/nwm-cal-mgr docker
-# Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data
+# This must match the shared data mount path expected inside the runtime containers.
+# Do not change this location unless all runtime containers and Slurm bindings
+# are updated consistently.
+#
+# You may store the actual data elsewhere on the host filesystem and create
+# a symbolic link to /ngencerf/data:
+#
 # sudo mkdir /ngencerf
 # sudo ln -s ~/your/data/dir /ngencerf/data
-NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
-NGEN_CAL_DATA_PATH = os.getenv('NGEN_CAL_DATA_PATH', NGEN_CAL_MOUNT_POINT)
+CONTAINER_DATA_ROOT = '/ngencerf/data'
+HOST_DATA_ROOT = os.getenv('HOST_DATA_ROOT', CONTAINER_DATA_ROOT)
 
-# Used only by get_git_info when running on PW
+# Used only by get_git_info when running in Slurm mode with singularities
 SINGULARITY_DIR = '/ngencerf/containers'
 
-NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'logs')
-print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
-os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
+# -----------------------------
+# Slurm partition / node rules
+# -----------------------------
+# Format:
+#   [[max_catchments, partition], [max_catchments, partition]]
+#
+# Example:
+#   SLURM_NODE_TYPE_RULES='[[500, "c5n-9xlarge"], [-1, "r8a-12xlarge"]]'
+#
+# - max_catchments is an integer upper bound.
+# - partition is the Slurm partition/node type to use.
+# - -1 means fallback/default for anything larger.
+_SLURM_NODE_TYPE_RULES_STR = os.getenv(
+    "SLURM_NODE_TYPE_RULES",
+    '[[500, "c5n-9xlarge"], [-1, "r8a-12xlarge"]]',
+)
 
-NGEN_STATIC_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-static-files')
-NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
-NGEN_VERIFICATION_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'verification_work')
-# The NGEN_BMI_FORCING_WORK_DIR directory is owned by ngen-forcing.  It will be responsible for creating it
-NGEN_BMI_FORCING_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'bmi_forcing_work')
+
+def parse_slurm_node_type_rules(value: str) -> list[tuple[int, str]]:
+    """
+    Parse SLURM_NODE_TYPE_RULES into ordered catchment-to-partition rules.
+
+    Expected format:
+
+        [[max_catchments, partition], [max_catchments, partition]]
+
+    Example:
+
+        [[500, "c5n-9xlarge"], [-1, "r8a-12xlarge"]]
+
+    The final rule must use -1 as the fallback.
+
+    :param value: JSON-encoded rule string from the environment.
+    :return: Ordered list of (max_catchments, partition) tuples.
+    :raises RuntimeError: If no rules are configured or the fallback rule is missing.
+    :raises ValueError: If the rule string is invalid JSON or contains invalid values.
+    """
+    try:
+        raw_rules = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid SLURM_NODE_TYPE_RULES JSON: {exc}") from exc
+
+    if not isinstance(raw_rules, list) or not raw_rules:
+        raise RuntimeError("SLURM_NODE_TYPE_RULES must define at least one rule")
+
+    rules: list[tuple[int, str]] = []
+
+    for index, item in enumerate(raw_rules):
+        if (
+                not isinstance(item, list)
+                or len(item) != 2
+                or not isinstance(item[0], int)
+                or not isinstance(item[1], str)
+                or not item[1].strip()
+        ):
+            raise ValueError(
+                f"SLURM_NODE_TYPE_RULES item {index} must be "
+                f"[int max_catchments, str partition]; got: {item!r}"
+            )
+
+        max_catchments, partition = item
+        rules.append((max_catchments, partition.strip()))
+
+    if rules[-1][0] != -1:
+        raise RuntimeError("SLURM_NODE_TYPE_RULES must end with a -1 fallback rule")
+
+    return rules
+
+
+SLURM_NODE_TYPE_RULES = parse_slurm_node_type_rules(_SLURM_NODE_TYPE_RULES_STR)
+
+# Allowed Slurm partitions are derived from the node type rules.
+SLURM_PARTITIONS = [
+    partition
+    for _, partition in SLURM_NODE_TYPE_RULES
+]
 
 # -----------------------------
 # Slurm REST API (slurmrestd) transport
@@ -395,13 +452,18 @@ SLURM_REST_JOB_ENVIRONMENT = json.loads(
 # -----------------------------
 # MPI node rules
 # -----------------------------
-FORCING_MESH_ENV = 'ngen_esmf_mesh_domain'
-FORCING_EXTRACT_ENV = 'ngen_forcing_extraction'
-FORCING_ENGINE_ENV = 'ngen_forcings_engine_bmi'
-
-# Directory where all the output runs are stored
-NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
-
+# Format:
+#   [[max_catchments, num_nodes], [max_catchments, num_nodes]]
+#
+# Example:
+#   MPI_NODE_RULES='[[15, 1], [50, 2], [250, 4], [500, 6], [1000, 10], [1500, 12], [-1, 18]]'
+#
+# - max_catchments is an integer upper bound.
+# - num_nodes is the number of MPI processes/nodes to use.
+# - -1 means fallback/default for anything larger.
+_MPI_NODE_RULES_STR = os.getenv(
+    "MPI_NODE_RULES",
+    "[[15, 1], [50, 2], [250, 4], [500, 6], [1000, 10], [1500, 12], [-1, 18]]",
 )
 
 
@@ -500,10 +562,11 @@ NGEN_FORECAST_DOCKER_CMD = (
     f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-fcst-mgr"
 )
 
-NWM_VERF_DOCKER_CMD = (
+NWM_EVAL_DOCKER_CMD = (
     f"docker run --rm --name {{name}} "
-    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-verf"
+    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-eval=mgr"
 )
+
 
 DOCKER_RUNTIME_INFO = {
     "calibration": CAL_MGR_DOCKER_CMD,
@@ -512,7 +575,7 @@ DOCKER_RUNTIME_INFO = {
     "cold_start": NGEN_FORECAST_DOCKER_CMD,
     "forecast": NGEN_FORECAST_DOCKER_CMD,
     "hindcast": NGEN_FORECAST_DOCKER_CMD,
-    "verification": NWM_VERF_DOCKER_CMD,
+    "verification": NWM_EVAL_DOCKER_CMD,
 }
 
 # Singularity image paths used when JOB_EXECUTION_MODE=SLURM.
@@ -524,8 +587,8 @@ NWM_FCST_MGR_SINGULARITY_CONTAINER_PATH = os.getenv(
     "NWM_FCST_MGR_SINGULARITY_CONTAINER_PATH"
 )
 
-NWM_VERF_SINGULARITY_CONTAINER_PATH = os.getenv(
-    "NWM_VERF_SINGULARITY_CONTAINER_PATH"
+NWM_EVAL_SINGULARITY_CONTAINER_PATH = os.getenv(
+    "NWM_EVAL_SINGULARITY_CONTAINER_PATH"
 )
 
 CAL_MGR_SINGULARITY_CMD = (
@@ -540,10 +603,10 @@ NGEN_FORECAST_SINGULARITY_CMD = (
     f"{NWM_FCST_MGR_SINGULARITY_CONTAINER_PATH}"
 )
 
-NWM_VERF_SINGULARITY_CMD = (
+NWM_EVAL_SINGULARITY_CMD = (
     f"/usr/bin/time -v singularity run "
     f"-B {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} "
-    f"{NWM_VERF_SINGULARITY_CONTAINER_PATH}"
+    f"{NWM_EVAL_SINGULARITY_CONTAINER_PATH}"
 )
 
 SINGULARITY_RUNTIME_INFO = {
@@ -553,7 +616,7 @@ SINGULARITY_RUNTIME_INFO = {
     "cold_start": NGEN_FORECAST_SINGULARITY_CMD,
     "forecast": NGEN_FORECAST_SINGULARITY_CMD,
     "hindcast": NGEN_FORECAST_SINGULARITY_CMD,
-    "verification": NWM_VERF_SINGULARITY_CMD,
+    "verification": NWM_EVAL_SINGULARITY_CMD,
 }
 
 # Optional sacct columns collected after job completion.
@@ -879,4 +942,4 @@ DATABASES = {
         'CONN_MAX_AGE': int(os.getenv('CERF_SERVER_DATABASE_CONN_MAX_AGE', '60')),
         'OPTIONS': DATABASE_OPTIONS,
     }
-} 
+}
