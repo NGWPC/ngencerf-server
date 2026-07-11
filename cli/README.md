@@ -491,8 +491,8 @@ You can also use the metadata section for your own information, such as comments
 | automatic_validation          | If true, then a validation is run automatically after the calibration run.      (Should we still be exporting this?)                                                   |
 | calibration_times             | The time ranges to use for calibration.                                                                                                                                |
 | validation_times              | The time ranges to use for validation (required if `automatic_validation` is true). Must be outside the calibration times.                                             |
-| stream_flow_threshold         | Required if a categorical objective function is specified. If empty, ngen-cal will not calculate categorical metric.                                                   |
-| peak_flow_threshold           | Required if an event-based objective function is specified. If empty, ngen-cal will not calculate event-based metric.                                                  |
+| threshold_categorical         | Required if a categorical objective function is specified. If empty, ngen-cal will not calculate categorical metric.                                                   |
+| threshold_event               | Required if an event-based objective function is specified. If empty, ngen-cal will not calculate event-based metric.                                                  |
 | parameters                    | Module parameters to use for calibration tuning including name, min, max, and module. All fields are required.                                                         |
 | objective_function            | Metric to use for the objective function.                                                                                                                              |
 | optimization                  | Optimization algorithm (DDS, GWO, PSO).                                                                                                                                |
