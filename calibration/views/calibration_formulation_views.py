@@ -509,7 +509,7 @@ def save_formulation_tab(request) -> Response:
             run.optimization = None
             run.objective_function = None
             run.threshold_categorical = None
-            run.event_threshold = None
+            run.threshold_event = None
             run.save_plot_iteration_frequency = None
             run.save_output_iteration = False
 

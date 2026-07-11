@@ -323,7 +323,7 @@ def validate_objective_function(run: CalibrationRun,
         if objective_function.event_based:
             if not threshold_event:
                 return "threshold_event must be specified for an event-based function"
-            run.event_threshold = threshold_event
+            run.threshold_event = threshold_event
 
     return None
 
