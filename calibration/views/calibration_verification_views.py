@@ -64,13 +64,13 @@ def create_and_run_verification_job(request: Request) -> Response:
     hindcast_run_id = validator.get('hindcast_run_id')
     logging_config = validator.get('logging_config')
 
-    run, error_return = get_hindcast_run(hindcast_run_id, request.user, run_status=[StatusEnum.DONE])
+    hindcast_run, error_return = get_hindcast_run(hindcast_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
 
-    assert run is not None
+    assert hindcast_run is not None
 
-    verification_run = create_verification_run_internal(run)
+    verification_run = create_verification_run_internal(hindcast_run)
 
     error_response = submit_job(verification_run, logging_config=logging_config)
     if error_response:
@@ -79,8 +79,8 @@ def create_and_run_verification_job(request: Request) -> Response:
     msg = get_job_description(verification_run) + ' created and submitted'
     response = {
         'message': msg,
-        'calibration_run_id': run.calibration_run.id,
-        'hindcast_run_id': run.id,
+        'calibration_run_id': hindcast_run.calibration_run.id,
+        'hindcast_run_id': hindcast_run.id,
         'verification_run_id': verification_run.id,
         'submit_date': verification_run.submit_date,
         'status': verification_run.status.name
@@ -147,7 +147,7 @@ def get_verification_plot_names(request: Request) -> Response:
 
     plot_names = []
 
-    config_name = run.parent_run.configuration.internal_name
+    config_name = run.hindcast_run.configuration.internal_name
 
     base_dir = get_verification_run_dir(run)
     verification_plot_location = os.path.join(base_dir, 'plots', config_name)
@@ -326,8 +326,6 @@ def delete_verification_job(request: Request) -> Response:
 
         logger.info(f"Deleting directory {verification_dir}")
         shutil.rmtree(verification_dir, ignore_errors=True)
-
-        shutil.rmtree(get_verification_run_dir(run), ignore_errors=True)
 
     message = f"Verification Job {run_id} has been deleted"
 

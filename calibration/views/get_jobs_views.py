@@ -3,7 +3,7 @@ Job Retrieval Endpoints for Calibration, Forecast, Hindcast, and Verification
 =============================================================================
 
 This module provides a unified interface for retrieving job records across the
-CERF workflow, including Calibration, Forecast, Hindcast, and Hindcast-based
+CERF workflow, including Calibration, Forecast, Hindcast, and hindcast-based
 Verification runs.
 
 Job-list retrieval endpoints support:
@@ -14,16 +14,14 @@ Job-list retrieval endpoints support:
   • Read-only execution to reduce database contention
 
 Calibration retrieval is implemented by `get_jobs()`.
-Forecast and Hindcast retrieval share `_get_forecast_or_hindcast_base_jobs_internal()`
-through `get_forecast_jobs_internal()` and `get_hindcast_jobs_internal()`.
+Forecast and Hindcast retrieval share
+`_get_forecast_or_hindcast_base_jobs_internal()` through
+`get_forecast_jobs_internal()` and `get_hindcast_jobs_internal()`.
 Verification retrieval is implemented by `get_verification_jobs_internal()`.
-
-Verification-specific query path resolution is centralized in
-`get_verification_parent_paths()`.
 
 Request payload shape
 ---------------------
-Use this general shape for every request (omit keys you are not using):
+Use this general shape for every request and omit keys that are not being used:
 
     limit: integer page size (e.g., 25)
     offset: integer row offset (0-based)
@@ -52,10 +50,6 @@ Calibration-only request keys
 -----------------------------
     ids_only: boolean
 
-Verification-only request keys
-------------------------------
-    verification_job_type: "hindcast"
-
 Do not send empty/default filters or sort objects.
 
 Examples
@@ -83,7 +77,10 @@ Full example:
             },
             "include_archived": false
         },
-        "sort": { "field": "submit_date", "direction": "asc" }
+        "sort": {
+            "field": "submit_date",
+            "direction": "asc"
+        }
     }
 
 Date range example:
@@ -102,14 +99,16 @@ Date range example:
 
 Minimal example:
 
-    { "limit": 25, "offset": 0 }
+    {
+        "limit": 25,
+        "offset": 0
+    }
 
 Verification example:
 
     {
         "limit": 25,
-        "offset": 0,
-        "verification_job_type": "hindcast"
+        "offset": 0
     }
 
 Key concepts
@@ -154,18 +153,22 @@ Status handling
     Forecast/Hindcast summary counts also use `combined_status`, so dashboard
     counts treat a job as Running when the currently active phase is Running.
 
-    Verification jobs currently use their raw VerificationRun status.
+    Verification jobs use the raw VerificationRun status.
 
 Filtering
     Calibration, Forecast, Hindcast, and Verification jobs support gage, domain,
-    status, module membership, date, ID, and archive toggles.
+    status, module membership, date, ID, and archive filters.
+
+    Verification filtering follows the VerificationRun.hindcast_run relationship.
 
     Archive filtering for Forecast, Hindcast, and Verification jobs is based on
-    the parent CalibrationRun archive flag.
+    the related CalibrationRun archive flag.
 
 Sorting
-    Sorting uses server-approved fields defined in Enum classes
-    (CalibrationSortField, ForecastSortField, HindcastSortField, VerificationSortField).
+    Sorting uses server-approved fields defined in Enum classes:
+    CalibrationSortField, ForecastSortField, HindcastSortField, and
+    VerificationSortField.
+
     Multi-field sorts are supported.
 
 Pagination
@@ -178,12 +181,12 @@ Range metadata
         • id_range   = [min_id, max_id]
 
     These ranges are computed before user-supplied filters and are restricted
-    only by the base ownership constraint, and any endpoint-level run_status
-    restriction where applicable.
+    only by the base ownership constraint and any endpoint-level run_status
+    restriction.
 
 Read-only execution
     Retrieval helpers run inside read-only transaction wrappers to reduce
-    lock contention.
+    database lock contention.
 """
 
 import json
@@ -208,7 +211,7 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, \
     GetCalibrationJobIDsResponseSerializer, EmptySerializer, \
     GetGagesResponseSerializer, GetGagesRequestSerializer, GetJobsSummaryResponseSerializer, GetValidationJobsResponseSerializer, \
     CalibrationRunIdSerializer, ForecastPaginationSerializer, GetForecastJobsResponseSerializer, GetVerificationJobsResponseSerializer, \
-    VerificationPaginationSerializer, GetHindcastJobsResponseSerializer, HindcastPaginationSerializer, GetVerificationGagesRequestSerializer
+    VerificationPaginationSerializer, GetHindcastJobsResponseSerializer, HindcastPaginationSerializer
 from calibration.views.calibration_download_views import downloadable_statuses
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_user_email, get_elapsed_str, \
@@ -562,9 +565,6 @@ def _apply_shared_filters(
     """
     Apply shared filter logic for Calibration, Forecast, Hindcast and Verification jobs.
 
-    For Verification queries, the caller must first resolve the correct ORM path
-    set based on verification_job_type.
-
     :param query: Base Q object to filter (e.g., ownership constraint).
     :param filters: Dictionary of filters passed by the client.
     :param gage_prefix: ORM prefix path to gage_id (e.g., 'gage__' or 'calibration_run__gage__').
@@ -578,8 +578,9 @@ def _apply_shared_filters(
     Notes:
       - include_archived: if true, include archived jobs; otherwise (false or missing), exclude them.
       - module_filter.operator="and" is only supported when the outer queryset is CalibrationRun.
-        For ForecastRun, HindcastRun and VerificationRun, "and" is treated as "or".
-      - Verification-specific ORM prefixes are resolved upstream before calling this helper.
+      - For ForecastRun, HindcastRun and VerificationRun queries, an "and"
+        module filter is treated as "or".
+      - Verification callers pass ORM paths through the hindcast_run relationship.
     """
     if not filters:
         return query
@@ -730,40 +731,30 @@ def apply_forecast_filters(query: Q, filters: dict) -> Q:
     )
 
 
-def apply_verification_filters(
-        query: Q,
-        filters: dict,
-        verification_job_type: Literal['forecast', 'hindcast'],
-) -> Q:
+def apply_verification_filters(query: Q, filters: dict) -> Q:
     """
-    Apply standard verification filters to a VerificationRun queryset.
-
-    The ORM path used for gage, module, archive, and domain filtering is resolved
-    from verification_job_type. Currently, verification list retrieval is expected
-    to use hindcast-based verification jobs.
+    Apply standard filters to hindcast-based VerificationRun records.
 
     Notes:
       - module_filter.operator="and" is only supported for Calibration jobs.
         For Forecast, Hindcast, and Verification jobs, it is treated as "or"
         by the shared filter logic.
 
-    :param query: Base Q object constrained to the authenticated user's verification jobs.
-    :param filters: Dictionary of filter parameters (gage_id, domain_name, status,
-        modules, date_filter, id_filter, include_archived, etc.).
-    :param verification_job_type: Parent job type for the verification jobs being queried.
-        Currently expected to be 'hindcast'.
-    :return: Q object with verification-specific filters applied.
+    :param query: Base Q object constrained to the authenticated user's
+        hindcast-based verification jobs.
+    :param filters: Dictionary of filter parameters, including gage_id,
+        domain_name, status, modules, date_filter, id_filter, and
+        include_archived.
+    :return: Q object with hindcast-based verification filters applied.
     """
-    paths = get_verification_parent_paths(verification_job_type)
-
     return _apply_shared_filters(
         query, filters,
-        gage_prefix=paths["gage_prefix"],
-        module_prefix=paths["module_prefix"],
+        gage_prefix="hindcast_run__calibration_run__gage__",
+        module_prefix="hindcast_run__calibration_run__calibrationformulation__",
         status_field="status__in",
         created_field="created_at",
-        archived_field=paths["archived_field"],
-        domain_field=paths["domain_field"],
+        archived_field="hindcast_run__calibration_run__is_archived",
+        domain_field="hindcast_run__calibration_run__gage__domain__name",
         allow_module_and=False
     )
 
@@ -1074,7 +1065,7 @@ def get_jobs_summary(request: Request) -> Response:
             ),
         )
 
-        verification_query = Q(forecast_run__calibration_run__owner=auth_user(request)) | Q(hindcast_run__calibration_run__owner=auth_user(request))
+        verification_query = Q(hindcast_run__calibration_run__owner=auth_user(request))
 
         verification_qs = annotate_combined_status(
             VerificationRun.objects.filter(verification_query),
@@ -1082,16 +1073,9 @@ def get_jobs_summary(request: Request) -> Response:
         )
 
         verification_agg = verification_qs.aggregate(
-            done_forecast_verification_count=Sum(
-                Case(
-                    When(_status_lower=done_lc, forecast_run_id__gt=0, then=Value(1)),
-                    default=Value(0),
-                    output_field=IntegerField(),
-                )
-            ),
             done_hindcast_verification_count=Sum(
                 Case(
-                    When(_status_lower=done_lc, hindcast_run_id__gt=0, then=Value(1)),
+                    When(_status_lower=done_lc, then=Value(1)),
                     default=Value(0),
                     output_field=IntegerField(),
                 )
@@ -1104,7 +1088,6 @@ def get_jobs_summary(request: Request) -> Response:
         "saved_calibration_count": int(calibration_agg["saved_calibration_count"] or 0),
         "running_forecast_count": int(forecast_agg["running_forecast_count"] or 0),
         "done_forecast_count": int(forecast_agg["done_forecast_count"] or 0),
-        "done_forecast_verification_count": int(verification_agg["done_forecast_verification_count"] or 0),
         "running_hindcast_count": int(hindcast_agg["running_hindcast_count"] or 0),
         "done_hindcast_count": int(hindcast_agg["done_hindcast_count"] or 0),
         "done_hindcast_verification_count": int(verification_agg["done_hindcast_verification_count"] or 0),
@@ -1539,7 +1522,7 @@ def get_hindcast_gages_for_verification(request: Request) -> Response:
 
 
 @extend_schema(
-    request=GetVerificationGagesRequestSerializer,
+    request=GetGagesRequestSerializer,
     responses={
         200: GetGagesResponseSerializer,
         400: OpenApiResponse(response=ErrorResponseSerializer, description="Validation error or parsing error"),
@@ -1552,38 +1535,33 @@ def get_hindcast_gages_for_verification(request: Request) -> Response:
 def get_verification_gages(request: Request) -> Response:
     """
     Get distinct gage_ids for hindcast-based verification jobs.
-
-    The request must include verification_job_type so the endpoint can use the
-    correct parent ORM path.
     """
     data = request.data if request.method == "POST" else request.query_params.dict()
     logger.debug(f"{get_caller_name()}() request from {get_user_email(request)} - {data}")
 
-    validator, error_return = validate_request(GetVerificationGagesRequestSerializer, data)
+    validator, error_return = validate_request(GetGagesRequestSerializer, data)
     if error_return:
         return error_return
 
     domain_name = validator.get("domain_name") or None
     include_archived = validator.get("include_archived")
-    verification_job_type = validator.get("verification_job_type")
-    paths = get_verification_parent_paths(verification_job_type)
 
     with readonly_transaction():
-        query = Q(**{f'{paths["calibration_prefix"]}owner': auth_user(request)})
+        query = Q(hindcast_run__calibration_run__owner=auth_user(request))
 
         # Default behavior: exclude archived calibration runs unless include_archived is explicitly true.
         if not include_archived:
-            query &= Q(**{paths["archived_field"]: False})
+            query &= Q(hindcast_run__calibration_run__is_archived=False)
 
         # Domain is optional. If not provided, include gages across all domains.
         if domain_name:
-            query &= Q(**{f'{paths["domain_field"]}__iexact': domain_name})
+            query &= Q(hindcast_run__calibration_run__gage__domain__name__iexact=domain_name)
 
         gages = list(
             VerificationRun.objects
             .filter(query)
-            .filter(**{paths["gage_isnull_field"]: False})
-            .values_list(paths["gage_value_field"], flat=True)
+            .filter(hindcast_run__calibration_run__gage__isnull=False)
+            .values_list("hindcast_run__calibration_run__gage__gage_id", flat=True)
             .distinct()
         )
 
@@ -1837,20 +1815,20 @@ def get_jobs(
             {
                 "id": run.id,
                 "gage__gage_id": run.gage.gage_id if run.gage else None,
-                "gage__domain__name": run.gage.domain.name if run.gage else None, 
-                "submit_date": run.submit_date, 
+                "gage__domain__name": run.gage.domain.name if run.gage else None,
+                "submit_date": run.submit_date,
                 "updated_at": run.updated_at,
-                "job_name": run.job_name, 
+                "job_name": run.job_name,
                 "calibration_start_period": run.calibration_start_period,
                 "calibration_end_period": run.calibration_end_period,
-                "status_id": run.status_id, 
-                "status__name": run.status.name if run.status else None, 
-                "combined_status": run.combined_status, 
-                "job_genesis": run.job_genesis, 
+                "status_id": run.status_id,
+                "status__name": run.status.name if run.status else None,
+                "combined_status": run.combined_status,
+                "job_genesis": run.job_genesis,
                 "created_at": run.created_at,
-                "objective_function__name": run.objective_function.name if run.objective_function else None, 
+                "objective_function__name": run.objective_function.name if run.objective_function else None,
                 "optimization__name": run.optimization.name if run.optimization else None,
-                "is_archived": run.is_archived, 
+                "is_archived": run.is_archived,
                 "is_locked": run.is_locked
             }
             for run in ordered_qs
@@ -2543,7 +2521,6 @@ def get_hindcast_jobs_for_verification(request: Request) -> Response:
 
 def get_verification_jobs_internal(
         user: CustomUser,
-        verification_job_type: Literal['forecast', 'hindcast'],
         run_status: list[StatusEnum] | None = None,
         limit: int | None = None,
         offset: int = 0,
@@ -2551,11 +2528,8 @@ def get_verification_jobs_internal(
         sort: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
     """
-    Internal helper to retrieve verification jobs for a user with optional filtering,
+    Retrieve hindcast-based verification jobs for a user with optional filtering,
     sorting, and pagination.
-
-    Currently, verification list retrieval is expected to use hindcast-based
-    verification jobs.
 
     Runs in READ ONLY mode to reduce contention.
 
@@ -2565,8 +2539,6 @@ def get_verification_jobs_internal(
         is treated as "or" by the shared filter logic.
 
     :param user: Owner of the jobs to fetch.
-    :param verification_job_type: Parent job type for the verification jobs being queried.
-        Currently expected to be 'hindcast'.
     :param run_status: Optional list of StatusEnum values to restrict the base job set.
                        This restriction is applied before computing date/id ranges and before user filters.
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
@@ -2584,10 +2556,9 @@ def get_verification_jobs_internal(
     """
     filters_dict: dict[str, Any] = filters or {}
     order_by = resolve_sort(sort, VerificationSortField)
-    paths = get_verification_parent_paths(verification_job_type)
 
     with readonly_transaction():
-        query = Q(**{f'{paths["calibration_prefix"]}owner': user})
+        query = Q(hindcast_run__calibration_run__owner=user)
 
         # Apply status restriction early so ranges reflect run_status restriction
         if run_status:
@@ -2597,10 +2568,9 @@ def get_verification_jobs_internal(
         date_range, id_range = compute_range(VerificationRun, query)
 
         # Now apply user filters
-        query = apply_verification_filters(query, filters_dict, verification_job_type=verification_job_type)
+        query = apply_verification_filters(query, filters_dict)
 
         base_qs = VerificationRun.objects.filter(query)
-
         total_count = base_qs.count()
 
         # ──────────────────────────────────────────
@@ -2613,7 +2583,7 @@ def get_verification_jobs_internal(
         rows = list(
             paged_qs.values(
                 "id",
-                paths["parent_run_id_field"],
+                "hindcast_run_id",
                 "status__name",
                 "submit_date"
             )
@@ -2648,9 +2618,6 @@ def get_verification_jobs(request: Request) -> Response:
     """
     Retrieve hindcast-based verification jobs for the authenticated user.
 
-    The request must include verification_job_type so the endpoint can query the
-    correct parent run relationship and return the matching parent run id field.
-
     Runs in READ ONLY mode to reduce contention.
 
     :param request: The HTTP request object containing verification pagination data.
@@ -2667,12 +2634,10 @@ def get_verification_jobs(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
-    verification_job_type = validator.get("verification_job_type")
     filters, sort = _normalize_filters_and_sort(filters, sort)
 
     verification_jobs, total_count, date_range, id_range = get_verification_jobs_internal(
         auth_user(request),
-        verification_job_type=verification_job_type,
         run_status=None,
         limit=limit,
         offset=offset,
@@ -2700,50 +2665,6 @@ def get_verification_jobs(request: Request) -> Response:
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["verification_jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
-
-
-def get_verification_parent_paths(
-        verification_job_type: Literal['forecast', 'hindcast'],
-) -> dict[str, str]:
-    """
-    Return ORM path fragments for verification queries.
-
-    The returned values are used to build:
-      - ownership constraints
-      - gage/domain filters
-      - archived filters
-      - module filters
-      - gage extraction for verification gage endpoints
-
-    :param verification_job_type: Parent job type for the verification jobs being queried.
-        Currently expected to be 'hindcast'.
-    :return: Dictionary containing the ORM prefixes/field paths needed for
-        verification queries.
-    """
-    if verification_job_type == 'forecast':
-        return {
-            "parent_prefix": "forecast_run__",
-            "calibration_prefix": "forecast_run__calibration_run__",
-            "gage_prefix": "forecast_run__calibration_run__gage__",
-            "module_prefix": "forecast_run__calibration_run__calibrationformulation__",
-            "archived_field": "forecast_run__calibration_run__is_archived",
-            "domain_field": "forecast_run__calibration_run__gage__domain__name",
-            "gage_value_field": "forecast_run__calibration_run__gage__gage_id",
-            "gage_isnull_field": "forecast_run__calibration_run__gage__isnull",
-            "parent_run_id_field": "forecast_run_id",
-        }
-
-    return {
-        "parent_prefix": "hindcast_run__",
-        "calibration_prefix": "hindcast_run__calibration_run__",
-        "gage_prefix": "hindcast_run__calibration_run__gage__",
-        "module_prefix": "hindcast_run__calibration_run__calibrationformulation__",
-        "archived_field": "hindcast_run__calibration_run__is_archived",
-        "domain_field": "hindcast_run__calibration_run__gage__domain__name",
-        "gage_value_field": "hindcast_run__calibration_run__gage__gage_id",
-        "gage_isnull_field": "hindcast_run__calibration_run__gage__isnull",
-        "parent_run_id_field": "hindcast_run_id",
-    }
 
 
 def compute_range(model: type[BaseRun], query: Q) -> tuple[
