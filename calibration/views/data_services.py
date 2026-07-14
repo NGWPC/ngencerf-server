@@ -521,7 +521,6 @@ def update_parameters(run: CalibrationRun, module_metadata: dict, gage_changed: 
                     CalibrationParameter.objects.bulk_update(params_to_update, ['initial_value'])
 
 
-
 def safe_float(value, label, param_name, module_name):
     """
     Convert a value to float.
