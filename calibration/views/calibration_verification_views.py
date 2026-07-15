@@ -18,7 +18,7 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, \
     CreateAndRunVerificationRequestSerializer, CreateAndRunVerificationResponseSerializer, \
     GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, \
     GetVerificationPlotResponseSerializer, DeleteVerificationJobResponseSerializer, VerificationRunIdSerializer
-from calibration.util.ngen_locations import get_verification_run_dir
+from calibration.util.ngen_locations import get_verification_run_dir, get_observational_file_for_hindcast
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, \
     get_verification_run, ResponseError, get_user_email, get_elapsed_str, \
@@ -69,6 +69,12 @@ def create_and_run_verification_job(request: Request) -> Response:
         return error_return
 
     assert hindcast_run is not None
+
+    # See if we have obs data, which would have been created
+    # at the end of the hindcast job
+    obs = get_observational_file_for_hindcast(hindcast_run)
+    if obs == None or not os.path.exists(obs):
+        return ResponseError("Observed streamflow is not available for the full hindcast window.")
 
     verification_run = create_verification_run_internal(hindcast_run)
 
