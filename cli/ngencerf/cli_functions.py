@@ -819,32 +819,53 @@ def _pretty_print_job(calibration_run_id: int, data: dict) -> None:
     """
     Prints selected fields from the exported calibration job in a structured format.
 
-    :param calibration_run_id: ID of the calibration run
-    :param data: Exported job data
+    :param calibration_run_id: ID of the calibration run.
+    :param data: Exported job data.
     """
 
     def fmt(dt: str | None) -> str:
         """
         Formats an ISO timestamp string in GMT (UTC) to 'YYYY-MM-DD HH:MM'.
-        Handles optional 'Z' or '+00:00' suffixes.
 
-        :param dt: ISO timestamp string
-        :return: Formatted timestamp
+        Handles timestamps ending in Z or containing a UTC offset.
+
+        :param dt: ISO timestamp string.
+        :return: Formatted timestamp, or "-" when unset.
         """
         if not dt:
             return "-"
-        dt = dt.replace("Z", "").split("+")[0]  # strip 'Z' or '+00:00'
+
+        normalized = dt.replace("Z", "+00:00")
+
         try:
-            return datetime.fromisoformat(dt).strftime("%Y-%m-%d %H:%M")
+            return datetime.fromisoformat(normalized).strftime(
+                "%Y-%m-%d %H:%M"
+            )
         except ValueError:
             return dt  # fallback: return original if parsing fails
 
-    cal_times = data.get("calibration_times", {})
-    val_times = data.get("validation_times", {})
+    def fmt_months(value: int | None) -> str:
+        """
+        Format a duration expressed in months.
+
+        :param value: Number of months.
+        :return: Formatted month duration, or "-" when unset.
+        """
+        if value is None:
+            return "-"
+
+        return f"{value} month{'s' if value != 1 else ''}"
+
     metadata = data.get("metadata", {})
+    calibration_times = metadata.get("calibration_times", {})
+    validation_times = metadata.get("validation_times", {})
+    time_controls = data.get("time_controls", {})
 
     print()
-    print(f"Calibration Job ID {metadata.get('source_calibration_run_id', calibration_run_id)}")
+    print(
+        f"Calibration Job ID "
+        f"{metadata.get('source_calibration_run_id', calibration_run_id)}"
+    )
     print(f"Status: {metadata.get('source_status')}")
     print(f"Job Data directory: {metadata.get('job_data_dir')}")
     print(f"Gage: {data.get('gage_id')}")
@@ -860,15 +881,69 @@ def _pretty_print_job(calibration_run_id: int, data: dict) -> None:
     print()
 
     print(f"{'Calibration Run':<50}{'Validation Run'}")
-    print(f"{'Sim Start:':<25}{fmt(cal_times.get('simulation_start_time')):<25}Sim Start: {fmt(val_times.get('simulation_start_time'))}")
-    print(f"{'Sim End:':<25}{fmt(cal_times.get('simulation_end_time')):<25}Sim End:   {fmt(val_times.get('simulation_end_time'))}")
-    print(f"{'Calib Start:':<25}{fmt(cal_times.get('calibration_start_time')):<25}Val Start: {fmt(val_times.get('validation_start_time'))}")
-    print(f"{'Calib End:':<25}{fmt(cal_times.get('calibration_end_time')):<25}Val End:   {fmt(val_times.get('validation_end_time'))}")
+    print(
+        f"{'Sim Start:':<25}"
+        f"{fmt(calibration_times.get('simulation_start_time')):<25}"
+        f"Sim Start: {fmt(validation_times.get('simulation_start_time'))}"
+    )
+    print(
+        f"{'Sim End:':<25}"
+        f"{fmt(calibration_times.get('simulation_end_time')):<25}"
+        f"Sim End:   {fmt(validation_times.get('simulation_end_time'))}"
+    )
+    print(
+        f"{'Calib Start:':<25}"
+        f"{fmt(calibration_times.get('calibration_start_time')):<25}"
+        f"Val Start: {fmt(validation_times.get('validation_start_time'))}"
+    )
+    print(
+        f"{'Calib End:':<25}"
+        f"{fmt(calibration_times.get('calibration_end_time')):<25}"
+        f"Val End:   {fmt(validation_times.get('validation_end_time'))}"
+    )
+    print()
+
+    validation_after = time_controls.get(
+        "validation_window_after_calibration"
+    )
+
+    if validation_after is True:
+        validation_position = "After calibration"
+    elif validation_after is False:
+        validation_position = "Before calibration"
+    else:
+        validation_position = "-"
+
+    print("Time Controls:")
+    print(
+        f"  Simulation Start: "
+        f"{fmt(time_controls.get('simulation_start_time'))}"
+    )
+    print(
+        f"  Warmup Duration: "
+        f"{fmt_months(time_controls.get('warmup_duration'))}"
+    )
+    print(
+        f"  Calibration Duration: "
+        f"{fmt_months(time_controls.get('calibration_duration'))}"
+    )
+    print(
+        f"  Validation Window Gap: "
+        f"{fmt_months(time_controls.get('validation_window_gap'))}"
+    )
+    print(f"  Validation Window: {validation_position}")
+    print(
+        f"  Validation Duration: "
+        f"{fmt_months(time_controls.get('validation_duration'))}"
+    )
     print()
 
     print(f"Optimization Algorithm: {data.get('optimization')}")
     print(f"Objective Function: {data.get('objective_function')}")
-    print(f"Plot Generation Frequency: {data.get('save_plot_iteration_frequency')}")
+    print(
+        f"Plot Generation Frequency: "
+        f"{data.get('save_plot_iteration_frequency')}"
+    )
     print()
 
     print(f"Tuning Parameters: {len(data.get('parameters', []))}")

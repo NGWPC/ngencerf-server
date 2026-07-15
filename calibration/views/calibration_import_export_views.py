@@ -273,6 +273,7 @@ def import_calibration_run_data(request: Request,
         # -----------------------------
         # Geopackage
         # -----------------------------
+        assert isinstance(geopackage_source_name, str)
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
         try:
@@ -294,6 +295,7 @@ def import_calibration_run_data(request: Request,
         # -----------------------------
         # Forcing data
         # -----------------------------
+        assert isinstance(forcing_source_name, str)
         forcing_source = (
             ForcingSourceEnum.get_instance(forcing_source_name)
             if forcing_source_name
@@ -327,8 +329,6 @@ def import_calibration_run_data(request: Request,
             persist_time_range(run, time_range)
 
         # Time controls (persist)
-        # print('SAVING TIME CONTROLS:')
-        # print(time_controls)
         error_message = save_time_controls(run, time_controls)
         if error_message:
             return None, None, ResponseError(error_message)
@@ -450,7 +450,11 @@ def export_job(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def load_calibration_run_data(run: CalibrationRun, export: bool = False, include_gpkg_map: bool = False) -> tuple[dict, dict[str, datetime | None]]:
+def load_calibration_run_data(
+        run: CalibrationRun,
+        export: bool = False,
+        include_gpkg_map: bool = False
+) -> tuple[dict, dict[str, datetime]]:
     """
     Load calibration run data for export, cloning, or UI display.
 
@@ -491,14 +495,28 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     # Always load formulations once, for both export and UI modes
     formulations = CalibrationFormulation.objects.filter(calibration_run=run)
 
-    # Get times both both modes (export will only include the time controls)
-    calibration_times, validation_times, time_controls = get_times(run, default_time_controls=False)
+    # Get times for both modes (export will only include the time controls)
+    calibration_times, validation_times, time_controls = get_times(
+        run,
+        default_time_controls=False
+    )
 
     #############################
     # Export or Clone Mode
     #############################
     if export:
         export_start = time.perf_counter()
+
+        serialized_calibration_times = {
+            key: value.isoformat() if value is not None else None
+            for key, value in calibration_times.items()
+        }
+
+        serialized_validation_times = {
+            key: value.isoformat() if value is not None else None
+            for key, value in validation_times.items()
+        }
+
         metadata = {
             'source_calibration_run_id': run.id,
             'last_updated_on': format_datetime(run.updated_at),
@@ -506,7 +524,10 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             'time_range': serialized_time_range,
             'job_data_dir': map_path_to_host(run.job_data_dir),
             'num_catchments': run.num_catchments,
+            'calibration_times': serialized_calibration_times,
+            'validation_times': serialized_validation_times,
         }
+
         fm = normalize_failure_messages(run.failure_messages)
         if fm is not None:
             metadata['failure_messages'] = fm
@@ -560,7 +581,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
                 base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
                 calibration_run_data['geopackage_image_url'] = f'data:image/png;base64,{base64_str}'
             logger.info(f"Geopackage map generation completed in {time.perf_counter() - gpkg_map_start:.2f}s")
-        
+
         calibration_run_data['calibration_times'] = {} if any(value is None for value in calibration_times.values()) else calibration_times
         calibration_run_data['validation_times'] = {} if any(value is None for value in validation_times.values()) else validation_times
 
@@ -776,7 +797,10 @@ def load_calibration_run(request: Request) -> Response:
     # Short write block: persist computed time range if needed
     # -------------------------------------------------------------
     # Persist only if we computed a valid time range
-    if time_range and (not run.time_range_start or not run.time_range_end):
+    if time_range and (
+            run.time_range_start is None
+            or run.time_range_end is None
+    ):
         with transaction.atomic():
             persist_time_range(run, time_range)
 
