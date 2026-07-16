@@ -14,6 +14,7 @@ import sys
 import yaml
 
 from ngencerf.calibration_sort_fields import CalibrationSortField
+from ngencerf.cli_config import get_ngencerf_base_url, set_ngencerf_base_url, add_saved_server_url, delete_saved_server_url, load_saved_server_urls
 from ngencerf.cli_functions import (
     import_job,
     update_job,
@@ -25,7 +26,6 @@ from ngencerf.cli_functions import (
     download_zip, archive_job, unarchive_job, about, generate_regionalization_files, job_status, update_and_get_gage_status, lock_job, unlock_job,
 )
 from ngencerf.cli_user import ngen_login, ngen_register, create_local_user, change_password
-from ngencerf.cli_config import get_ngencerf_base_url, set_ngencerf_base_url, add_saved_server_url, delete_saved_server_url, load_saved_server_urls
 
 
 class SmartArgumentParser(argparse.ArgumentParser):
@@ -247,7 +247,6 @@ def main():
         help="Target user email for admin password reset. Omit for self-service password change."
     )
     change_password_parser.set_defaults(func=lambda cmd_args: change_password(cmd_args.email))
-
 
     delete_parser = add_parser("delete", "Delete job")
     delete_parser.add_argument(

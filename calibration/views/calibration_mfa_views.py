@@ -984,7 +984,7 @@ def verify_recovery_code(user: User, code: str) -> bool:
 @api_view(["GET", "POST"])
 @permission_classes([AllowAny])
 @handle_exceptions
-def auth_config(request: Request) -> Response:
+def auth_config(_request: Request) -> Response:
     response = {
         "active_directory_enabled": settings.ACTIVE_DIRECTORY_ENABLED,
         "allow_self_registration": not settings.ACTIVE_DIRECTORY_ENABLED,

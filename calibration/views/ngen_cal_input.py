@@ -440,11 +440,11 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
                 error_object.add_warning(f"Unable to calculate time values: {', '.join(missing_start_end_period_fields)}")
             else:
                 calibration['calib_start_period'] = format_datetime(run.calibration_start_period)
-                calibration['calib_end_period'] =  format_datetime(run.calibration_end_period)
+                calibration['calib_end_period'] = format_datetime(run.calibration_end_period)
                 calibration['calib_eval_start_period'] = format_datetime(run.calibration_eval_start_period)
                 calibration['calib_eval_end_period'] = format_datetime(run.calibration_eval_end_period)
                 calibration['valid_start_period'] = format_datetime(run.validation_start_period)
-                calibration['valid_end_period'] =  format_datetime(run.validation_end_period)
+                calibration['valid_end_period'] = format_datetime(run.validation_end_period)
                 calibration['valid_eval_start_period'] = format_datetime(run.validation_eval_start_period)
                 calibration['valid_eval_end_period'] = format_datetime(run.validation_eval_end_period)
                 full_eval_start, full_eval_end = get_full_evaluation_date_range(
@@ -453,7 +453,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
 
                 calibration['full_eval_start_period'] = format_datetime(full_eval_start)
                 calibration['full_eval_end_period'] = format_datetime(full_eval_end)
-        
+
         if not is_missing(run.objective_function, 'Objective function', error_object, have_LSTM_flag=have_LSTM_flag):
             calibration['objective_function'] = run.objective_function.name.lower()
 

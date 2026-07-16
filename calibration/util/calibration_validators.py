@@ -578,7 +578,6 @@ class GetJobsSummaryResponseSerializer(BaseSerializer):
     saved_calibration_count = serializers.IntegerField()
     running_forecast_count = serializers.IntegerField()
     done_forecast_count = serializers.IntegerField()
-    done_forecast_verification_count = serializers.IntegerField()
     running_hindcast_count = serializers.IntegerField()
     done_hindcast_count = serializers.IntegerField()
     done_hindcast_verification_count = serializers.IntegerField()
@@ -851,14 +850,6 @@ class GetGagesRequestSerializer(BaseSerializer):
     include_archived = serializers.BooleanField(default=False, required=False)
 
 
-class GetVerificationGagesRequestSerializer(GetGagesRequestSerializer):
-    verification_job_type = serializers.ChoiceField(
-        choices=['forecast', 'hindcast'],
-        required=True,
-        allow_null=False,
-    )
-
-
 class GetGagesResponseSerializer(BaseSerializer):
     gages = serializers.ListField(child=serializers.CharField(required=True), required=True, allow_empty=True)
 
@@ -885,11 +876,6 @@ class HindcastPaginationSerializer(PaginationSerializer):
 
 class VerificationPaginationSerializer(PaginationSerializer):
     sort = VerificationSortSerializer(required=False, allow_null=True)
-    verification_job_type = serializers.ChoiceField(
-        choices=['forecast', 'hindcast'],
-        required=True,
-        allow_null=False,
-    )
 
 
 ##################################
@@ -1456,16 +1442,14 @@ class GetStatusForCalibrationResponseSerializer(GenericResponseSerializer, Commo
 
 class GetStatusForVerificationResponseSerializer(CommonStatusFieldsMixin, CalibrationRunIdSerializer, VerificationRunIdSerializer):
     message = serializers.CharField(required=True)
-    forecast_run = GetStatusForForecastResponseSerializer(required=False, allow_null=False)
-    hindcast_run = GetStatusForHindcastResponseSerializer(required=False, allow_null=False)
+    hindcast_run = GetStatusForHindcastResponseSerializer(required=True, allow_null=False)
 
 
 class GetVerificationJobStatusResponseSerializer(CommonStatusFieldsMixin, VerificationRunIdSerializer):
-    forecast_run = GetStatusForForecastResponseSerializer(required=False, allow_null=False)
-    hindcast_run = GetStatusForHindcastResponseSerializer(required=False, allow_null=False)
+    hindcast_run = GetStatusForHindcastResponseSerializer(required=True, allow_null=False)
 
 
-class GetVerificationJobListItemSerializer(CommonStatusFieldsMixin, VerificationRunIdSerializer, ForecastOrHindcastRunIdSerializer):
+class GetVerificationJobListItemSerializer(CommonStatusFieldsMixin, VerificationRunIdSerializer, HindcastRunIdSerializer):
     pass
 
 
@@ -1652,12 +1636,11 @@ class GetColdStartJobsForConfigurationResponseSerializer(BaseSerializer):
 ##################################
 
 
-class CreateAndRunVerificationRequestSerializer(ForecastOrHindcastRunIdSerializer):
+class CreateAndRunVerificationRequestSerializer(HindcastRunIdSerializer):
     logging_config = LoggingConfigSerializer(required=False)
 
 
-class CreateAndRunVerificationResponseSerializer(GenericMessageWithIdResponseSerializer, ForecastOrHindcastRunIdSerializer,
-                                                 VerificationRunIdSerializer):
+class CreateAndRunVerificationResponseSerializer(GenericMessageWithIdResponseSerializer, HindcastRunIdSerializer, VerificationRunIdSerializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum, allow_blank=False)], required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
 

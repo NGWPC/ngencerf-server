@@ -49,6 +49,7 @@ class ActiveDirectoryAuthenticationError(Exception):
     """Raised when LDAP authentication fails or returned data is invalid."""
     pass
 
+
 class ActiveDirectoryServiceBindError(Exception):
     """
     Raised when the LDAP service account cannot bind to Active Directory.
@@ -58,6 +59,7 @@ class ActiveDirectoryServiceBindError(Exception):
 
 class ActiveDirectoryAuthorizationError(Exception):
     """Raised when the user authenticated successfully but lacks access."""
+
     def __init__(
             self,
             message: str,

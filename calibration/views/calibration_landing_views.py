@@ -308,7 +308,7 @@ def delete_jobs(request: Request) -> Response:
         })
 
     job_summaries = create_job_summaries(job_results)
-    
+
     response = {"jobs": job_results, "summaries": job_summaries}
 
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
@@ -591,7 +591,7 @@ def archive_jobs(request: Request) -> Response:
                 "message_type": "error"
             })
             continue
-    
+
     job_summaries = create_job_summaries(job_results)
 
     response = {"jobs": job_results, "summaries": job_summaries}
@@ -686,9 +686,9 @@ def lock_jobs(request: Request) -> Response:
             "success": True,
             "message_type": "success"
         })
-    
+
     job_summaries = create_job_summaries(job_results)
-        
+
     response = {"jobs": job_results, "summaries": job_summaries}
 
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
@@ -860,12 +860,19 @@ def delete_tree_with_retries(path: str, attempts: int = 3, delay_seconds: float 
                 errno.EBUSY,
             }
 
-            failed_path = getattr(exc, 'filename', None)
-            full_failed_path = (
-                os.path.join(path, failed_path)
-                if failed_path and not os.path.isabs(failed_path)
-                else failed_path or path
-            )
+            failed_filename = exc.filename
+
+            if failed_filename is None:
+                full_failed_path = path
+            else:
+                # OSError.filename may be either str or bytes.
+                failed_path = os.fsdecode(failed_filename)
+
+                full_failed_path = (
+                    failed_path
+                    if os.path.isabs(failed_path)
+                    else os.path.join(path, failed_path)
+                )
 
             is_nfs_placeholder = os.path.basename(full_failed_path).startswith('.nfs')
 
@@ -939,7 +946,7 @@ def create_job_summaries(job_results: list) -> list:
     :return: A list of summary messages, each with message_type "success", "warning", or "error".
     """
     jobs_grouped = defaultdict(list)
-    
+
     for job in job_results:
         message = job["message"]
 
@@ -976,9 +983,10 @@ def create_job_summaries(job_results: list) -> list:
         else:
             ids_text = f"{', '.join(ids[:-1])} and {ids[-1]}"
 
-        if len(ids) > 1:
-            remainder_message = summary["message"]
+        remainder_message = summary["message"]
+        assert isinstance(remainder_message, str)
 
+        if len(ids) > 1:
             replacements = {
                 "has": "have",
                 "is": "are",
@@ -992,8 +1000,6 @@ def create_job_summaries(job_results: list) -> list:
                     remainder_message,
                     flags=re.IGNORECASE,
                 )
-        else:
-            remainder_message = summary["message"]
 
         summary["message"] = (
             f"Calibration Job{'s' if len(ids) > 1 else ''} "
@@ -1002,5 +1008,5 @@ def create_job_summaries(job_results: list) -> list:
 
         # Remove calibration_run_ids from the final response
         del summary["calibration_run_ids"]
-    
+
     return job_summaries
