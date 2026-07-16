@@ -18,6 +18,7 @@ import requests
 import tabulate
 
 from ngencerf.cli_config import get_ngencerf_base_url
+from ngencerf.cli_legacy_conversion import convert_legacy_job_data, save_converted_job_data
 from ngencerf.cli_util import check_http_error
 
 
@@ -598,11 +599,22 @@ def update_and_get_gage_status(gage_id: str, is_active: bool | None = None) -> i
     return 0
 
 
-def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None = None, run_after_import: bool | None = None) -> int:
+def _submit_job_data(
+        job_file: str,
+        action: str,
+        calibration_run_id: int | None = None,
+        run_after_import: bool | None = None
+) -> int:
     """
     Submits job data to the import or update endpoint.
 
+    Legacy job files containing top-level calibration_times and
+    validation_times, but no time_controls, are converted to the current
+    format before being sent to the server. The converted JSON is also
+    saved beside the original file.
+
     :param job_file: Path to the JSON file
+    :param action: Description of the action being performed
     :param calibration_run_id: Optional calibration_run_id for update
     :param run_after_import: Optional override for the run_after_import field
     :return: 0 on success, 1 on failure
@@ -618,13 +630,49 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
         print(f"Error decoding JSON file {job_file}: {e}")
         return 1
 
+    if not isinstance(job_data, dict):
+        print(
+            f"Error: The root value in {job_file} must be a JSON object"
+        )
+        return 1
+
+    # Convert legacy time fields to the current import format.
+    try:
+        job_data, conversion_messages = convert_legacy_job_data(
+            job_data
+        )
+    except ValueError as e:
+        print(f"Error converting legacy job file: {e}")
+        return 1
+
+    if conversion_messages:
+        print(
+            "Legacy calibration job format detected. "
+            "The file will be converted before import:"
+        )
+        for message in conversion_messages:
+            print(f"  - {message}")
+
     # Override the run_after_import field if specified
     if run_after_import is not None:
         print(f"Overriding run_after_import: {run_after_import}")
         job_data["run_after_import"] = run_after_import
 
+    # Save the transformed JSON beside the original legacy file.
+    if conversion_messages:
+        try:
+            converted_path = save_converted_job_data(
+                job_file,
+                job_data,
+            )
+        except OSError as e:
+            print(f"Error saving converted job file: {e}")
+            return 1
+
+        print(f"Converted job saved to: {converted_path}\n")
+
     # Build the payload
-    payload = {"data": job_data}
+    payload: dict[str, Any] = {"data": job_data}
     if calibration_run_id is not None:
         payload["calibration_run_id"] = calibration_run_id
 
@@ -680,18 +728,18 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
     # Print all collected errors and warnings
     if combined_errors:
         print("Errors:")
-        for e in combined_errors:
-            print("  ", e)
+        for error in combined_errors:
+            print("  ", error)
 
     if combined_warnings:
         print("Warnings:")
-        for w in combined_warnings:
-            print("  ", w)
+        for warning in combined_warnings:
+            print("  ", warning)
 
     if info_messages:
         print("Info:")
-        for w in info_messages:
-            print("  ", w)
+        for message in info_messages:
+            print("  ", message)
 
     return 0
 
@@ -819,32 +867,53 @@ def _pretty_print_job(calibration_run_id: int, data: dict) -> None:
     """
     Prints selected fields from the exported calibration job in a structured format.
 
-    :param calibration_run_id: ID of the calibration run
-    :param data: Exported job data
+    :param calibration_run_id: ID of the calibration run.
+    :param data: Exported job data.
     """
 
     def fmt(dt: str | None) -> str:
         """
         Formats an ISO timestamp string in GMT (UTC) to 'YYYY-MM-DD HH:MM'.
-        Handles optional 'Z' or '+00:00' suffixes.
 
-        :param dt: ISO timestamp string
-        :return: Formatted timestamp
+        Handles timestamps ending in Z or containing a UTC offset.
+
+        :param dt: ISO timestamp string.
+        :return: Formatted timestamp, or "-" when unset.
         """
         if not dt:
             return "-"
-        dt = dt.replace("Z", "").split("+")[0]  # strip 'Z' or '+00:00'
+
+        normalized = dt.replace("Z", "+00:00")
+
         try:
-            return datetime.fromisoformat(dt).strftime("%Y-%m-%d %H:%M")
+            return datetime.fromisoformat(normalized).strftime(
+                "%Y-%m-%d %H:%M"
+            )
         except ValueError:
             return dt  # fallback: return original if parsing fails
 
-    cal_times = data.get("calibration_times", {})
-    val_times = data.get("validation_times", {})
+    def fmt_months(value: int | None) -> str:
+        """
+        Format a duration expressed in months.
+
+        :param value: Number of months.
+        :return: Formatted month duration, or "-" when unset.
+        """
+        if value is None:
+            return "-"
+
+        return f"{value} month{'s' if value != 1 else ''}"
+
     metadata = data.get("metadata", {})
+    calibration_times = metadata.get("calibration_times", {})
+    validation_times = metadata.get("validation_times", {})
+    time_controls = data.get("time_controls", {})
 
     print()
-    print(f"Calibration Job ID {metadata.get('source_calibration_run_id', calibration_run_id)}")
+    print(
+        f"Calibration Job ID "
+        f"{metadata.get('source_calibration_run_id', calibration_run_id)}"
+    )
     print(f"Status: {metadata.get('source_status')}")
     print(f"Job Data directory: {metadata.get('job_data_dir')}")
     print(f"Gage: {data.get('gage_id')}")
@@ -860,15 +929,69 @@ def _pretty_print_job(calibration_run_id: int, data: dict) -> None:
     print()
 
     print(f"{'Calibration Run':<50}{'Validation Run'}")
-    print(f"{'Sim Start:':<25}{fmt(cal_times.get('simulation_start_time')):<25}Sim Start: {fmt(val_times.get('simulation_start_time'))}")
-    print(f"{'Sim End:':<25}{fmt(cal_times.get('simulation_end_time')):<25}Sim End:   {fmt(val_times.get('simulation_end_time'))}")
-    print(f"{'Calib Start:':<25}{fmt(cal_times.get('calibration_start_time')):<25}Val Start: {fmt(val_times.get('validation_start_time'))}")
-    print(f"{'Calib End:':<25}{fmt(cal_times.get('calibration_end_time')):<25}Val End:   {fmt(val_times.get('validation_end_time'))}")
+    print(
+        f"{'Sim Start:':<25}"
+        f"{fmt(calibration_times.get('simulation_start_time')):<25}"
+        f"Sim Start: {fmt(validation_times.get('simulation_start_time'))}"
+    )
+    print(
+        f"{'Sim End:':<25}"
+        f"{fmt(calibration_times.get('simulation_end_time')):<25}"
+        f"Sim End:   {fmt(validation_times.get('simulation_end_time'))}"
+    )
+    print(
+        f"{'Calib Start:':<25}"
+        f"{fmt(calibration_times.get('calibration_start_time')):<25}"
+        f"Val Start: {fmt(validation_times.get('validation_start_time'))}"
+    )
+    print(
+        f"{'Calib End:':<25}"
+        f"{fmt(calibration_times.get('calibration_end_time')):<25}"
+        f"Val End:   {fmt(validation_times.get('validation_end_time'))}"
+    )
+    print()
+
+    validation_after = time_controls.get(
+        "validation_window_after_calibration"
+    )
+
+    if validation_after is True:
+        validation_position = "After calibration"
+    elif validation_after is False:
+        validation_position = "Before calibration"
+    else:
+        validation_position = "-"
+
+    print("Time Controls:")
+    print(
+        f"  Simulation Start: "
+        f"{fmt(time_controls.get('simulation_start_time'))}"
+    )
+    print(
+        f"  Warmup Duration: "
+        f"{fmt_months(time_controls.get('warmup_duration'))}"
+    )
+    print(
+        f"  Calibration Duration: "
+        f"{fmt_months(time_controls.get('calibration_duration'))}"
+    )
+    print(
+        f"  Validation Window Gap: "
+        f"{fmt_months(time_controls.get('validation_window_gap'))}"
+    )
+    print(f"  Validation Window: {validation_position}")
+    print(
+        f"  Validation Duration: "
+        f"{fmt_months(time_controls.get('validation_duration'))}"
+    )
     print()
 
     print(f"Optimization Algorithm: {data.get('optimization')}")
     print(f"Objective Function: {data.get('objective_function')}")
-    print(f"Plot Generation Frequency: {data.get('save_plot_iteration_frequency')}")
+    print(
+        f"Plot Generation Frequency: "
+        f"{data.get('save_plot_iteration_frequency')}"
+    )
     print()
 
     print(f"Tuning Parameters: {len(data.get('parameters', []))}")
