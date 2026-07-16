@@ -18,6 +18,7 @@ import requests
 import tabulate
 
 from ngencerf.cli_config import get_ngencerf_base_url
+from ngencerf.cli_legacy_conversion import convert_legacy_job_data, save_converted_job_data
 from ngencerf.cli_util import check_http_error
 
 
@@ -598,11 +599,22 @@ def update_and_get_gage_status(gage_id: str, is_active: bool | None = None) -> i
     return 0
 
 
-def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None = None, run_after_import: bool | None = None) -> int:
+def _submit_job_data(
+        job_file: str,
+        action: str,
+        calibration_run_id: int | None = None,
+        run_after_import: bool | None = None
+) -> int:
     """
     Submits job data to the import or update endpoint.
 
+    Legacy job files containing top-level calibration_times and
+    validation_times, but no time_controls, are converted to the current
+    format before being sent to the server. The converted JSON is also
+    saved beside the original file.
+
     :param job_file: Path to the JSON file
+    :param action: Description of the action being performed
     :param calibration_run_id: Optional calibration_run_id for update
     :param run_after_import: Optional override for the run_after_import field
     :return: 0 on success, 1 on failure
@@ -618,13 +630,49 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
         print(f"Error decoding JSON file {job_file}: {e}")
         return 1
 
+    if not isinstance(job_data, dict):
+        print(
+            f"Error: The root value in {job_file} must be a JSON object"
+        )
+        return 1
+
+    # Convert legacy time fields to the current import format.
+    try:
+        job_data, conversion_messages = convert_legacy_job_data(
+            job_data
+        )
+    except ValueError as e:
+        print(f"Error converting legacy job file: {e}")
+        return 1
+
+    if conversion_messages:
+        print(
+            "Legacy calibration job format detected. "
+            "The file will be converted before import:"
+        )
+        for message in conversion_messages:
+            print(f"  - {message}")
+
     # Override the run_after_import field if specified
     if run_after_import is not None:
         print(f"Overriding run_after_import: {run_after_import}")
         job_data["run_after_import"] = run_after_import
 
+    # Save the transformed JSON beside the original legacy file.
+    if conversion_messages:
+        try:
+            converted_path = save_converted_job_data(
+                job_file,
+                job_data,
+            )
+        except OSError as e:
+            print(f"Error saving converted job file: {e}")
+            return 1
+
+        print(f"Converted job saved to: {converted_path}\n")
+
     # Build the payload
-    payload = {"data": job_data}
+    payload: dict[str, Any] = {"data": job_data}
     if calibration_run_id is not None:
         payload["calibration_run_id"] = calibration_run_id
 
@@ -680,18 +728,18 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
     # Print all collected errors and warnings
     if combined_errors:
         print("Errors:")
-        for e in combined_errors:
-            print("  ", e)
+        for error in combined_errors:
+            print("  ", error)
 
     if combined_warnings:
         print("Warnings:")
-        for w in combined_warnings:
-            print("  ", w)
+        for warning in combined_warnings:
+            print("  ", warning)
 
     if info_messages:
         print("Info:")
-        for w in info_messages:
-            print("  ", w)
+        for message in info_messages:
+            print("  ", message)
 
     return 0
 
