@@ -142,8 +142,7 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
 # The dev image only needs the Python EWTS runtime. The native EWTS
 # libraries and ngen integration are built only in the production image.
 ARG EWTS_CACHE_BUST=1
-RUN --mount=type=cache,target=/root/.cache/cmake,id=cmake-ewts-bookworm \
-    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
     set -eux && \
     echo "EWTS cache bust: ${EWTS_CACHE_BUST}" && \
     ewts_dir="$(mktemp -d)" && \

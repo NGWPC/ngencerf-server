@@ -78,7 +78,8 @@ def _load_git_info_internal() -> dict[str, dict[str, str]]:
     The function performs the following steps:
       1. Clears and recreates the temporary ``git_info`` directory under
          ``BASE_DIR``.
-      2. Copies the local server and nwm-msw-mgr Git-information files into it.
+      2. Copies the local server, nwm-msw-mgr and nwm-data-assimilation
+         Git-information files into it.
       3. Extracts Git-information files from:
            - nwm-cal-mgr, including ngen and ngen-bmi-forcing metadata
            - nwm-fcst-mgr
@@ -126,6 +127,19 @@ def _load_git_info_internal() -> dict[str, dict[str, str]]:
     dest_git_info = os.path.join(
         git_info_directory,
         "nwm-msw-mgr_git_info.json",
+    )
+    if os.path.exists(src_git_info):
+        copy_file(src_git_info, dest_git_info)
+
+    # Copy the nwm-data-assimilation Git-information file into the temporary
+    # merge directory.
+    src_git_info = os.path.join(
+        base_dir,
+        "nwm-data-assimilation_git_info.json",
+    )
+    dest_git_info = os.path.join(
+        git_info_directory,
+        "nwm-data-assimilation_git_info.json",
     )
     if os.path.exists(src_git_info):
         copy_file(src_git_info, dest_git_info)
