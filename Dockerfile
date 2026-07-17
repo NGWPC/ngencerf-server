@@ -1,8 +1,12 @@
+# syntax=docker/dockerfile:1.4
+
 ############################################################################
 # Change/Verify these values when adopting this Dockerfile into another org:
 #   GH_ORG, IMAGE_NAMESPACE,
 #   DATA_ASSIMILATION_ORG, DATA_ASSIMILATION_REF,
+#   EWTS_ORG, EWTS_REF,
 #   MSW_MGR_ORG, MSW_MGR_REF,
+#   NGEN_ORG, NGEN_REF,
 #   NGEN_FORCING_ORG, NGEN_FORCING_REF
 ############################################################################
 
@@ -17,10 +21,13 @@ ARG EWTS_ORG=${GH_ORG}
 ARG EWTS_REF=development
 ARG MSW_MGR_ORG=${GH_ORG}
 ARG MSW_MGR_REF=development
+ARG NGEN_ORG=${GH_ORG}
+ARG NGEN_REF=development
 ARG NGEN_FORCING_ORG=${GH_ORG}
 ARG NGEN_FORCING_REF=development
 ############################################################################
 
+# Image selection
 ARG BASE_REPO=rockylinux
 ARG BASE_TAG=8
 
@@ -36,6 +43,8 @@ ARG EWTS_ORG
 ARG EWTS_REF
 ARG MSW_MGR_ORG
 ARG MSW_MGR_REF
+ARG NGEN_ORG
+ARG NGEN_REF
 ARG NGEN_FORCING_ORG
 ARG NGEN_FORCING_REF
 
@@ -52,6 +61,7 @@ ARG IMAGE_REVISION="unknown"
 ARG DATA_ASSIMILATION_REVISION="unknown"
 ARG EWTS_REVISION="unknown"
 ARG MSW_MGR_REVISION="unknown"
+ARG NGEN_REVISION="unknown"
 ARG NGEN_FORCING_REVISION="unknown"
 
 # Image Labels: OCI-spec annotations followed by custom source-repo metadata.
@@ -74,6 +84,9 @@ LABEL org.opencontainers.image.base.name="${BASE_NAME}" \
     io.${IMAGE_NAMESPACE}.msw.mgr.org="${MSW_MGR_ORG}" \
     io.${IMAGE_NAMESPACE}.msw.mgr.ref="${MSW_MGR_REF}" \
     io.${IMAGE_NAMESPACE}.msw.mgr.revision="${MSW_MGR_REVISION}" \
+    io.${IMAGE_NAMESPACE}.ngen.org="${NGEN_ORG}" \
+    io.${IMAGE_NAMESPACE}.ngen.ref="${NGEN_REF}" \
+    io.${IMAGE_NAMESPACE}.ngen.revision="${NGEN_REVISION}" \
     io.${IMAGE_NAMESPACE}.ngen.forcing.org="${NGEN_FORCING_ORG}" \
     io.${IMAGE_NAMESPACE}.ngen.forcing.ref="${NGEN_FORCING_REF}" \
     io.${IMAGE_NAMESPACE}.ngen.forcing.revision="${NGEN_FORCING_REVISION}"
@@ -115,14 +128,19 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     rm -f requirements.txt
 
 # ── EWTS (Error and Warning Trapping System)
+#
+# The dev image only needs the Python EWTS runtime. The native EWTS
+# libraries and ngen integration are built only in the production image.
 ARG EWTS_CACHE_BUST=1
 RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
-    echo "EWTS cache bust: ${EWTS_CACHE_BUST}" && \
     set -eux && \
+    echo "EWTS cache bust: ${EWTS_CACHE_BUST}" && \
     ewts_dir="$(mktemp -d)" && \
-    git clone "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" && \
+    git clone --depth 1 -b "${EWTS_REF}" \
+        "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" \
+     || (git clone "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" && \
+         cd "${ewts_dir}" && git checkout "${EWTS_REF}") && \
     cd "${ewts_dir}" && \
-    git checkout "${EWTS_REF}" && \
     pip install "${ewts_dir}/runtime/python/ewts" && \
     rm -rf "${ewts_dir}"
 
@@ -140,9 +158,11 @@ RUN set -eux && \
 # Should parallel similar functionality in the run_cerf.sh
 COPY .git .git
 
-# Create git_info files for server and nwm-msw-mgr
+# Create git_info files for server, nwm-msw-mgr, and nwm-data-assimilation
 RUN set -eux && \
     # ----- Server git_info -----
+    # Ensure local tag metadata includes all remote tags before creating git_info.
+    git fetch --force --tags origin '+refs/tags/*:refs/tags/*' && \
     # Get the remote URL from Git configuration
     repo_url=$(git config --get remote.origin.url) && \
     # Extract the repo name (everything after the last slash) and remove any trailing .git
@@ -159,7 +179,7 @@ RUN set -eux && \
       --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
       --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
       "{\"$key\": {commit_hash: \$commit_hash, branch: \$branch, tags: \$tags, author: \$author, commit_date: \$commit_date, message: \$message, build_date: \$build_date}}" \
-      > $GIT_INFO_PATH && \
+      > "$GIT_INFO_PATH" && \
     \
     # ----- nwm-msw-mgr git_info -----
     GIT_INFO_PATH="/ngencerf/ngencerf-server/nwm-msw-mgr_git_info.json" && \
@@ -167,12 +187,13 @@ RUN set -eux && \
     git init "$tmpdir" && \
     cd "$tmpdir" && \
     git remote add origin "https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git" && \
+    git fetch --force --tags origin '+refs/tags/*:refs/tags/*' && \
     (git fetch --depth 1 origin "${MSW_MGR_REF}" \
      || git fetch --depth 1 origin "refs/tags/${MSW_MGR_REF}:refs/tags/${MSW_MGR_REF}" \
      || git fetch origin "${MSW_MGR_REF}" \
      || git fetch origin "refs/tags/${MSW_MGR_REF}:refs/tags/${MSW_MGR_REF}") && \
     git checkout FETCH_HEAD && \
-    # detect branch vs tag vs bare SHA for git_info metadata
+    # Detect branch vs tag vs bare SHA for git_info metadata
     branch=$(git branch -r --contains HEAD 2>/dev/null \
              | grep -v '\->' | sed 's|origin/||' | head -n1 | xargs) && \
     branch=${branch:-""} && \
@@ -186,8 +207,39 @@ RUN set -eux && \
       --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
       --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
       '{"nwm-msw-mgr": {commit_hash: $commit_hash, branch: $branch, tags: $tags, author: $author, commit_date: $commit_date, message: $message, build_date: $build_date}}' \
-      > $GIT_INFO_PATH && \
-    cd / && rm -rf "$tmpdir"
+      > "$GIT_INFO_PATH" && \
+    cd / && \
+    rm -rf "$tmpdir" && \
+    \
+    # ----- nwm-data-assimilation git_info -----
+    GIT_INFO_PATH="/ngencerf/ngencerf-server/nwm-data-assimilation_git_info.json" && \
+    tmpdir=$(mktemp -d) && \
+    git init "$tmpdir" && \
+    cd "$tmpdir" && \
+    git remote add origin "https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git" && \
+    git fetch --force --tags origin '+refs/tags/*:refs/tags/*' && \
+    (git fetch --depth 1 origin "${DATA_ASSIMILATION_REF}" \
+     || git fetch --depth 1 origin "refs/tags/${DATA_ASSIMILATION_REF}:refs/tags/${DATA_ASSIMILATION_REF}" \
+     || git fetch origin "${DATA_ASSIMILATION_REF}" \
+     || git fetch origin "refs/tags/${DATA_ASSIMILATION_REF}:refs/tags/${DATA_ASSIMILATION_REF}") && \
+    git checkout FETCH_HEAD && \
+    # Detect branch vs tag vs bare SHA for git_info metadata
+    branch=$(git branch -r --contains HEAD 2>/dev/null \
+             | grep -v '\->' | sed 's|origin/||' | head -n1 | xargs) && \
+    branch=${branch:-""} && \
+    tags=$(git tag --points-at HEAD 2>/dev/null | tr '\n' ' ') && \
+    jq -n \
+      --arg commit_hash "$(git rev-parse HEAD)" \
+      --arg branch "$branch" \
+      --arg tags "$tags" \
+      --arg author "$(git log -1 --pretty=format:'%an')" \
+      --arg commit_date "$(date -u -d @$(git log -1 --pretty=format:'%ct') +'%Y-%m-%d %H:%M:%S UTC')" \
+      --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
+      --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
+      '{"nwm-data-assimilation": {commit_hash: $commit_hash, branch: $branch, tags: $tags, author: $author, commit_date: $commit_date, message: $message, build_date: $build_date}}' \
+      > "$GIT_INFO_PATH" && \
+    cd / && \
+    rm -rf "$tmpdir"
 
 # Remove .git directory
 RUN rm -rf .git
