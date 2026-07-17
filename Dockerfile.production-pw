@@ -1,10 +1,12 @@
+# syntax=docker/dockerfile:1.4
+
 ############################################################################
 # Change/Verify these values when adopting this Dockerfile into another org:
 #   GH_ORG, IMAGE_NAMESPACE,
 #   DATA_ASSIMILATION_ORG, DATA_ASSIMILATION_REF,
 #   EWTS_ORG, EWTS_REF,
 #   MSW_MGR_ORG, MSW_MGR_REF,
-#   NGEN_ORG, NGEN_REF
+#   NGEN_ORG, NGEN_REF,
 #   NGEN_FORCING_ORG, NGEN_FORCING_REF
 ############################################################################
 
@@ -269,9 +271,11 @@ RUN mkdir -p $RDS_CERT_DIR && \
 # Should parallel similar functionality in the run_cerf.sh
 COPY .git .git
 
-# Create git_info files for server and nwm-msw-mgr
+# Create git_info files for server, nwm-msw-mgr, and nwm-data-assimilation
 RUN set -eux && \
     # ----- Server git_info -----
+    # Ensure local tag metadata includes all remote tags before creating git_info.
+    git fetch --force --tags origin '+refs/tags/*:refs/tags/*' && \
     # Get the remote URL from Git configuration
     repo_url=$(git config --get remote.origin.url) && \
     # Extract the repo name (everything after the last slash) and remove any trailing .git
@@ -288,7 +292,7 @@ RUN set -eux && \
       --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
       --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
       "{\"$key\": {commit_hash: \$commit_hash, branch: \$branch, tags: \$tags, author: \$author, commit_date: \$commit_date, message: \$message, build_date: \$build_date}}" \
-      > $GIT_INFO_PATH && \
+      > "$GIT_INFO_PATH" && \
     \
     # ----- nwm-msw-mgr git_info -----
     GIT_INFO_PATH="/ngencerf/ngencerf-server/nwm-msw-mgr_git_info.json" && \
@@ -296,12 +300,13 @@ RUN set -eux && \
     git init "$tmpdir" && \
     cd "$tmpdir" && \
     git remote add origin "https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git" && \
+    git fetch --force --tags origin '+refs/tags/*:refs/tags/*' && \
     (git fetch --depth 1 origin "${MSW_MGR_REF}" \
      || git fetch --depth 1 origin "refs/tags/${MSW_MGR_REF}:refs/tags/${MSW_MGR_REF}" \
      || git fetch origin "${MSW_MGR_REF}" \
      || git fetch origin "refs/tags/${MSW_MGR_REF}:refs/tags/${MSW_MGR_REF}") && \
     git checkout FETCH_HEAD && \
-    # detect branch vs tag vs bare SHA for git_info metadata
+    # Detect branch vs tag vs bare SHA for git_info metadata
     branch=$(git branch -r --contains HEAD 2>/dev/null \
              | grep -v '\->' | sed 's|origin/||' | head -n1 | xargs) && \
     branch=${branch:-""} && \
@@ -315,8 +320,39 @@ RUN set -eux && \
       --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
       --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
       '{"nwm-msw-mgr": {commit_hash: $commit_hash, branch: $branch, tags: $tags, author: $author, commit_date: $commit_date, message: $message, build_date: $build_date}}' \
-      > $GIT_INFO_PATH && \
-    cd / && rm -rf "$tmpdir"
+      > "$GIT_INFO_PATH" && \
+    cd / && \
+    rm -rf "$tmpdir" && \
+    \
+    # ----- nwm-data-assimilation git_info -----
+    GIT_INFO_PATH="/ngencerf/ngencerf-server/nwm-data-assimilation_git_info.json" && \
+    tmpdir=$(mktemp -d) && \
+    git init "$tmpdir" && \
+    cd "$tmpdir" && \
+    git remote add origin "https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git" && \
+    git fetch --force --tags origin '+refs/tags/*:refs/tags/*' && \
+    (git fetch --depth 1 origin "${DATA_ASSIMILATION_REF}" \
+     || git fetch --depth 1 origin "refs/tags/${DATA_ASSIMILATION_REF}:refs/tags/${DATA_ASSIMILATION_REF}" \
+     || git fetch origin "${DATA_ASSIMILATION_REF}" \
+     || git fetch origin "refs/tags/${DATA_ASSIMILATION_REF}:refs/tags/${DATA_ASSIMILATION_REF}") && \
+    git checkout FETCH_HEAD && \
+    # Detect branch vs tag vs bare SHA for git_info metadata
+    branch=$(git branch -r --contains HEAD 2>/dev/null \
+             | grep -v '\->' | sed 's|origin/||' | head -n1 | xargs) && \
+    branch=${branch:-""} && \
+    tags=$(git tag --points-at HEAD 2>/dev/null | tr '\n' ' ') && \
+    jq -n \
+      --arg commit_hash "$(git rev-parse HEAD)" \
+      --arg branch "$branch" \
+      --arg tags "$tags" \
+      --arg author "$(git log -1 --pretty=format:'%an')" \
+      --arg commit_date "$(date -u -d @$(git log -1 --pretty=format:'%ct') +'%Y-%m-%d %H:%M:%S UTC')" \
+      --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
+      --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
+      '{"nwm-data-assimilation": {commit_hash: $commit_hash, branch: $branch, tags: $tags, author: $author, commit_date: $commit_date, message: $message, build_date: $build_date}}' \
+      > "$GIT_INFO_PATH" && \
+    cd / && \
+    rm -rf "$tmpdir"
 
 # Remove .git directory
 RUN rm -rf .git

@@ -23,9 +23,9 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
 
     The function performs the following steps:
       1. Clears and recreates a temporary directory (git_info) in BASE_DIR.
-      2. Copies the local 'ngencerf-server_git_info.json' into this directory.
-      3. For each defined image (ngen, nwm-cal-mgr, ngen-bmi-forcing, nwm-fcst-mgr), it copies its
-         'git_info.json' from Docker (or Singularity) into the directory.
+      2. Copies the local Git information files for ngencerf-server, nwm-msw-mgr, and
+         nwm-data-assimilation into this directory.
+      3. Copies Git information for the remaining components from their Docker or Singularity images.
       4. Iterates over all JSON files in the directory and merges their contents into a single dict.
       5. Transforms each component in the merged data using transform_component().
 
@@ -50,6 +50,12 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
     # Copy our local nwm-msw-mgr_git_info.json into the shared directory.
     src_git_info = os.path.join(base_dir, 'nwm-msw-mgr_git_info.json')
     dest_git_info = os.path.join(git_info_directory, 'nwm-msw-mgr_git_info.json')
+    if os.path.exists(src_git_info):
+        copy_file(src_git_info, dest_git_info)
+
+    # Copy our local nwm-data-assimilation_git_info.json into the shared directory.
+    src_git_info = os.path.join(base_dir, 'nwm-data-assimilation_git_info.json')
+    dest_git_info = os.path.join(git_info_directory, 'nwm-data-assimilation_git_info.json')
     if os.path.exists(src_git_info):
         copy_file(src_git_info, dest_git_info)
 
