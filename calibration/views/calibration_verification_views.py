@@ -73,7 +73,7 @@ def create_and_run_verification_job(request: Request) -> Response:
     # See if we have obs data, which would have been created
     # at the end of the hindcast job
     obs = get_observational_file_for_hindcast(hindcast_run)
-    if obs == None or not os.path.exists(obs):
+    if obs is None or not os.path.exists(obs):
         return ResponseError("Observed streamflow is not available for the full hindcast window.")
 
     verification_run = create_verification_run_internal(hindcast_run)
