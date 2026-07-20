@@ -124,7 +124,10 @@ In addition, copy the directory `module_parameter_files` and all its contents fr
 https://github.com/NGWPC/nwm-msw-mgr/tree/development/src/mswm/module_parameter_files to the `/ngencerf/data/ngen-static-files` directory.
 
 ```
-cd /ngencerf/data/ngen-static-files (for PW, use /ngencerf-app/data/ngen-cal-data/ngen-static-files)
+cd /ngencerf/data/ngen-static-files 
+# for PW, use:
+# cd /ngencerf-app/data/ngen-cal-data/ngen-static-files
+
 rm -rf module_parameter_files
 git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/nwm-msw-mgr.git tmp-nwm-msw-mgr && \
 cd tmp-nwm-msw-mgr && \
@@ -137,7 +140,10 @@ Copy the directory `https://github.com/NGWPC/ngen-forcing/tree/development/NextG
 and all its contents to the `/ngencerf/data/ngen-static-files` directory as `bmi_forcing_templates`
 
 ```
-cd /ngencerf/data/ngen-static-files (for PW, use /ngencerf-app/data/ngen-cal-data/ngen-static-files)
+cd /ngencerf/data/ngen-static-files 
+# For PW, use:
+# cd /ngencerf-app/data/ngen-cal-data/ngen-static-files
+
 rm -rf bmi_forcing_templates
 git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/ngen-forcing.git tmp-ngen-forcing && \
 cd tmp-ngen-forcing && \
@@ -146,18 +152,21 @@ mv NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates ../bmi_forci
 cd .. && rm -rf tmp-ngen-forcing
 ```
 
-From the directory `https://github.com/NGWPC/nwm-eval/tree/development/data/inputs`,
+From the directory `https://github.com/NGWPC/nwm-eval-mgr/tree/development/data/inputs/gage_files`,
 copy only the *.parquet files to the `/ngencerf/data/ngen-static-files/verification_data` directory
 
 ```
-cd /ngencerf/data/ngen-static-files (for PW, use /ngencerf-app/data/ngen-cal-data/ngen-static-files)
+cd /ngencerf/data/ngen-static-files
+# For PW, use:
+# cd /ngencerf-app/data/ngen-cal-data/ngen-static-files
+
 rm -rf verification_data
-git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/nwm-eval.git tmp-ngen-eval && \
-cd tmp-ngen-eval && \
-git sparse-checkout set data/inputs && \
+git clone --depth 1 --filter=blob:none --sparse --branch development https://github.com/NGWPC/nwm-eval-mgr.git tmp-nwm-eval-mgr && \
+cd tmp-nwm-eval-mgr && \
+git sparse-checkout set data/inputs/gage_files && \
 mkdir -p ../verification_data && \
-find data/inputs -type f -name '*.parquet' -exec cp {} ../verification_data/ \; && \
-cd .. && rm -rf tmp-ngen-eval
+find data/inputs/gage_files -type f -name '*.parquet' -exec cp {} ../verification_data/ \; && \
+cd .. && rm -rf tmp-nwm-eval-mgr
 ```
 
 When done, your `ngen-static-files` directory should look something like this
