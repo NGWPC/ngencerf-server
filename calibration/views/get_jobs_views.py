@@ -191,7 +191,7 @@ Read-only execution
 
 import json
 import logging
-from typing import Any, Type, cast, Literal
+from typing import Any, Type, cast, Literal, TypeVar
 
 from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case, Sum, IntegerField, QuerySet, Min, Max
 from django.db.models.functions import Lower
@@ -924,14 +924,21 @@ def get_calibration_gages_for_evaluation(request: Request) -> Response:
 
     domain_name = validator.get("domain_name") or None
     include_archived = validator.get("include_archived")
+    for_comparison = validator.get("for_comparison")
 
     # Domain is optional. If not provided, include gages across all domains.
     gages = get_gages(
         auth_user(request),
-        run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
+        run_status=[
+            StatusEnum.DONE,
+            StatusEnum.FAILED,
+            StatusEnum.CANCELLED,
+            StatusEnum.SERVER_ERROR
+        ],
         require_both_validations_done=True,
         include_archived=include_archived,
-        domain_name=domain_name
+        domain_name=domain_name,
+        minimum_job_count=2 if for_comparison else 1
     )
 
     response = {"gages": gages}
@@ -1104,15 +1111,18 @@ def get_jobs_summary(request: Request) -> Response:
     return Response(response_validator.data)
 
 
+RunType = TypeVar("RunType", bound=BaseRun)
+
+
 def annotate_combined_status(
-        qs: QuerySet[CalibrationRun | ForecastRun | HindcastRun | VerificationRun],
+        qs: QuerySet[RunType],
         *,
         include_status_lower: bool = False,
-) -> QuerySet[CalibrationRun | ForecastRun | HindcastRun | VerificationRun]:
+) -> QuerySet[RunType]:
     """
     Annotate a job queryset with the derived combined_status field.
 
-    This centralizes combined-status computation for the querysets that opt into it.
+    Returns a queryset containing the same model type as the input queryset.
 
     Current usage:
       - Calibration listing endpoints use combined_status for returned status values
@@ -1586,6 +1596,7 @@ def get_gages(
         require_both_validations_done: bool = False,
         include_archived: bool = False,
         domain_name: str | None = None,
+        minimum_job_count: int = 1,
 ) -> list[str]:
     """
     Get distinct non-null gage_ids for the authenticated user's CalibrationRuns.
@@ -1601,14 +1612,15 @@ def get_gages(
     :param include_archived: If True, include archived CalibrationRuns; otherwise exclude them.
                              Default is False so endpoints exclude archived by default.
     :param domain_name: Optional domain name (validated by serializer as a DomainEnum value).
-                   If None, include gages across all domains.
+                        If None, include gages across all domains.
+    :param minimum_job_count: Minimum number of matching CalibrationRuns required for a gage.
     :return: List of distinct gage_id strings.
     """
     with readonly_transaction():
         query = Q(owner=user)
 
         if run_status:
-            query &= Q(status__in=[s.db_instance for s in run_status])
+            query &= Q(status__in=[status.db_instance for status in run_status])
 
         qs = (
             CalibrationRun.objects
@@ -1646,7 +1658,10 @@ def get_gages(
             )
 
         return list(
-            qs.values_list("gage__gage_id", flat=True).distinct()
+            qs.values("gage__gage_id")
+            .annotate(job_count=Count("id"))
+            .filter(job_count__gte=minimum_job_count)
+            .values_list("gage__gage_id", flat=True)
         )
 
 
