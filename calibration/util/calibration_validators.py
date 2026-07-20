@@ -848,6 +848,7 @@ class VerificationSortSerializer(SortSerializer):
 class GetGagesRequestSerializer(BaseSerializer):
     domain_name = serializers.CharField(required=False, allow_blank=True, validators=[enum_validator(DomainEnum)])
     include_archived = serializers.BooleanField(default=False, required=False)
+    for_comparison = serializers.BooleanField(default=False, required=False)
 
 
 class GetGagesResponseSerializer(BaseSerializer):
