@@ -431,6 +431,13 @@ def ngen_register(optional_email: str | None = None) -> int:
     """
     load_ngencerf_env()
 
+    auth_config = get_auth_config()
+
+    if not auth_config.get("allow_self_registration", True):
+        print("Self-registration is disabled for this server.")
+        print("Contact your system administrator if you need access.")
+        return 1
+
     email = optional_email or os.environ.get("NGEN_EMAIL") or os.environ.get("NGEN_USERNAME")
     if not email:
         email = input("Enter a new email for ngenCerf registration: ")
@@ -523,3 +530,29 @@ def _print_recovery_codes(recovery_codes: list[str]) -> None:
         print(f"  {code}")
 
     print()
+
+
+def get_auth_config() -> dict:
+    """
+    Retrieve server authentication configuration.
+
+    This endpoint is unauthenticated and tells the CLI whether public
+    registration and password changes are allowed.
+    """
+    try:
+        response = requests.get(_endpoint("/auth/config/"), timeout=10)
+
+        if response.status_code == 200:
+            response_json = response.json()
+            if isinstance(response_json, dict):
+                return response_json
+
+    except requests.RequestException:
+        pass
+
+    # Conservative fallback for older servers or temporary config endpoint failure.
+    return {
+        "active_directory_enabled": False,
+        "allow_self_registration": True,
+        "allow_password_change": True,
+    }
