@@ -106,8 +106,10 @@ def get_run_owner(run: BaseRun) -> User:
     Return the owner associated with a run.
 
     - CalibrationRun: owner is stored directly on the model.
-    - ValidationRun, ForecastRun, HindcastRun: owner is resolved via calibration_run.
-    - VerificationRun: owner is resolved via parent_run → calibration_run.
+    - ValidationRun, ColdStartRun, ForecastRun, and HindcastRun:
+      owner is resolved through calibration_run.
+    - VerificationRun: owner is resolved through
+      hindcast_run.calibration_run.
 
     :param run: A BaseRun instance.
     :return: The owner of the associated CalibrationRun.
@@ -120,7 +122,7 @@ def get_run_owner(run: BaseRun) -> User:
         return run.calibration_run.owner
 
     if isinstance(run, VerificationRun):
-        return run.parent_run.calibration_run.owner
+        return run.hindcast_run.calibration_run.owner
 
     raise AttributeError(f"Cannot determine owner for run of type {type(run).__name__}")
 

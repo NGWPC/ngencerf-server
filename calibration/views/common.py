@@ -72,12 +72,10 @@ def validate_run_instance(
 
     allowed_statuses = [s.db_instance for s in effective_run_status]
 
-    # Some run types do not reach the archive flag through a single fixed parent.
-    # For example, VerificationRun may need to follow either
-    # `forecast_run__calibration_run__is_archived` or
-    # `hindcast_run__calibration_run__is_archived`. Since these are nested
-    # attribute paths rather than direct attributes on `run`, we use
-    # `get_nested_attr()` to walk each path safely.
+    # Some run types reach the archive flag through a related run rather than
+    # through a direct attribute. Since these are nested attribute paths rather
+    # than direct attributes on `run`, use `get_nested_attr()` to walk each path
+    # safely.
     is_archived = any(get_nested_attr(run, field, False) for field in is_archived_fields)
     if is_archived and not include_archived:
         return ResponseError(
@@ -444,24 +442,12 @@ def get_verification_run(
         verification_run_id,
         user,
         run_status,
-        owner_fields=(
-            'forecast_run__calibration_run__owner',
-            'hindcast_run__calibration_run__owner',
-        ),
-        is_archived_fields=(
-            'forecast_run__calibration_run__is_archived',
-            'hindcast_run__calibration_run__is_archived',
-        ),
+        owner_fields=('hindcast_run__calibration_run__owner',),
+        is_archived_fields=('hindcast_run__calibration_run__is_archived',),
         include_archived=include_archived,
         select_related_fields=(
             'status',
             'performance_metrics',
-            'forecast_run',
-            'forecast_run__status',
-            'forecast_run__performance_metrics',
-            'forecast_run__configuration',
-            'forecast_run__calibration_run',
-            'forecast_run__calibration_run__owner',
             'hindcast_run',
             'hindcast_run__status',
             'hindcast_run__performance_metrics',
@@ -706,25 +692,17 @@ def create_hindcast_run_internal(
     return hindcast_run
 
 
-def create_verification_run_internal(run: ForecastRun | HindcastRun) -> VerificationRun:
+def create_verification_run_internal(hindcast_run: HindcastRun) -> VerificationRun:
     """
-    Create a new VerificationRun for the given ForecastRun or HindcastRun.
+    Create a new VerificationRun for the given HindcastRun.
 
-    - Calls create_verification_input(verification_run) to generate the config
-
-    :param run: Forecast or Hindcast job to associate with this verification run
+    :param hindcast_run: Hindcast job to associate with this verification run.
     :return: New VerificationRun instance.
     """
-    if isinstance(run, ForecastRun):
-        verification_run = VerificationRun.objects.create(
-            status=StatusEnum.SAVED.db_instance,
-            forecast_run=run,
-        )
-    else:
-        verification_run = VerificationRun.objects.create(
-            status=StatusEnum.SAVED.db_instance,
-            hindcast_run=run,
-        )
+    verification_run = VerificationRun.objects.create(
+        status=StatusEnum.SAVED.db_instance,
+        hindcast_run=hindcast_run,
+    )
 
     os.makedirs(get_verification_run_dir(verification_run))
     logger.info(f"Creating {get_job_description(verification_run)}")
@@ -1072,12 +1050,11 @@ def get_job_description(run: BaseRun) -> str:
     elif isinstance(run, ColdStartRun):
         return f"Cold Start Job {run.id} for Calibration Job {run.calibration_run.id}, user: {run.calibration_run.owner.username}"
     elif isinstance(run, VerificationRun):
-        parent_run = run.parent_run
-        parent_job_type = 'Forecast' if run.forecast_run_id is not None else 'Hindcast'
+        hindcast_run = run.hindcast_run
         return (
-            f"Verification Job {run.id} for {parent_job_type} Job {parent_run.id} "
-            f"for Calibration Job {parent_run.calibration_run.id}, "
-            f"user: {parent_run.calibration_run.owner.username}"
+            f"Verification Job {run.id} for Hindcast Job {hindcast_run.id} "
+            f"for Calibration Job {hindcast_run.calibration_run.id}, "
+            f"user: {hindcast_run.calibration_run.owner.username}"
         )
 
     raise ValueError(f"Unknown job type: {type(run).__name__}")

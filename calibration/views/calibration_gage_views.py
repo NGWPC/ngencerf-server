@@ -438,8 +438,6 @@ def reset_gage_dependent_state_on_change(
     if geopackage and os.path.exists(geopackage):
         os.remove(geopackage)
 
-    run.forcing_eds_dir_path = None
-
     # The catchment count is no longer valid when the gage changes.
     run.num_catchments = None
 
