@@ -410,7 +410,7 @@ def resolve_log_context(
             return None, error_return
         assert verification_run is not None
 
-        calibration_run = verification_run.parent_run.calibration_run
+        calibration_run = verification_run.hindcast_run.calibration_run
 
     else:
         # Must be a calibration

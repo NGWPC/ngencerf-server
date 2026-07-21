@@ -592,7 +592,7 @@ def get_status_for_verification(verification_run: VerificationRun, include_perfo
     - Verification timing and status fields
     - Failure messages (if any)
     - Performance metrics (only if requested and job is DONE or FAILED)
-    - A summarized view of the associated ForecastRun or HindcastRun
+    - A summarized view of the associated HindcastRun
 
     All database access is read-only and executed inside a readonly transaction.
 
@@ -601,12 +601,12 @@ def get_status_for_verification(verification_run: VerificationRun, include_perfo
         when the run status allows it.
     :return: A dict suitable for the verification status response serializer.
     """
-    parent_run = verification_run.parent_run
+    hindcast_run = verification_run.hindcast_run
 
     verification_data = {
         'message': f'{get_job_description(verification_run)}, status is {verification_run.status.name}',
         'verification_run_id': verification_run.id,
-        'calibration_run_id': parent_run.calibration_run_id,
+        'calibration_run_id': hindcast_run.calibration_run_id,
         'status': verification_run.status.name,
         'submit_date': verification_run.submit_date,
         'sent_date': verification_run.sent_date,
@@ -629,46 +629,37 @@ def get_status_for_verification(verification_run: VerificationRun, include_perfo
     if verification_metrics:
         verification_data['performance_metrics'] = verification_metrics
 
-    parent_data = {
-        'calibration_run_id': parent_run.calibration_run_id,
-        'status': parent_run.status.name,
-        'configuration': parent_run.configuration.name,
-        'cycle_date': parent_run.cycle_date,
-        'submit_date': parent_run.submit_date,
-        'sent_date': parent_run.sent_date,
-        'run_start': parent_run.run_start,
-        'run_end': parent_run.run_end,
+    hindcast_data = {
+        'calibration_run_id': hindcast_run.calibration_run_id,
+        'hindcast_run_id': hindcast_run.id,
+        'status': hindcast_run.status.name,
+        'configuration': hindcast_run.configuration.name,
+        'cycle_date': hindcast_run.cycle_date,
+        'interval_cycle': hindcast_run.interval_cycle,
+        'num_iterations': hindcast_run.num_iterations,
+        'created_new_cold_start': hindcast_run.created_new_cold_start,
+        'submit_date': hindcast_run.submit_date,
+        'sent_date': hindcast_run.sent_date,
+        'run_start': hindcast_run.run_start,
+        'run_end': hindcast_run.run_end,
     }
 
-    if isinstance(parent_run, ForecastRun):
-        parent_data['forecast_run_id'] = parent_run.id
-    elif isinstance(parent_run, HindcastRun):
-        parent_data['hindcast_run_id'] = parent_run.id
-        parent_data['interval_cycle'] = parent_run.interval_cycle
-        parent_data['num_iterations'] = parent_run.num_iterations
-        parent_data['created_new_cold_start'] = parent_run.created_new_cold_start
-    else:
-        raise TypeError(f"Unexpected verification parent run type: {type(parent_run).__name__}")
+    hindcast_failure_message = normalize_failure_messages(hindcast_run.failure_messages)
+    if hindcast_failure_message:
+        hindcast_data['failure_messages'] = hindcast_failure_message
 
-    parent_failure_message = normalize_failure_messages(parent_run.failure_messages)
-    if parent_failure_message:
-        parent_data['failure_messages'] = parent_failure_message
+    if hindcast_run.run_end and hindcast_run.submit_date:
+        hindcast_data['elapsed_time'] = hindcast_run.run_end - hindcast_run.submit_date
 
-    if parent_run.run_end and parent_run.submit_date:
-        parent_data['elapsed_time'] = parent_run.run_end - parent_run.submit_date
-
-    parent_metrics = (
-        get_performance_metrics(parent_run.performance_metrics)
-        if should_include_metrics(parent_run.status, include_performance_metrics)
+    hindcast_metrics = (
+        get_performance_metrics(hindcast_run.performance_metrics)
+        if should_include_metrics(hindcast_run.status, include_performance_metrics)
         else None
     )
-    if parent_metrics:
-        parent_data['performance_metrics'] = parent_metrics
+    if hindcast_metrics:
+        hindcast_data['performance_metrics'] = hindcast_metrics
 
-    if verification_run.forecast_run_id is not None:
-        verification_data['forecast_run'] = parent_data
-    else:
-        verification_data['hindcast_run'] = parent_data
+    verification_data['hindcast_run'] = hindcast_data
 
     return verification_data
 
