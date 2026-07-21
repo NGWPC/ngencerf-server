@@ -1,5 +1,7 @@
 import ast
 import json
+import sys
+import termios
 
 
 def check_http_error(http_status: int, response: str, content_type: str | None = None, retry_func=None) -> tuple[dict | None, bool]:
@@ -192,3 +194,59 @@ def _pretty_print_json(response: str, suppress_html: bool = False):
         # print only the first 10 lines of non-JSON response
         lines = response.strip().splitlines()
         print("\n".join(lines[:10]) + ("\n..." if len(lines) > 10 else ""))
+
+
+def configure_terminal_backspace() -> None:
+    """
+    Normalize terminal input handling so Backspace works in interactive prompts.
+
+    Some shells, containers, IDE terminals, or exec sessions can leave the TTY
+    in a mode where Backspace is echoed as ^? instead of being handled as an
+    erase character. This restores canonical line editing, enables normal echo,
+    and sets DEL (^?) as the erase character.
+
+    This is best-effort and does nothing when terminal settings cannot be changed.
+    """
+    if termios is None:
+        return
+
+    tty_file = None
+
+    try:
+        if sys.stdin.isatty():
+            terminal = sys.stdin
+        else:
+            try:
+                tty_file = open("/dev/tty", "rb", buffering=0)
+                terminal = tty_file
+            except OSError:
+                return
+
+        attrs = termios.tcgetattr(terminal)
+        cc = attrs[6]
+        current_erase = cc[termios.VERASE]
+
+        # Use DEL (^?) as the erase character.
+        if isinstance(current_erase, int):
+            cc[termios.VERASE] = 0x7f
+        else:
+            cc[termios.VERASE] = b"\x7f"
+
+        # Restore normal cooked/canonical terminal line editing.
+        attrs[3] |= termios.ICANON
+        attrs[3] |= termios.ECHO
+        attrs[3] |= termios.ECHOE
+        attrs[3] |= termios.ECHOK
+
+        # Prevent control characters from being displayed as ^?.
+        if hasattr(termios, "ECHOCTL"):
+            attrs[3] &= ~termios.ECHOCTL
+
+        termios.tcsetattr(terminal, termios.TCSANOW, attrs)
+
+    except Exception:
+        return
+
+    finally:
+        if tty_file is not None:
+            tty_file.close()

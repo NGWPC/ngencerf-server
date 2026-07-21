@@ -25,7 +25,8 @@ from ngencerf.cli_functions import (
     list_jobs,
     download_zip, archive_job, unarchive_job, about, generate_regionalization_files, job_status, update_and_get_gage_status, lock_job, unlock_job,
 )
-from ngencerf.cli_user import ngen_login, ngen_register, create_local_user, change_password
+from ngencerf.cli_user import ngen_login, ngen_register, create_local_user, change_password, get_auth_config
+from ngencerf.cli_util import configure_terminal_backspace
 
 
 class SmartArgumentParser(argparse.ArgumentParser):
@@ -148,6 +149,8 @@ def main():
     Parses command-line arguments, handles authentication,
     and dispatches to the appropriate command handler.
     """
+    configure_terminal_backspace()
+
     parser = SmartArgumentParser(
         prog="ngencerf",
         description="ngencerf CLI tool",
@@ -735,7 +738,13 @@ def main():
     if args.command not in COMMANDS_AUTH_EXEMPT:
         try:
             if not ngen_login():
-                print("Error logging in.  Use 'ngencerf register' to register a new userid")
+                auth_config = get_auth_config()
+
+                if auth_config.get("allow_self_registration"):
+                    print("Error logging in. Use 'ngencerf register' to register a new userid.")
+                else:
+                    print("Error logging in. Your account may not be authorized for this system. Contact your system administrator.")
+
                 sys.exit(1)
         except Exception as e:
             print(f'Error communicating with server - {e}')
