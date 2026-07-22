@@ -564,7 +564,7 @@ NGEN_FORECAST_DOCKER_CMD = (
 
 NWM_EVAL_DOCKER_CMD = (
     f"docker run --rm --name {{name}} "
-    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-eval=mgr"
+    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-eval-mgr"
 )
 
 
