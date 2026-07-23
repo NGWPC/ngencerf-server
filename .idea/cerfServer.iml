@@ -15,7 +15,6 @@
       <excludeFolder url="file://$MODULE_DIR$/.venv-cerf" />
       <excludeFolder url="file://$MODULE_DIR$/logs" />
       <excludeFolder url="file://$MODULE_DIR$/calibration/migrations" />
-      <excludeFolder url="file://$MODULE_DIR$/.venv-cerf_python3.11" />
       <excludeFolder url="file://$MODULE_DIR$/.venv-cerf_python3.12" />
       <excludePattern pattern=".venv*" />
     </content>
