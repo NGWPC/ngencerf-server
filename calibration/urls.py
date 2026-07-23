@@ -19,6 +19,7 @@ urlpatterns = [
     path('calibration/create_and_run_forecast/', calibration_create_jobs_views.create_and_run_forecast, name="createAndRunForecast"),
     path('calibration/create_and_run_hindcast/', calibration_create_jobs_views.create_and_run_hindcast, name="createAndRunHndcast"),
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
+    path('health_check/', calibration_landing_views.health_check, name="healthCheck"),
     path('calibration/get_git_info/', calibration_landing_views.get_git_info, name="getGitInfo"),
     path('calibration/load_calibration_run/', calibration.views.calibration_import_export_views.load_calibration_run, name="loadCalibrationRun"),
     path('calibration/delete_jobs/', calibration_landing_views.delete_jobs, name="deleteJobs"),

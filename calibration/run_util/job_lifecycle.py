@@ -1,81 +1,85 @@
+"""
+Job lifecycle management for Django.
+
+Responsibilities:
+
+- Job preprocessing and preparation
+- Job submission entry point
+- Persisting run state transitions
+- Lifecycle event handling
+- Terminal callback processing
+- Post-processing output files
+- Creating follow-on jobs
+- Finalization and cleanup
+
+Execution backend details are intentionally abstracted away:
+
+- Docker
+    - Development execution path
+
+- Slurm
+    - AWS/HPC execution path
+
+Lifecycle behavior should remain identical regardless of execution backend.
+
+This module answers:
+
+    "What should happen to the run?"
+
+This module does not:
+
+- Build runtime commands
+- Select execution backends
+- Execute Docker or Slurm jobs directly
+"""
+
 import json
 import logging
 import os
-import subprocess
 import time
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Callable, cast
+from typing import TypeVar
 from urllib.parse import urlparse
 
 import fsspec
 import pandas as pd
 from datetimerange import DateTimeRange
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from mswm.manager import build_fcst, build_calib
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, SlurmCallbackStatusEnum
-from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.models.hindcast_run import HindcastRun
+from calibration.run_util.job_submission import cancel_job_request
 from calibration.util.git_util import get_git_info_internal
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
     get_forecast_stdout_file, get_forecast_dir, get_validation_iteration_git_info_file, get_validation_special_git_info_file, \
-    get_calibration_git_info_file, get_forecast_git_info_file,  get_verification_git_info_file, get_forecast_realization_file, \
+    get_calibration_git_info_file, get_forecast_git_info_file, get_verification_git_info_file, get_forecast_realization_file, \
     get_cold_start_realization_file, \
     get_cold_start_stdout_file, get_cold_start_dir, \
     get_cold_start_git_info_file, get_hindcast_stdout_file, get_hindcast_git_info_file, get_hindcast_dir, get_cold_start_state, \
-    get_verification_stdout_file
+    get_verification_stdout_file, get_verification_yaml_config_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, write_ngen_logging_file
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output, \
     read_cold_start_output, read_verification_output, read_hindcast_output
 from calibration.views.forecast_input import create_forecast_input
 from calibration.views.ngen_cal_input import ready_to_run
-from calibration.views.verification_input import create_verification_input
-from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
-# Job registry to store subprocess objects keyed by a unique string (e.g., "calibration_123")
-job_registry: dict[str, subprocess.Popen] = {}
 
-
-def get_job_registry_key(run: BaseRun) -> str:
+def set_job_status(run: BaseRun, status: StatusEnum | None, failure_messages: dict | None = None) -> None:
     """
-    Generate a unique string key for the job registry based on run type.
-
-    Format: "<run_class>_<id>" (all lowercase).
-    Examples:
-      - CalibrationRun(id=123) → "calibrationrun_123"
-      - ValidationRun(id=45)   → "validationrun_45"
-      - ForecastRun(id=67)     → "forecastrun_67"
-      - ForecastForcingDownloadRun(id=89) → "forecastforcingdownloadrun_89"
-
-    :param run: The CalibrationRun, ValidationRun, ForecastRun, or ForecastForcingDownloadRun object.
-    :return: A unique string key for the job registry.
-    """
-    return f"{run.__class__.__name__.lower()}_{run.id}"
-
-
-def set_job_status(run: BaseRun, status: StatusEnum | None, failure_messages: dict = None) -> None:
-    """
-    Update the status and related metadata for a run, and clean up registry state if appropriate.
-
-    Behavior:
-      - If `status` is provided, update the run's status field.
-      - In LOCAL or DOCKER environments:
-          * Clear `slurm_job_id`.
-          * Remove the run from the job registry.
-      - In PW environment: keep the real Slurm job ID.
-      - If `failure_messages` are provided, store them as JSON.
+    Update the persisted run status and optional failure messages.
 
     :param run: The CalibrationRun, ValidationRun, ForecastRun or HindcastRun object.
     :param status: The new status to set. If None, status is left unchanged.
@@ -87,12 +91,6 @@ def set_job_status(run: BaseRun, status: StatusEnum | None, failure_messages: di
         run.status = status.db_instance
         update_fields.append("status")
 
-    # Only clear slurm_job_id for LOCAL/DOCKER
-    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
-        run.slurm_job_id = None
-        update_fields.append("slurm_job_id")
-        job_registry.pop(get_job_registry_key(run), None)
-
     if failure_messages:
         run.failure_messages = json.dumps(failure_messages)
         update_fields.append("failure_messages")
@@ -101,144 +99,100 @@ def set_job_status(run: BaseRun, status: StatusEnum | None, failure_messages: di
         run.save(update_fields=update_fields)
 
 
-def get_run_owner(run: BaseRun) -> User:
+def validate_cmd_args(
+        cmd_line_args: dict[str, str],
+        stdout_file: str
+) -> None:
     """
-    Return the owner associated with a run.
+    Validate job execution payload values.
 
-    - CalibrationRun: owner is stored directly on the model.
-    - ValidationRun, ColdStartRun, ForecastRun, and HindcastRun:
-      owner is resolved through calibration_run.
-    - VerificationRun: owner is resolved through
-      hindcast_run.calibration_run.
+    Payload values must already be normalized to strings before they are passed
+    to the configured execution backend.
 
-    :param run: A BaseRun instance.
-    :return: The owner of the associated CalibrationRun.
-    :raises AttributeError: If the run type is unsupported or ownership cannot be resolved.
-    """
-    if isinstance(run, CalibrationRun):
-        return run.owner
-
-    if isinstance(run, (ValidationRun, ColdStartRun, ForecastRun, HindcastRun)):
-        return run.calibration_run.owner
-
-    if isinstance(run, VerificationRun):
-        return run.hindcast_run.calibration_run.owner
-
-    raise AttributeError(f"Cannot determine owner for run of type {type(run).__name__}")
-
-
-def validate_cmd_args(cmd_line_args: dict[str, str], stdout_file: str) -> None:
-    """
-    Validates the command-line arguments and output file paths for LOCAL and DOCKER environments.
-
-    This function ensures that all arguments passed to subprocess-based commands are valid types
-    (str, bytes, or os.PathLike) and not None. It raises a TypeError if any invalid argument type
-    is encountered, or a ValueError if any argument value is None.
-
-    :param cmd_line_args: A dictionary of command-line arguments where the keys are argument names
-                          and the values are their corresponding values.
-    :param stdout_file: The path to the file where the job's stdout will be written.
-                        It must be a valid path-like object.
-    :raises TypeError: If any argument or the stdout file is not a valid type.
-    :raises ValueError: If any argument value is None.
+    :param cmd_line_args: Command-line arguments keyed by argument name.
+    :param stdout_file: Path to the file where the job's stdout will be written.
+    :raises TypeError: If any argument or stdout_file is not a string.
+    :raises ValueError: If any argument value or stdout_file is None.
     """
 
-    # Define allowed types for clarity
-    allowed_types = (str, bytes, os.PathLike)
-
-    # Validate each argument in the command-line arguments dictionary
+    # Validate each command-line argument value.
     for key, value in cmd_line_args.items():
         if value is None:
             logger.error(f"Argument '{key}' is None, which is not allowed.")
             raise ValueError(f"Command-line argument '{key}' cannot be None.")
 
-        # Check if the value is one of the allowed types
-        if not isinstance(value, allowed_types):
-            # Log the invalid argument with valid type information
+        # Execution payload values must already be normalized...
+        if not isinstance(value, str):
+            value_type = type(value).__name__
+
             logger.error(
-                f"Invalid argument for '{key}': {value} (type: {type(value)}). "
-                f"Expected one of {allowed_types}."
+                f"Invalid argument for '{key}': {value} (type: {value_type}). "
+                "The value must be a string before submitting to the execution backend."
             )
-            # Raise a TypeError with details about the invalid argument
+
             raise TypeError(
-                f"Invalid argument for '{key}': {value} (type: {type(value)}). "
-                f"Expected one of {allowed_types}."
+                f"Invalid argument for '{key}': {value} (type: {value_type}). "
+                "The value must be a string before submitting to the execution backend."
             )
 
-    # Validate the stdout file path to ensure it's a valid type
-    if not isinstance(stdout_file, allowed_types):
-        # Log the invalid stdout file path with valid type information
+    if stdout_file is None:
+        logger.error("stdout_file is None, which is not allowed.")
+        raise ValueError("stdout_file cannot be None.")
+
+    # stdout_file must also be normalized to a string path.
+    if not isinstance(stdout_file, str):
+        stdout_file_type = type(stdout_file).__name__
+
         logger.error(
-            f"Invalid stdout_file: {stdout_file} (type: {type(stdout_file)}). "
-            f"Expected one of {allowed_types}."
+            f"Invalid stdout_file: {stdout_file} (type: {stdout_file_type}). "
+            "The stdout_file value must be a string path."
         )
-        # Raise a TypeError with details about the invalid stdout file path
+
         raise TypeError(
-            f"Invalid stdout_file: {stdout_file} (type: {type(stdout_file)}). "
-            f"Expected one of {allowed_types}."
+            f"Invalid stdout_file: {stdout_file} (type: {stdout_file_type}). "
+            "The stdout_file value must be a string path."
         )
 
 
-def execute_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str, simulate: bool = False) -> None:
+def queue_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str) -> None:
     """
-    Execute a job based on the configured NGEN environment.
+    Submit a job through the configured execution backend.
 
-    This function dynamically calls the appropriate job execution function
-    based on the environment (LOCAL, DOCKER, or PARALLEL_WORKS).
+    The execution backend may be:
+
+    - Docker
+    - Slurm
 
     :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.).
     :param cmd_line_args: A dictionary of command-line arguments for the job.
     :param stdout_file: The path to the file where the job's stdout will be written.
-    :param simulate: For LOCAL or DOCKER jobs, if True, simulates successful execution without running a real job.
-    :raises CerfException: If the environment is unsupported.
     """
-    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
-        # Validate for LOCAL and DOCKER environments
-        validate_cmd_args(cmd_line_args, stdout_file)
+    from calibration.run_util.job_submission import submit_job_request
 
-        from calibration.run_util.run_ngen_cal_local import run_job_local
-        run_job_local(run, cmd_line_args, stdout_file, simulate=simulate)
-    elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
-        from calibration.run_util.run_ngen_cal_pw import submit_job_to_slurm
-        # Resolve owner dynamically for the Slurm submission
-        try:
-            owner = get_run_owner(run)  # Use the utility function
-        except AttributeError as e:
-            raise CerfException(f"Error retrieving owner for run {run.id}: {str(e)}")
-        submit_job_to_slurm(run, owner, cmd_line_args, stdout_file)
-    else:
-        raise CerfException(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")
+    validate_cmd_args(cmd_line_args, stdout_file)
+
+    submit_job_request(run, cmd_line_args, stdout_file)
 
     run.sent_date = datetime.now(timezone.utc)
-    run.save(update_fields=['sent_date'])
+    run.save(update_fields=["sent_date"])
 
 
 def cancel_job_common(run: BaseRun) -> bool:
     """
-    Cancel a job using the appropriate environment-specific logic.
+    Cancel a job through the configured execution backend.
 
-    This function handles job cancellation for LOCAL, DOCKER, and PARALLEL_WORKS environments.
+    For Docker, cancellation targets the running container.
+    For Slurm, cancellation requires the persisted slurm_job_id.
 
-    :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
-    :return: True if the job was successfully canceled; False otherwise.
+    :param run: The run object to cancel.
+    :return: True if the cancellation request succeeded.
     """
-    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
-        from calibration.run_util.run_ngen_cal_local import cancel_local_job
-        return cancel_local_job(run)
-    elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
-        from calibration.run_util.run_ngen_cal_pw import cancel_slurm_job
-        return cancel_slurm_job(run)
-    else:
-        logger.error(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")
-        return False
+    return cancel_job_request(run)
 
 
 def run_calibration_job(calibration_run: CalibrationRun) -> None:
     """
-    Start a calibration job by determining input and output file paths.
-
-    This function is intended to be passed as an argument to `submit_job`
-    and not called directly.
+    Queue a calibration job after resolving its input and output files.
 
     :param calibration_run: The CalibrationRun object representing the job.
     :raises CerfException: If the input file does not exist.
@@ -246,28 +200,25 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
     input_file = get_calibration_input_file(calibration_run)
     if not os.path.exists(input_file):
         raise CerfException(
-            f"Input file '{input_file}' does not exist for Calibration Job {calibration_run.id}, user: {calibration_run.owner.username}"
+            f"Input file '{input_file}' does not exist for Calibration Job {calibration_run.id}, "
+            f"user: {calibration_run.owner.username}"
         )
 
     stdout_file = get_calibration_stdout_file(calibration_run)
 
-    execute_job(
+    queue_job(
         calibration_run,
         {
-            'input_file': input_file,
-            'nprocs': str(calibration_run.mpi_nprocs)
+            "input_file": input_file,
+            "nprocs": str(calibration_run.mpi_nprocs),
         },
         stdout_file,
-        simulate=settings.SIMULATE_FLAGS.get(JobType.CALIBRATION, False)
     )
 
 
 def run_validation_job(validation_run: ValidationRun) -> None:
     """
-    Start a validation job by determining input and output file paths.
-
-    This function is intended to be passed as an argument to `submit_job`
-    and not called directly.
+    Queue a validation job after resolving its input and output files.
 
     :param validation_run: The ValidationRun object representing the job.
     :raises CerfException: If the input file does not exist.
@@ -281,7 +232,11 @@ def run_validation_job(validation_run: ValidationRun) -> None:
     else:
         # Regular validation
         input_file = get_calibration_input_file(validation_run.calibration_run)
-        stdout_file = get_validation_iteration_stdout_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
+        stdout_file = get_validation_iteration_stdout_file(
+            validation_run.calibration_run,
+            validation_run.worker_name,
+            validation_run.iteration_num
+        )
 
     if not os.path.exists(input_file):
         raise CerfException(
@@ -289,26 +244,22 @@ def run_validation_job(validation_run: ValidationRun) -> None:
             f"user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}"
         )
 
-    cmd_line_args = {'input_file': input_file}
+    cmd_line_args = {
+        "input_file": input_file,
+        "nprocs": str(validation_run.calibration_run.mpi_nprocs),
+    }
+
     if validation_run.validation_type == ValidationType.VALID_ITERATION.value:
-        # For running local, we need to leave these out
-        cmd_line_args['worker_name'] = validation_run.worker_name
-        cmd_line_args['iteration_num'] = str(validation_run.iteration_num)
-    cmd_line_args['nprocs'] = str(validation_run.calibration_run.mpi_nprocs)
-    execute_job(
-        validation_run,
-        cmd_line_args,
-        stdout_file,
-        simulate=settings.SIMULATE_FLAGS.get(JobType.VALIDATION, False)
-    )
+        # Validation iteration jobs include worker and iteration information.
+        cmd_line_args["worker_name"] = validation_run.worker_name
+        cmd_line_args["iteration_num"] = str(validation_run.iteration_num)
+
+    queue_job(validation_run, cmd_line_args, stdout_file)
 
 
 def run_cold_start_job(cold_start_run: ColdStartRun) -> None:
     """
-    Start a cold start job by determining input and output file paths.
-
-    This function is intended to be passed as an argument to `submit_job`
-    and not called directly.
+    Queue a cold start job after resolving its input and output files.
 
     :param cold_start_run: The ColdStartRun object representing the job.
     """
@@ -317,26 +268,23 @@ def run_cold_start_job(cold_start_run: ColdStartRun) -> None:
         raise CerfException(
             f"Input file '{validation_yaml}' does not exist for {get_job_description(cold_start_run)}"
         )
+
     realization_file = get_cold_start_realization_file(cold_start_run)
     stdout_file = get_cold_start_stdout_file(cold_start_run)
 
-    execute_job(
+    queue_job(
         cold_start_run,
         {
-            'validation_yaml': validation_yaml,
-            'realization_file': realization_file
+            "validation_yaml": validation_yaml,
+            "realization_file": realization_file,
         },
         stdout_file,
-        simulate=settings.SIMULATE_FLAGS.get(JobType.COLD_START, False)
     )
 
 
 def run_forecast_job(forecast_run: ForecastRun) -> None:
     """
-    Start a forecast job by determining input and output file paths.
-
-    This function is intended to be passed as an argument to `submit_job`
-    and not called directly.
+    Queue a forecast job after resolving its input and output files.
 
     :param forecast_run: The ForecastRun object representing the job.
     """
@@ -345,26 +293,23 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
         raise CerfException(
             f"Input file '{validation_yaml}' does not exist for {get_job_description(forecast_run)}"
         )
+
     realization_file = get_forecast_realization_file(forecast_run)
     stdout_file = get_forecast_stdout_file(forecast_run)
 
-    execute_job(
+    queue_job(
         forecast_run,
         {
-            'validation_yaml': validation_yaml,
-            'realization_file': realization_file
+            "validation_yaml": validation_yaml,
+            "realization_file": realization_file,
         },
         stdout_file,
-        simulate=settings.SIMULATE_FLAGS.get(JobType.FORECAST, False)
     )
 
 
 def run_hindcast_job(hindcast_run: HindcastRun) -> None:
     """
-    Start a hindcast job by determining input and output file paths.
-
-    This function is intended to be passed as an argument to `submit_job`
-    and not called directly.
+    Queue a hindcast job after resolving its input and output files.
 
     :param hindcast_run: The HindcastRun object representing the job.
     """
@@ -381,18 +326,17 @@ def run_hindcast_job(hindcast_run: HindcastRun) -> None:
         # Issue an explicit error for legacy Cold Start runs that might not have a saved state
         raise RuntimeError(f'Saved state not found for cold start run {get_job_description(hindcast_run)}')
 
-    execute_job(
+    queue_job(
         hindcast_run,
         {
-            'validation_yaml': validation_yaml,
-            'config_file': create_forecast_input(hindcast_run),
-            'run_name': os.path.basename(get_hindcast_dir(hindcast_run)),
-            'interval_cycle': str(hindcast_run.interval_cycle),
-            'num_iterations': str(hindcast_run.num_iterations),
-            'use_state': cold_start_state
+            "validation_yaml": validation_yaml,
+            "config_file": create_forecast_input(hindcast_run),
+            "run_name": os.path.basename(get_hindcast_dir(hindcast_run)),
+            "interval_cycle": str(hindcast_run.interval_cycle),
+            "num_iterations": str(hindcast_run.num_iterations),
+            "use_state": cold_start_state,
         },
         stdout_file,
-        simulate=settings.SIMULATE_FLAGS.get(JobType.HINDCAST, False)
     )
 
 
@@ -407,30 +351,29 @@ def run_verification_job(verification_run: VerificationRun) -> None:
     """
     stdout_file = get_verification_stdout_file(verification_run)
 
-    execute_job(
+    queue_job(
         verification_run,
         {
-            'verification_config': create_verification_input(verification_run),
+            "verification_config": get_verification_yaml_config_file(verification_run),
         },
         stdout_file,
-        simulate=settings.SIMULATE_FLAGS.get(JobType.VERIFICATION, False)
     )
 
 
-def submit_job(run: BaseRun, logging_config=None) -> Response | None:
+def launch_job(run: BaseRun, logging_config=None) -> Response | None:
     """
-    Submits a job by setting initial metadata and dispatching it to the appropriate execution function.
+    Prepare the job, mark it SUBMITTED, and submit it to the configured backend.
 
-    - Sets the submission timestamp and updates the job status to 'SUBMITTED'.
-    - For CalibrationRun, performs additional preprocessing, validation, and input generation.
-    - Selects the appropriate job runner based on the job type (calibration, validation, forecast, etc.).
-    - For each run type, a git info file is created prior to execution.
-    - If an error occurs during submission, the job status is set to 'FAILED' and the error is logged.
+    - Sets the submission timestamp and updates the job status to SUBMITTED.
+    - Performs preprocessing for run types that require it.
+    - Writes git info before execution.
+    - Dispatches execution to Docker or Slurm.
+    - If submission fails, marks the run as FAILED and records the error.
 
-    :param run: A CalibrationRun, ValidationRun, ForecastRun, or VerificationRun object.
-    :param logging_config: Optional logging configuration to use when creating calibration job logs.
-    :return: None if successful; a DRF Response object if the job is not ready or fails preprocessing.
-    :raises CerfException: If the run type is unsupported or job execution fails.
+    :param run: Run object to submit.
+    :param logging_config: Optional logging configuration for calibration-related jobs.
+    :return: None if successful; a DRF Response if preprocessing returns an error response.
+    :raises CerfException: If the run type is unsupported or job execution setup fails.
     """
     if isinstance(run, CalibrationRun):
         # Before we attempt to submit, make sure it's ready
@@ -442,7 +385,7 @@ def submit_job(run: BaseRun, logging_config=None) -> Response | None:
         # Set submission date and status
         run.submit_date = datetime.now(timezone.utc)
         run.status = StatusEnum.SUBMITTED.db_instance
-        run.save(update_fields=['submit_date', 'status'])
+        run.save(update_fields=["submit_date", "status"])
 
     try:
         # Do pre-processing for certain jobs
@@ -452,14 +395,15 @@ def submit_job(run: BaseRun, logging_config=None) -> Response | None:
             if response:
                 if fatal:
                     failure_message = {
-                        'validation_errors': response.data.get("validation_errors"),
-                        'errors': response.data.get("errors"),
+                        "validation_errors": response.data.get("validation_errors"),
+                        "errors": response.data.get("errors"),
                     }
 
                     run.status = StatusEnum.FAILED.db_instance
                     run.failure_messages = json.dumps(failure_message)
-                    run.save(update_fields=['status', 'failure_messages'])
+                    run.save(update_fields=["status", "failure_messages"])
                 return response
+
         elif isinstance(run, (ColdStartRun, ForecastRun)):
             write_ngen_logging_file(run, logging_config)
             _, _ = prepare_fcst_or_cold_start_job(run)
@@ -493,17 +437,14 @@ def submit_job(run: BaseRun, logging_config=None) -> Response | None:
             run_verification_job(run)
         else:
             raise CerfException(f"Unsupported run type: {type(run).__name__}")
+
     except Exception as e:
         # Handle failures by marking the job as FAILED
         run.status = StatusEnum.FAILED.db_instance
-
-        msg = f'Exception submitting {get_job_description(run)} - {str(e)}'
+        msg = f"Exception submitting {get_job_description(run)} - {str(e)}"
         logger.exception(msg)
-        failure_messages = {'message': msg}
-        run.failure_messages = json.dumps(failure_messages)
-
-        run.save(update_fields=['status', 'failure_messages'])
-
+        run.failure_messages = json.dumps({"message": msg})
+        run.save(update_fields=["status", "failure_messages"])
         raise  # Re-raise the exception
 
     logger.info(f"{get_job_description(run)} successfully submitted.")
@@ -514,7 +455,7 @@ def create_git_info(git_info_file: str) -> None:
     logger.info(f"Writing git info to {git_info_file}")
     git_info_data = get_git_info_internal()
     os.makedirs(os.path.dirname(git_info_file), exist_ok=True)
-    with open(git_info_file, 'w') as f:
+    with open(git_info_file, "w") as f:
         f.write(json.dumps(git_info_data, indent=4))
 
 
@@ -546,13 +487,6 @@ def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Resp
     job_description = get_job_description(calibration_run)
     try:
         logger.info(f'Final preparation to run Calibration Job {calibration_run.id}')
-        # validation_errors = final_preprocessing_for_calibration(calibration_run)
-        #
-        # if validation_errors:
-        #     return True, ResponseError(
-        #         f'Calibration Job {calibration_run.id} failed validation after preprocessing',
-        #         errors=validation_errors
-        #     )
 
         logger.info(f'Running build_calib for {job_description} with config {config_file}')
         build_calib(config_file)
@@ -618,7 +552,7 @@ def create_and_submit_validation_control(calibration_run: CalibrationRun) -> Non
     :param calibration_run: The CalibrationRun object for which the validation control run is created.
     """
     validation_run = create_validation_run_internal(calibration_run, None, validation_type=ValidationType.VALID_CONTROL)
-    submit_job(validation_run)
+    launch_job(validation_run)
 
 
 def process_validation_output_and_maybe_create_best(validation_run: ValidationRun, failed_so_far: bool) -> None:
@@ -672,44 +606,56 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
             # Set the iteration containing the best values before we run it
             best_validation_run.iteration = iteration
             best_validation_run.save(update_fields=['iteration'])
-            submit_job(best_validation_run)
+            launch_job(best_validation_run)
 
     transaction.on_commit(_finish)
 
 
+T = TypeVar("T", bound=BaseRun)
+
+
 def run_generic_job_end_callback(
-        run: BaseRun,
-        status: Future | SlurmCallbackStatusEnum,
-        check_if_failed: Callable[[BaseRun, Future | SlurmCallbackStatusEnum], bool],
-        finalize_func: Callable[[BaseRun, bool], None]
+        run: T,
+        status: SlurmCallbackStatusEnum,
+        check_if_failed: Callable[[T, SlurmCallbackStatusEnum], bool],
+        finalize_func: Callable[[T, bool], None],
 ) -> None:
     """
     Generic callback function for handling job completion.
 
-    :param run: The job object (CalibrationRun, ValidationRun, or ForecastRun) representing the job.
-    :param status: The job's completion status. This can be:
-        - A `Future` object (for Local environments)
-        - A `SlurmStatusEnum` value (for Parallel Works environments)
-    :param check_if_failed: Function to check job status based on the environment.
-    :param finalize_func: Function to execute finalization logic specific to the job type.
+    :param run: The job object (CalibrationRun, ValidationRun, ForecastRun,
+        HindcastRun, ColdStartRun, or VerificationRun) representing the job.
+    :param status: The job completion status reported by the execution backend.
+        This can be:
+        - A `SlurmCallbackStatusEnum` value (for Slurm callbacks)
+        - A mapped `SlurmCallbackStatusEnum` value from Docker lifecycle events
+    :param check_if_failed: Function that evaluates the terminal callback
+        status and determines whether the job should be considered failed
+        or cancelled.
+    :param finalize_func: Function to execute run-type-specific finalization
+        logic after status handling has completed.
     """
-    # TODO Clean up some of the handlers so that we handle the exceptions here instead of the individual handlers
     job_description = get_job_description(run)
+
     try:
-        logger.info(f"Job end callback received for {job_description} with status{status}")
+        logger.info(
+            f"Job end callback received for {job_description} "
+            f"with status {status}"
+        )
 
         run.run_end = datetime.now(timezone.utc)
         run.save(update_fields=["run_end"])
 
         failed_so_far = check_if_failed(run, status)
 
-        # Execute finalization logic
+        # Execute job-specific finalization after status handling.
         finalize_func(run, failed_so_far)
 
     except Exception as e:
         msg = f"Exception occurred during job end callback for {job_description}: {str(e)}"
         logger.exception(msg)
-        failure_messages = {'message': msg}
+        failure_messages = {"message": msg}
+
         try:
             set_job_status(run, StatusEnum.FAILED, failure_messages)
         except Exception:
@@ -814,7 +760,7 @@ def finalize_cold_start_after_callback(run: ColdStartRun, failed_so_far: bool) -
 
     dependent_run = forecast_run or hindcast_run
     if dependent_run:
-        submit_job(dependent_run)
+        launch_job(dependent_run)
 
 
 def finalize_forecast_after_callback(run: ForecastRun, failed_so_far: bool) -> None:
@@ -866,38 +812,6 @@ def finalize_verification_after_callback(run: VerificationRun, failed_so_far: bo
     if failed_so_far:
         return
     set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
-
-
-# def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
-#     """
-#     Executes the long-running preparation steps for the given CalibrationRun.
-#     Assumes that all prerequisites (paths, date ranges) have been validated.
-#
-#     :param run: The CalibrationRun to process.
-#     :return: List of validation error messages.
-#     """
-#     errors: list[str] = []
-#
-#     date_range = DateTimeRange(
-#         min(run.calibration_start_period, run.validation_start_period),
-#         max(run.calibration_end_period, run.validation_end_period),
-#     )
-#
-#     # use_bmi = should_use_bmi_forcing(run)
-#
-#     # ─────────────────────────────────────────────────────────────
-#     # Forcing data
-#     # ─────────────────────────────────────────────────────────────
-#     # Subset only CSV data, not BMI
-#     # if not use_bmi:
-#     #     subset_directory_by_time_range(
-#     #         run,
-#     #         run.forcing_eds_dir_path,
-#     #         get_forcing_dir_for_job(run),
-#     #         date_range
-#     #     )
-#
-#     return errors
 
 
 def _get_fs_and_scheme(path_or_url: str):
@@ -1167,3 +1081,214 @@ def get_performance_chunksize(file_path: str) -> int:
 
     optimal = int(est_rows * target_fraction)
     return max(10_000, min(optimal, 100_000))
+
+
+_CALLBACK_MAP: dict[type[BaseRun], Callable[..., None]] = {
+    CalibrationRun: finalize_calibration_after_callback,
+    ValidationRun: finalize_validation_after_callback,
+    ColdStartRun: finalize_cold_start_after_callback,
+    ForecastRun: finalize_forecast_after_callback,
+    HindcastRun: finalize_hindcast_after_callback,
+    VerificationRun: finalize_verification_after_callback,
+}
+
+
+def persist_slurm_job_id(run: BaseRun, slurm_job_id: int) -> None:
+    """
+    Persist the Slurm job ID for an asynchronously acknowledged submission.
+
+    Rules:
+    - If no slurm_job_id is stored yet, save it.
+    - If the same slurm_job_id is already stored, treat as idempotent/no-op.
+    - If a different slurm_job_id is already stored, raise an error.
+    """
+    job_description = get_job_description(run)
+
+    if run.slurm_job_id is None:
+        run.slurm_job_id = slurm_job_id
+        run.save(update_fields=["slurm_job_id"])
+        logger.info(
+            f"{job_description} submission acknowledged with slurm_job_id={slurm_job_id}"
+        )
+        return
+
+    if run.slurm_job_id == slurm_job_id:
+        logger.info(
+            f"{job_description} received duplicate submission acknowledgement "
+            f"for slurm_job_id={slurm_job_id}"
+        )
+        return
+
+    raise ValueError(
+        f"{job_description} already has slurm_job_id={run.slurm_job_id}, "
+        f"but callback reported slurm_job_id={slurm_job_id}"
+    )
+
+
+def check_slurm_callback_failed(
+        run: BaseRun,
+        status: SlurmCallbackStatusEnum,
+) -> bool:
+    """
+    Return True if the callback reports a terminal failure/cancel state.
+    """
+    if status == SlurmCallbackStatusEnum.DONE:
+        return False
+
+    if status == SlurmCallbackStatusEnum.CANCELED:
+        run.status = StatusEnum.CANCELLED.db_instance
+        run.save(update_fields=["status"])
+        return True
+
+    if status == SlurmCallbackStatusEnum.FAILED:
+        run.status = StatusEnum.FAILED.db_instance
+        run.save(update_fields=["status"])
+        return True
+
+    raise ValueError(f"Unsupported terminal callback status: {status}")
+
+
+def run_calibration_job_callback(run: CalibrationRun, status: SlurmCallbackStatusEnum) -> None:
+    run_generic_job_end_callback(
+        run,
+        status,
+        check_slurm_callback_failed,
+        finalize_calibration_after_callback,
+    )
+
+
+def run_validation_job_callback(run: ValidationRun, status: SlurmCallbackStatusEnum) -> None:
+    run_generic_job_end_callback(
+        run,
+        status,
+        check_slurm_callback_failed,
+        finalize_validation_after_callback,
+    )
+
+
+def run_cold_start_job_callback(run: ColdStartRun, status: SlurmCallbackStatusEnum) -> None:
+    run_generic_job_end_callback(
+        run,
+        status,
+        check_slurm_callback_failed,
+        finalize_cold_start_after_callback,
+    )
+
+
+def run_forecast_job_callback(run: ForecastRun, status: SlurmCallbackStatusEnum) -> None:
+    run_generic_job_end_callback(
+        run,
+        status,
+        check_slurm_callback_failed,
+        finalize_forecast_after_callback,
+    )
+
+
+def run_hindcast_job_callback(run: HindcastRun, status: SlurmCallbackStatusEnum) -> None:
+    run_generic_job_end_callback(
+        run,
+        status,
+        check_slurm_callback_failed,
+        finalize_hindcast_after_callback,
+    )
+
+
+def run_verification_job_callback(run: VerificationRun, status: SlurmCallbackStatusEnum) -> None:
+    run_generic_job_end_callback(
+        run,
+        status,
+        check_slurm_callback_failed,
+        finalize_verification_after_callback,
+    )
+
+
+def handle_job_event(
+        job_type: str,
+        run_id: int,
+        job_status: SlurmCallbackStatusEnum,
+        slurm_job_id: int | None = None,
+) -> None:
+    """
+    Shared lifecycle handler used by:
+
+    - Slurm callback endpoints
+    - Docker executor
+
+    Handles state transitions and prevents duplicate/out-of-order callbacks.
+    """
+
+    callback_map = {
+        "calibration": (CalibrationRun, run_calibration_job_callback),
+        "validation": (ValidationRun, run_validation_job_callback),
+        "cold_start": (ColdStartRun, run_cold_start_job_callback),
+        "forecast": (ForecastRun, run_forecast_job_callback),
+        "hindcast": (HindcastRun, run_hindcast_job_callback),
+        "verification": (VerificationRun, run_verification_job_callback),
+    }
+
+    try:
+        model_class, callback_func = callback_map[job_type]
+    except KeyError:
+        raise ValueError(f"Unsupported job_type: {job_type}")
+
+    # STARTING is valid only from SUBMITTED; terminal callbacks are accepted from
+    # SUBMITTED as well as RUNNING to tolerate jobs that finish before STARTING is observed.
+    expected_statuses = (
+        [StatusEnum.SUBMITTED]
+        if job_status == SlurmCallbackStatusEnum.STARTING
+        else [StatusEnum.SUBMITTED, StatusEnum.RUNNING]
+    )
+
+    expected_db_statuses = [
+        s.db_instance
+        for s in expected_statuses
+    ]
+
+    run = (
+        model_class.objects
+        .select_related("status")
+        .filter(
+            id=run_id,
+            status__in=expected_db_statuses,
+        )
+        .first()
+    )
+
+    # Duplicate or late callbacks should not re-run finalization.
+    if run is None:
+        logger.warning(
+            "Ignoring callback for job_type=%s run_id=%s status=%s "
+            "(run already transitioned)",
+            job_type,
+            run_id,
+            job_status,
+        )
+        return
+
+    if slurm_job_id is not None:
+        persist_slurm_job_id(run, slurm_job_id)
+
+    if job_status == SlurmCallbackStatusEnum.STARTING:
+        logger.info(
+            "%s is starting",
+            get_job_description(run),
+        )
+
+        run.status = StatusEnum.RUNNING.db_instance
+        run.run_start = datetime.now(timezone.utc)
+
+        run.save(
+            update_fields=[
+                "status",
+                "run_start",
+            ]
+        )
+        return
+
+    logger.info(
+        "%s is ending with status=%s",
+        get_job_description(run),
+        job_status,
+    )
+
+    callback_func(run, job_status)

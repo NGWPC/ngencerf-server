@@ -11,9 +11,8 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
-from calibration.enums_vanilla import JobType
-from calibration.run_util.run_common import submit_job
+from calibration.enums import StatusEnum, JobType
+from calibration.run_util.job_lifecycle import launch_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, \
     CreateAndRunVerificationRequestSerializer, CreateAndRunVerificationResponseSerializer, \
     GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, \
@@ -64,6 +63,8 @@ def create_and_run_verification_job(request: Request) -> Response:
     hindcast_run_id = validator.get('hindcast_run_id')
     logging_config = validator.get('logging_config')
 
+    assert isinstance(hindcast_run_id, int)
+
     hindcast_run, error_return = get_hindcast_run(hindcast_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
@@ -78,7 +79,7 @@ def create_and_run_verification_job(request: Request) -> Response:
 
     verification_run = create_verification_run_internal(hindcast_run)
 
-    error_response = submit_job(verification_run, logging_config=logging_config)
+    error_response = launch_job(verification_run, logging_config=logging_config)
     if error_response:
         return error_response
 
@@ -138,6 +139,7 @@ def get_verification_plot_names(request: Request) -> Response:
         return error_return
 
     verification_run_id = validator.get('verification_run_id')
+    assert isinstance(verification_run_id, int)
 
     run, error_return = get_verification_run(
         verification_run_id,
@@ -232,6 +234,7 @@ def get_verification_plot(request: Request) -> Response:
         return error_return
 
     verification_run_id = validator.get('verification_run_id')
+    assert isinstance(verification_run_id, int)
 
     plot_name = validator.get('plot_name')
 
@@ -314,6 +317,7 @@ def delete_verification_job(request: Request) -> Response:
         return error_return
 
     verification_run_id = validator.get('verification_run_id')
+    assert isinstance(verification_run_id, int)
 
     run, error_return = get_verification_run(verification_run_id, request.user, run_status=list(StatusEnum))
     if error_return:

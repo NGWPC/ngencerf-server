@@ -35,9 +35,10 @@ def _get_bundled_cli_git_info() -> dict:
     except Exception as e:
         return {
             "ngencerf-cli": {
-                "release": "unknown",
-                "build_date": "unknown",
                 "commit_hash": "unknown",
+                "branch": "<unknown>",
+                "tags": "",
+                "build_date": "unknown",
                 "commit_date": "unknown",
                 "author": "unknown",
                 "message": f"Unable to read embedded CLI git info: {e}",
@@ -157,6 +158,7 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
     parsed_or_none, ok = check_http_error(
         first_resp.status_code,
         first_resp.text,
+        first_resp.url,
         first_resp.headers.get("Content-Type")
     )
 
@@ -185,6 +187,7 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
             _ = check_http_error(
                 retry_resp.status_code,
                 retry_resp.text,
+                retry_resp.url,
                 retry_resp.headers.get("Content-Type")
             )
             return None, False
@@ -217,7 +220,7 @@ def about(output_path: str | None = None) -> int:
     if not success or not isinstance(response_json, dict):
         return 1
 
-    cli_git_info = _get_bundled_cli_git_info()
+    cli_git_info = _get_transformed_bundled_cli_git_info()
 
     if "git_info" not in response_json or not isinstance(response_json["git_info"], dict):
         response_json["git_info"] = {}
@@ -228,6 +231,19 @@ def about(output_path: str | None = None) -> int:
         json.dump(response_json, f, indent=2)
 
     print(f"ngenCerf 'about' info saved to {final_path}")
+    return 0
+
+
+def version() -> int:
+    """
+    Display local CLI version/build information without contacting the server.
+
+    Returns:
+        int: Exit code 0.
+    """
+    cli_git_info = _get_transformed_bundled_cli_git_info()
+
+    print(json.dumps(cli_git_info, indent=2))
     return 0
 
 
@@ -1204,3 +1220,61 @@ class Spinner:
             self.thread.join()
         sys.stdout.write(" \n")
         sys.stdout.flush()
+
+
+def _transform_git_info_component(component_git_info: dict) -> dict[str, str]:
+    """
+    Transform raw Git metadata into the same display format used by the server.
+
+    Rules:
+      - Always include release, build_date, and commit_hash.
+      - If tags is non-empty, use tags as release.
+      - If tags is empty, use dev (<branch>) as release and include
+        commit_date, author, and message when available.
+
+    :param component_git_info: Raw Git metadata for one component.
+    :return: Transformed Git metadata for display/output.
+    """
+    transformed: dict[str, str] = {}
+
+    tags = component_git_info.get("tags", "").strip()
+
+    if tags:
+        transformed["release"] = tags
+    else:
+        transformed["release"] = f"dev ({component_git_info.get('branch', '<unknown>')})"
+
+    transformed["build_date"] = component_git_info.get("build_date", "")
+    transformed["commit_hash"] = component_git_info.get("commit_hash", "")
+
+    if not tags:
+        if "commit_date" in component_git_info:
+            transformed["commit_date"] = component_git_info.get("commit_date", "")
+        if "author" in component_git_info:
+            transformed["author"] = component_git_info.get("author", "")
+        if "message" in component_git_info:
+            transformed["message"] = component_git_info.get("message", "")
+
+    return transformed
+
+
+def _transform_git_info(git_info: dict) -> dict[str, dict[str, str]]:
+    """
+    Transform all bundled CLI Git metadata into the same display format used
+    by the server.
+
+    :param git_info: Raw Git metadata keyed by component name.
+    :return: Transformed Git metadata keyed by component name.
+    """
+    return {
+        key: _transform_git_info_component(value)
+        for key, value in git_info.items()
+        if isinstance(value, dict)
+    }
+
+
+def _get_transformed_bundled_cli_git_info() -> dict[str, dict[str, str]]:
+    """
+    Return transformed CLI Git metadata bundled into the PyInstaller executable.
+    """
+    return _transform_git_info(_get_bundled_cli_git_info())

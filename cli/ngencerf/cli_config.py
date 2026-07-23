@@ -3,7 +3,7 @@ import json
 import os
 
 ENV_FILE = os.path.join(os.path.expanduser("~"), ".ngencerf_env")
-DEFAULT_NGENCERF_BASE_URL = "http://localhost:8000"
+DEFAULT_NGENCERF_BASE_URL = "http://localhost:8000/api"
 NGENCERF_BASE_URL_KEY = "NGENCERF_BASE_URL"
 
 
@@ -134,8 +134,9 @@ def normalize_server_url(base_url: str) -> str:
     """
     Normalize and validate a server URL.
 
-    Removes surrounding whitespace and trailing slashes, and validates
-    that the URL starts with either http:// or https://.
+    Removes surrounding whitespace and trailing slashes, validates
+    that the URL starts with either http:// or https://, and ensures
+    the URL ends with '/api'.
 
     :param base_url: Raw server URL.
     :return: Normalized server URL.
@@ -145,6 +146,10 @@ def normalize_server_url(base_url: str) -> str:
 
     if not base_url.startswith(("http://", "https://")):
         raise ValueError("Server URL must start with http:// or https://")
+
+    if not base_url.endswith("/api"):
+        base_url += "/api"
+
     return base_url
 
 

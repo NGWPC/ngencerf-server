@@ -73,10 +73,12 @@ class ActiveDirectoryBackend(ModelBackend):
         local_user = User.objects.filter(email__iexact=email).first()
         local_user = cast(CustomUser | None, local_user)
 
-        if local_user and local_user.is_local_only:
-            logger.debug(
-                "Skipping AD auth for local-only user: email=%s",
+        if local_user and (local_user.is_local_only or local_user.is_superuser):
+            logger.info(
+                "Skipping AD auth for local Django user: email=%s is_local_only=%s is_superuser=%s",
                 email,
+                local_user.is_local_only,
+                local_user.is_superuser,
             )
             return None
 
@@ -207,12 +209,13 @@ class ActiveDirectoryBackend(ModelBackend):
         return user
 
 
-class LocalUserBackup(ModelBackend):
+class LocalUserBackend(ModelBackend):
     """
-    Allow local Django superuser login as an emergency fallback.
+    Allow local Django password authentication for local-only users and
+    fallback superusers.
 
-    When AD is enabled, this backend blocks ordinary local users and only allows
-    non-AD-managed superusers to authenticate with their Django password.
+    When AD is enabled, this backend blocks ordinary local users and blocks
+    AD-managed users from authenticating with their Django password.
     """
 
     def authenticate(self, request, username=None, password=None, **kwargs):
@@ -242,9 +245,19 @@ class LocalUserBackup(ModelBackend):
             return None
 
         if user.is_local_only:
+            logger.info(
+                "Allowed local-only password login: user_id=%s email=%s",
+                user.id,
+                user.email,
+            )
             return user
 
         if user.is_superuser:
+            logger.info(
+                "Allowed fallback superuser password login: user_id=%s email=%s",
+                user.id,
+                user.email,
+            )
             return user
 
         logger.warning(

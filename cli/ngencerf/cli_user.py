@@ -141,6 +141,7 @@ def perform_full_login(_retry: bool = False) -> bool:
         check_http_error(
             response.status_code,
             response.text,
+            response.url,
             response.headers.get("Content-Type"),
         )
         print(f"Login failed with HTTP {response.status_code}. Check the configured server URL: {get_ngencerf_base_url()}")
@@ -170,6 +171,7 @@ def perform_full_login(_retry: bool = False) -> bool:
             check_http_error(
                 setup_resp.status_code,
                 setup_resp.text,
+                setup_resp.url,
                 setup_resp.headers.get("Content-Type"),
             )
             return False
@@ -207,6 +209,7 @@ def perform_full_login(_retry: bool = False) -> bool:
             check_http_error(
                 confirm_resp.status_code,
                 confirm_resp.text,
+                confirm_resp.url,
                 confirm_resp.headers.get("Content-Type"),
             )
             return False
@@ -241,6 +244,7 @@ def perform_full_login(_retry: bool = False) -> bool:
             check_http_error(
                 verify_resp.status_code,
                 verify_resp.text,
+                verify_resp.url,
                 verify_resp.headers.get("Content-Type"),
             )
             return False
@@ -292,6 +296,7 @@ def create_local_user(optional_email: str | None = None) -> int:
     response_json, success = check_http_error(
         response.status_code,
         response.text,
+        response.url,
         response.headers.get("Content-Type"),
     )
 
@@ -353,6 +358,7 @@ def change_password(target_email: str | None = None) -> int:
     response_json, success = check_http_error(
         response.status_code,
         response.text,
+        response.url,
         response.headers.get("Content-Type"),
     )
 
@@ -408,7 +414,10 @@ def refresh_access_token() -> bool:
     response = requests.post(_endpoint("/auth/jwt/refresh"), json=payload)
 
     if response.status_code != 200:
-        print(f"Refresh failed with status {response.status_code}: {response.text}")
+        print(
+            f"Refresh failed with status {response.status_code} "
+            f"for URL: {response.url}. Response: {response.text}"
+        )
         return False
 
     response_json = response.json()
@@ -456,7 +465,12 @@ def ngen_register(optional_email: str | None = None) -> int:
     }
 
     response = requests.post(_endpoint("/auth/users/"), json=payload)
-    _, success = check_http_error(response.status_code, response.text)
+    _, success = check_http_error(
+        response.status_code,
+        response.text,
+        response.url,
+        response.headers.get("Content-Type"),
+    )
 
     if success:
         print(f"User '{email}' registered successfully.")

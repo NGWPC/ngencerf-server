@@ -168,17 +168,44 @@ else
 fi
 
 #=======================================================================
-# Validate RUN_CERF_FLAG_DIRECTORY
+# Validate and create RUN_CERF_FLAG_DIRECTORY
 #   Ordering prerequisite:
 #     - Must happen before any code that writes marker files into it:
-#         * SHA markers (.mswm.sha, .data_assimilation_engine.sha)
+#         * SHA markers (.mswm.sha, .data_assimilation_engine.sha, .ewts.sha)
 #         * gage flags/fingerprints (.load_gages, .gages_fingerprint)
+#
+# Docker requirement:
+#   - When running in Docker, this directory must already exist on the
+#     persistent host or mounted volume before the container starts.
+#   - Creating it only inside the container does not make it persistent,
+#     so marker files would be lost when the container is replaced.
+#
+# Ordering prerequisite:
+#   - Must happen before any code that writes marker files into it:
+#       * SHA markers (.mswm.sha, .data_assimilation_engine.sha, .ewts.sha)
+#       * gage flags/fingerprints (.load_gages, .gages_fingerprint)
 #=======================================================================
 if [ -z "${RUN_CERF_FLAG_DIRECTORY}" ]; then
     echo "WARNING: RUN_CERF_FLAG_DIRECTORY is not set in cerfserver.env; defaulting to ./"
     RUN_CERF_FLAG_DIRECTORY="./"
 fi
+
+# Remove a trailing slash. For "./", this produces ".".
 RUN_CERF_FLAG_DIRECTORY="${RUN_CERF_FLAG_DIRECTORY%/}"
+
+if ! mkdir -p "$RUN_CERF_FLAG_DIRECTORY"; then
+    echo "ERROR: Could not create RUN_CERF_FLAG_DIRECTORY:"
+    echo "    $RUN_CERF_FLAG_DIRECTORY"
+    exit 1
+fi
+
+if [ ! -d "$RUN_CERF_FLAG_DIRECTORY" ]; then
+    echo "ERROR: RUN_CERF_FLAG_DIRECTORY is not a directory:"
+    echo "    $RUN_CERF_FLAG_DIRECTORY"
+    exit 1
+fi
+
+echo "Using runCerf flag directory: $RUN_CERF_FLAG_DIRECTORY"
 
 #=======================================================================
 # Bootstrap logging (MUST happen before any run_manage_command calls)
@@ -201,8 +228,6 @@ exec > >(tee -a "$LOGFILE_DEV") 2>&1
 #     - Must be defined before store_gages_fingerprint is ever called.
 #=======================================================================
 CERF_GAGES_FPRINT="${RUN_CERF_FLAG_DIRECTORY}/.gages_fingerprint"
-echo "Gages fingerprint $CERF_GAGES_FPRINT"
-[ -e "$CERF_GAGES_FPRINT" ] && ls -al "$CERF_GAGES_FPRINT"
 
 #=======================================================================
 # Function: check_aws_credentials_early
@@ -769,18 +794,31 @@ fi
 #=======================================================================
 # Init data handling
 #   - '--load-gages' or missing marker => unconditional init_gages
-#   - Else compare fingerprint and conditionally run init_gages
+#   - Otherwise compare the stored and current fingerprints
 #=======================================================================
 GAGE_DATA_FLAG_FILE="${RUN_CERF_FLAG_DIRECTORY}/.load_gages"
 
-# Only load gage data if the flag is provided or the flag file doesn't exist
-# But we will also load gage data if the hash code detects that it has changed
-if [ "$LOAD_GAGE_DATA" = true ] || [ ! -f "$GAGE_DATA_FLAG_FILE" ]; then
-    echo
-    echo "Loading ngenCERF gage data"
+echo
+echo --------------------------------------------------------
 
-    echo
-    echo --------------------------------------------------------
+# Only load gage data if the flag is provided or the flag file doesn't exist.
+# Also reload gage data if the input fingerprint has changed.
+if [ "$LOAD_GAGE_DATA" = true ]; then
+    echo "Running init_gages because --load-gages was specified."
+
+    run_init_gages_and_store ""
+    status=$?
+
+    if [ $status -ne 0 ]; then
+        echo "init_gages failed with exit code $status"
+        exit $status
+    fi
+
+    touch "$GAGE_DATA_FLAG_FILE"
+
+elif [ ! -f "$GAGE_DATA_FLAG_FILE" ]; then
+    echo "Running init_gages because the load-gages marker does not exist."
+
     # Unconditional run in this branch
     run_init_gages_and_store ""
     status=$?
@@ -791,44 +829,48 @@ if [ "$LOAD_GAGE_DATA" = true ] || [ ! -f "$GAGE_DATA_FLAG_FILE" ]; then
     fi
 
     touch "$GAGE_DATA_FLAG_FILE"
+
 else
-    echo
-    echo --------------------------------------------------------
     # Auto-run init_gages if inputs changed; if hashing fails, run to be safe.
     if FP_NOW="$(compute_gages_fingerprint)"; then
         if [ ! -f "$CERF_GAGES_FPRINT" ]; then
-            echo "No prior gage fingerprint found; running init_gages..."
+            echo "Running init_gages because no stored gage fingerprint exists."
+
             run_init_gages_and_store "$FP_NOW"
             status=$?
+
             if [ $status -ne 0 ]; then
                 echo "init_gages failed with exit code $status"
                 exit $status
             fi
-
         else
             read -r FP_OLD < "$CERF_GAGES_FPRINT" || FP_OLD=""
+
             if [ "$FP_NOW" != "$FP_OLD" ]; then
-                echo "Gage inputs changed; running init_gages..."
+                echo "Running init_gages because the gage fingerprint changed."
+
                 run_init_gages_and_store "$FP_NOW"
                 status=$?
+
                 if [ $status -ne 0 ]; then
                     echo "init_gages failed with exit code $status"
                     exit $status
                 fi
-
             else
-                echo "Gage inputs unchanged; skipping init_gages."
+                echo "Gage fingerprint matches; skipping init_gages."
             fi
         fi
     else
-        echo "Fingerprinting failed. Running init_gages to be safe…"
+        echo "WARNING: Could not compute the gage fingerprint."
+        echo "Running init_gages to be safe."
+
         run_init_gages_and_store ""
         status=$?
+
         if [ $status -ne 0 ]; then
             echo "init_gages failed with exit code $status"
             exit $status
         fi
-
     fi
 fi
 

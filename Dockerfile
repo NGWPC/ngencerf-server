@@ -25,11 +25,13 @@ ARG NGEN_ORG=${GH_ORG}
 ARG NGEN_REF=development
 ARG NGEN_FORCING_ORG=${GH_ORG}
 ARG NGEN_FORCING_REF=development
+
+############################################################################
+# Image selection
 ############################################################################
 
-# Image selection
-ARG BASE_REPO=rockylinux
-ARG BASE_TAG=8
+ARG BASE_REPO=python
+ARG BASE_TAG=3.12-slim-bookworm
 
 FROM ${BASE_REPO}:${BASE_TAG}
 
@@ -93,38 +95,46 @@ LABEL org.opencontainers.image.base.name="${BASE_NAME}" \
 
 # Install build and runtime dependencies
 RUN set -eux && \
-    dnf install -y yum-utils epel-release && \
-    dnf install -y \
-        redis \
-        findutils \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
         file \
-        jq \
-        libpq \
+        findutils \
+        gcc \
+        g++ \
         git \
-        openssl openssl-devel \
-        # Python 3.11 stack
-        python3.11 python3.11-libs python3.11-devel \
-        python3.11-pip \
-        python3.11-setuptools && \
-    dnf clean all
+        jq \
+        libpq5 \
+        libpq-dev \
+        make \
+        openssl \
+        pkg-config \
+        xz-utils \
+        # GDAL/Fiona requirements
+        gdal-bin \
+        libgdal-dev \
+        libproj-dev \
+        proj-data && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Python virtual environment
 ENV VIRTUAL_ENV=/ngencerf/ngencerf-python
 ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
-RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
     set -eux && \
-    python3.11 -m venv ${VIRTUAL_ENV}
+    python -m venv ${VIRTUAL_ENV}
 
 WORKDIR /ngencerf/ngencerf-server/
 
 # Pre-copy requirements for better caching
 COPY requirements.txt .
 
-RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
     set -eux && \
-    pip3 install --upgrade pip && \
-    pip3 install -r requirements.txt && \
+    pip install --upgrade pip && \
+    pip install -r requirements.txt && \
     rm -f requirements.txt
 
 # ── EWTS (Error and Warning Trapping System)
@@ -132,7 +142,7 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
 # The dev image only needs the Python EWTS runtime. The native EWTS
 # libraries and ngen integration are built only in the production image.
 ARG EWTS_CACHE_BUST=1
-RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
     set -eux && \
     echo "EWTS cache bust: ${EWTS_CACHE_BUST}" && \
     ewts_dir="$(mktemp -d)" && \
@@ -140,7 +150,6 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
         "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" \
      || (git clone "https://github.com/${EWTS_ORG}/nwm-ewts.git" "${ewts_dir}" && \
          cd "${ewts_dir}" && git checkout "${EWTS_REF}") && \
-    cd "${ewts_dir}" && \
     pip install "${ewts_dir}/runtime/python/ewts" && \
     rm -rf "${ewts_dir}"
 
@@ -148,12 +157,14 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
 # Docker layer can't reinstall an older revision (see .github/workflows/cicd.yml)
 ARG MSW_MGR_CACHE_BUST=1
 ARG DATA_ASSIMILATION_CACHE_BUST=1
-RUN set -eux && \
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache-bookworm \
+    set -eux && \
     echo "nwm-msw-mgr cache bust: ${MSW_MGR_CACHE_BUST}" && \
-    pip3 install "git+https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git@${MSW_MGR_REF}" && \
+    python -m pip install \
+        "git+https://github.com/${MSW_MGR_ORG}/nwm-msw-mgr.git@${MSW_MGR_REF}" && \
     echo "nwm-data-assimilation cache bust: ${DATA_ASSIMILATION_CACHE_BUST}" && \
-    pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}" && \
-    pip3 cache purge
+    python -m pip install \
+        "git+https://github.com/${DATA_ASSIMILATION_ORG}/nwm-data-assimilation.git@${DATA_ASSIMILATION_REF}"
 
 # Should parallel similar functionality in the run_cerf.sh
 COPY .git .git
@@ -280,9 +291,6 @@ RUN set -eux && \
     \
     cd /ngencerf/ngencerf-server && \
     rm -rf tmp-ngen-forcing || true
-
-# Build CLI executable in cli/dist
-RUN cli/build_cli.sh
 
 # Copy additional configuration files
 COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
