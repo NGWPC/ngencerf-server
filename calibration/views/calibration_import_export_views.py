@@ -39,6 +39,29 @@ from calibration.views.data_services import DataServicesException, get_geopackag
 logger = logging.getLogger(__name__)
 
 
+def validate_parameter_module_dependencies(
+        module_names: set[str],
+        parameters: list[dict[str, Any]] | None
+) -> str | None:
+    """
+    Validate dependencies between imported calibration parameters and modules.
+
+    SFT parameters are only valid when LASAM is included in the formulation.
+    Also see comments in data_services.get_module_metadata_from_data_services.
+
+    :param module_names: Full set of modules included in the imported formulation.
+    :param parameters: Imported calibration parameter selections.
+    :return: Validation error message, or None if valid.
+    """
+    if not parameters or "LASAM" in module_names:
+        return None
+
+    if any(parameter.get("module") == "SFT" for parameter in parameters):
+        return "SFT parameters cannot be specified unless LASAM is included in the formulation"
+
+    return None
+
+
 def import_calibration_run_data(request: Request,
                                 calibration_run_data: dict,
                                 genesis: JobGenesis,
@@ -85,6 +108,13 @@ def import_calibration_run_data(request: Request,
     sloth_parameters = calibration_run_data.get('sloth_parameters')
     use_sloth = calibration_run_data.get('use_sloth')
     parameters = calibration_run_data.get('parameters')
+
+    parameter_dependency_errors = validate_parameter_module_dependencies(
+        module_names,
+        parameters
+    )
+    if parameter_dependency_errors:
+        return None, None, ResponseError(parameter_dependency_errors)
 
     time_controls = calibration_run_data.get('time_controls')
 
