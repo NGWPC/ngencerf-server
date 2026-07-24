@@ -2,14 +2,30 @@
 
 Connect to the root directory where you cloned the server repo, assumed to be `$cerfServer`
 
-**_Important:_**
-Make sure you create the virtual environment with Python 3.11.
-You might have to use the `python3.11` command instead of `python`
+The project requires Python 3.12.
+
+Install Python 3.12:
+
+```bash
+sudo apt install gdal-bin libgdal-dev
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.12 python3.12-venv python3.12-dev
+
+python3.12 --version
+python3.12 -m venv --help
+```
+
+runCerf.sh will create the virtual environment, so it 
+is not necessary to do it manually.
+
+But if you do, make sure you create the virtual environment with Python 3.12.
+You might have to use the `python3.12` command instead of `python`
 Once you are in the virtual environment, you can use `python`
 
 ```
 $ cd $cerfServer
-$ python3.11 -m venv .venv-cerf
+$ python3.11 -m venv .venv-cerf_python3.12
 $ source $cerfServer/.venv-cerf/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
