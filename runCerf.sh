@@ -11,6 +11,56 @@ NGEN_FORCING_REF='development'
 EWTS_REF='development'
 
 #=======================================================================
+# Usage / help
+#   - Checked before anything else so it works without cerfserver.env,
+#     a venv, or AWS credentials being set up.
+#=======================================================================
+if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    cat <<EOF
+Usage: ./runCerf.sh [COMMAND] [OPTIONS]
+
+Starts the ngenCERF Django server (dev runserver or Gunicorn/Uvicorn ASGI),
+handling venv setup, dependency installs, gage/static data initialization,
+database migrations and Redis cache flushing.
+
+Commands:
+  (none)            Start the server normally.
+  activate          Activate the project virtualenv in your current shell.
+                     Must be sourced: 'source ./runCerf.sh activate'
+  manage ARGS...    Run './manage.py ARGS...' (venv is activated first,
+                     no other startup steps run). Example:
+                       ./runCerf.sh manage migrate
+
+Options (normal start only):
+  --load-gages      Force init_gages to run even if gage records already
+                     exist and the gage data fingerprint is unchanged.
+  auto_reload       Enable the Django dev server's auto-reloader
+                     (otherwise runs with --noreload).
+  -h, --help        Show this help and exit.
+
+Key environment variables (set in cerfserver.env, cerfServer/.env, or
+cerfServer/.env-override):
+  PORT                       Required. Port the server listens on.
+  CERF_VENV                  Docker | <path> | unset. Venv location, or
+                             'Docker' to skip local venv/AWS-check logic.
+  REQUIRED_PYTHON            Required Python version, e.g. 3.11 or python3.11.
+  RUN_CERF_FLAG_DIRECTORY    Directory for SHA/gage marker files (default ./).
+  FORCE_REINSTALL_VCS        1 to force reinstall of git-based dependencies.
+  DJANGO_SUPERUSER_EMAIL/
+  DJANGO_SUPERUSER_PASSWORD  Bootstrap a superuser if not already present.
+  CERF_ASGI / CERF_PRODUCTION
+                             Set to 1 to launch Gunicorn+Uvicorn instead of
+                             the Django dev server.
+  GUNICORN_WORKERS, GUNICORN_TIMEOUT, GUNICORN_BIND,
+  GUNICORN_MAX_REQUESTS, GUNICORN_MAX_REQUESTS_JITTER,
+  GUNICORN_GRACEFUL_TIMEOUT
+                             Gunicorn tuning, used only when the ASGI
+                             server is launched.
+EOF
+    exit 0
+fi
+
+#=======================================================================
 # Script must be sourced for 'activate' mode
 #=======================================================================
 if [[ "$1" == "activate" ]] && [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
@@ -310,6 +360,37 @@ run_manage_command() {
 }
 
 
+#=======================================================================
+# Function: gage_records_exist
+#   - Returns 0 if the gage table contains at least one record
+#   - Returns 10 if the gage table is empty
+#   - Returns 2 if Django could not perform the check
+#=======================================================================
+gage_records_exist() {
+    echo "Checking whether the gage table contains any records..."
+
+    python "$SCRIPT_DIR/manage.py" shell -c '
+from calibration.models import Gage
+raise SystemExit(0 if Gage.objects.exists() else 10)
+' --verbosity 0
+
+    local status=$?
+
+    case $status in
+        0)
+            echo "The gage table contains records."
+            return 0
+            ;;
+        10)
+            echo "The gage table is empty."
+            return 10
+            ;;
+        *)
+            echo "ERROR: Could not determine whether the gage table contains records."
+            return 2
+            ;;
+    esac
+}
 
 #=======================================================================
 # Function: generate_git_info
@@ -793,6 +874,7 @@ fi
 
 #=======================================================================
 # Init data handling
+#   - Empty gage table => unconditional init_gages
 #   - '--load-gages' or missing marker => unconditional init_gages
 #   - Otherwise compare the stored and current fingerprints
 #=======================================================================
@@ -801,9 +883,30 @@ GAGE_DATA_FLAG_FILE="${RUN_CERF_FLAG_DIRECTORY}/.load_gages"
 echo
 echo --------------------------------------------------------
 
-# Only load gage data if the flag is provided or the flag file doesn't exist.
-# Also reload gage data if the input fingerprint has changed.
-if [ "$LOAD_GAGE_DATA" = true ]; then
+# Load gage data if the table is empty, the flag is provided, or the
+# load-gages marker does not exist. Also reload if the inputs changed.
+gage_records_exist
+GAGE_RECORDS_STATUS=$?
+
+if [ $GAGE_RECORDS_STATUS -eq 2 ]; then
+    echo "ERROR: Could not check the gage table."
+    exit 1
+fi
+
+if [ $GAGE_RECORDS_STATUS -eq 10 ]; then
+    echo "Running init_gages because the gage table is empty."
+
+    run_init_gages_and_store ""
+    status=$?
+
+    if [ $status -ne 0 ]; then
+        echo "init_gages failed with exit code $status"
+        exit $status
+    fi
+
+    touch "$GAGE_DATA_FLAG_FILE"
+
+elif [ "$LOAD_GAGE_DATA" = true ]; then
     echo "Running init_gages because --load-gages was specified."
 
     run_init_gages_and_store ""
