@@ -8,8 +8,6 @@ venv*
 cerfServer/.env*
 cerfServer/local_settings.py
 
-downloads/
-
 # OS generated files
 .DS_Store
 Thumbs_db
