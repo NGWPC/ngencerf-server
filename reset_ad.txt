@@ -5,4 +5,4 @@ UPDATE custom_user
 SET
     ad_guid = NULL,
     last_ldap_sync = NULL
-WHERE email = 'peter@nextgenwaterprediction.com';
+WHERE email = '<email>'>;

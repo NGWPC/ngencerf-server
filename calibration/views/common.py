@@ -1177,7 +1177,7 @@ def find_validation_worker_with_matching_id(
 
         # Check if worker_id file exists in the current worker directory
         if os.path.isfile(worker_id_path):
-            # Read the first (and only) line of the file
+            # Read the frirst (and only) line of the file
             with open(worker_id_path, 'r') as file:
                 first_line = file.readline().strip()
 
