@@ -64,13 +64,14 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_cold_start_realization_file, \
     get_cold_start_stdout_file, get_cold_start_dir, \
     get_cold_start_git_info_file, get_hindcast_stdout_file, get_hindcast_git_info_file, get_hindcast_dir, get_cold_start_state, \
-    get_verification_stdout_file, get_verification_yaml_config_file
+    get_verification_stdout_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, write_ngen_logging_file
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output, \
     read_cold_start_output, read_verification_output, read_hindcast_output
 from calibration.views.forecast_input import create_forecast_input
 from calibration.views.ngen_cal_input import ready_to_run
+from calibration.views.verification_input import create_verification_input
 
 logger = logging.getLogger(__name__)
 
@@ -344,8 +345,8 @@ def run_verification_job(verification_run: VerificationRun) -> None:
     """
     Start a verification job by determining input and output file paths.
 
-    This function is intended to be passed as an argument to `submit_job`
-    and not called directly.
+    This function is called internally by `launch_job`
+    and should not be called directly.
 
     :param verification_run: The VerificationRun object representing the job.
     """
@@ -354,7 +355,7 @@ def run_verification_job(verification_run: VerificationRun) -> None:
     queue_job(
         verification_run,
         {
-            "verification_config": get_verification_yaml_config_file(verification_run),
+            "verification_config": create_verification_input(verification_run),
         },
         stdout_file,
     )
@@ -468,7 +469,7 @@ def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Resp
     - Forcing/observational data subsetting
     - Input file generation using `create_input`
 
-    This is only used internally by `submit_job` for CalibrationRun.
+    This is only used internally by `launch_job` for CalibrationRun.
 
     :param calibration_run: The CalibrationRun object to prepare.
     :return: A tuple (fatal_error: bool, Response). If preparation is successful, returns (False, None).
