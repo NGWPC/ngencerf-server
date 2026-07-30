@@ -164,6 +164,29 @@ CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
+# Comma separated list in the env. Required when the app is reached through an
+# HTTPS front end: Django rejects state-changing requests (admin, session
+# POSTs) unless their Origin, scheme included, is listed here, e.g.
+# "https://ngencerf-ea.nextgenwaterprediction.com".
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CSRF_TRUSTED_ORIGINS",
+        "",
+    ).split(",")
+    if origin.strip()
+]
+
+TRUST_X_FORWARDED_PROTO = os.getenv("TRUST_X_FORWARDED_PROTO", "false").lower() == "true"
+if TRUST_X_FORWARDED_PROTO:
+    # TLS terminates at a load balancer in front of us: the user speaks HTTPS
+    # to the balancer, the balancer speaks plain HTTP to Django and records
+    # the original scheme in the X-Forwarded-Proto header. Trusting that
+    # header lets Django treat the request as secure (correct scheme in
+    # redirects and absolute URLs). Enable only when deployed behind a proxy
+    # that always sets the header.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 MFA_ENABLED = os.getenv("MFA_ENABLED", "false").lower() == "true"
 
 ACTIVE_DIRECTORY_ENABLED = os.getenv("ACTIVE_DIRECTORY_ENABLED", "false").lower() == "true"
