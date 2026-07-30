@@ -25,6 +25,19 @@ def save_credentials_to_env_file(email: str, password: str) -> None:
     save_to_env_file("NGEN_PASSWORD", encode_env_password(password))
 
 
+def remember_login_credentials(email: str, password: str) -> None:
+    """
+    Remember the email and password entered during a successful login step.
+
+    This is used before MFA completion so a restarted login does not prompt
+    the user to re-enter credentials that were already accepted by the server.
+    """
+    os.environ["NGEN_EMAIL"] = email
+    os.environ["NGEN_PASSWORD"] = encode_env_password(password)
+
+    save_credentials_to_env_file(email, password)
+
+
 def ngen_login() -> bool:
     """
     Ensures there is some ACCESS_TOKEN available.
@@ -219,6 +232,8 @@ def perform_full_login(_retry: bool = False) -> bool:
         recovery_codes = confirm_json.get("recovery_codes", [])
         if isinstance(recovery_codes, list):
             _print_recovery_codes(recovery_codes)
+
+        remember_login_credentials(email, password)
 
         input("\nPress Enter after saving recovery codes...")
 
@@ -485,15 +500,13 @@ def _save_tokens(access_token: str, refresh_token: str | None, email: str, passw
 
     Stores:
       - ACCESS_TOKEN
-      - REFRESH_TOKEN (if present)
+      - REFRESH_TOKEN, if present
       - NGEN_EMAIL
       - NGEN_PASSWORD
     """
     os.environ["ACCESS_TOKEN"] = access_token
-    os.environ["NGEN_EMAIL"] = email
-    os.environ["NGEN_PASSWORD"] = password
 
-    save_credentials_to_env_file(email, password)
+    remember_login_credentials(email, password)
     save_to_env_file("ACCESS_TOKEN", access_token)
 
     if refresh_token:
