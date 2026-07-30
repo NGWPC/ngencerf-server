@@ -642,9 +642,6 @@ SINGULARITY_RUNTIME_INFO = {
     "verification": NWM_EVAL_SINGULARITY_CMD,
 }
 
-# Optional sacct columns collected after job completion.
-SLURM_JOB_METRICS = os.getenv("SLURM_JOB_METRICS")
-
 # Static and working directories
 NGEN_STATIC_DIR = os.path.join(CONTAINER_DATA_ROOT, 'ngen-static-files')
 NGEN_CAL_WORK_DIR = os.path.join(CONTAINER_DATA_ROOT, 'ngen-cal-work')

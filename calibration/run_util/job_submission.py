@@ -56,20 +56,29 @@ def submit_job_request(
     job_type = get_job_type(run)
     payload = build_job_submit_payload(run, arguments, stdout_file, job_type)
 
-    if JOB_EXECUTION_MODE in {JobExecutionMode.SLURM, JobExecutionMode.SLURM_MOCK}:
+    if JOB_EXECUTION_MODE in {
+        JobExecutionMode.SLURM,
+        JobExecutionMode.SLURM_MOCK
+    }:
         payload["auth_token"] = generate_custom_token(
             get_run_owner(run),
             TOKEN_SLURM_SCOPE,
         )
 
         from calibration.run_util.job_executor_slurm import submit_slurm_job
-        slurm_job_id = submit_slurm_job(job_type.value, run.id, payload)
+
+        slurm_job_id = submit_slurm_job(
+            job_type.value,
+            run.id,
+            payload
+        )
         run.slurm_job_id = slurm_job_id
         run.save(update_fields=["slurm_job_id"])
         return
 
     if JOB_EXECUTION_MODE == JobExecutionMode.DOCKER:
         from calibration.run_util.job_executor_docker import run_docker_job
+
         run_docker_job(job_type.value, run.id, payload)
         return
 
@@ -216,8 +225,8 @@ def get_run_owner(run: BaseRun) -> User:
     Return the owner associated with a run.
 
     - CalibrationRun: owner is stored directly on the model.
-    - ValidationRun, ForecastRun, HindcastRun: owner is resolved via calibration_run.
-    - VerificationRun: owner is resolved via parent_run → calibration_run.
+    - ValidationRun, ColdStartRun, ForecastRun, HindcastRun: owner is resolved via calibration_run.
+    - VerificationRun: owner is resolved via hindcast → calibration_run.
 
     :param run: A BaseRun instance.
     :return: The owner of the associated CalibrationRun.
@@ -230,6 +239,6 @@ def get_run_owner(run: BaseRun) -> User:
         return run.calibration_run.owner
 
     if isinstance(run, VerificationRun):
-        return run.parent_run.calibration_run.owner
+        return run.hindcast_run.calibration_run.owner
 
     raise AttributeError(f"Cannot determine owner for run of type {type(run).__name__}")
