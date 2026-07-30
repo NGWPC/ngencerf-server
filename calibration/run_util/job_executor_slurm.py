@@ -228,6 +228,9 @@ def write_slurm_script(
         script.write("#!/bin/bash\n")
         script.write(f"#SBATCH --job-name={job_type}-{run_id}\n")
         script.write("#SBATCH --nodes=1\n")
+        # Retain this directive for direct sbatch compatibility and to make the
+        # generated script self-describing. The slurmrestd submission path also
+        # explicitly sets requeue=False in _submit_via_slurmrestd().
         script.write("#SBATCH --no-requeue\n")
         script.write("#SBATCH --ntasks=1\n")
         script.write(f"#SBATCH --cpus-per-task={nprocs}\n")
@@ -519,6 +522,10 @@ def _submit_via_slurmrestd(
             "standard_output": standard_output,
             "environment": settings.SLURM_REST_JOB_ENVIRONMENT,
             "tasks": 1,
+            # Do not rely on the script's #SBATCH --no-requeue directive when
+            # submitting through slurmrestd. Without this explicit setting,
+            # Slurm uses the cluster default JobRequeue=1.
+            "requeue": False,
         }
 
         if partition:
@@ -551,6 +558,7 @@ def _submit_via_slurmrestd(
             return None, f"slurmrestd did not return a job_id for '{name}': {data}"
 
         return str(job_id), None
+
     except Exception as e:
         error_msg = f"Failed to submit job script {job_script} via slurmrestd: {str(e)}"
         logger.exception(error_msg)
