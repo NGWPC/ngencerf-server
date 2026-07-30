@@ -83,7 +83,7 @@ def _load_git_info_internal() -> dict[str, dict[str, str]]:
       3. Extracts Git-information files from:
            - nwm-cal-mgr, including ngen and ngen-bmi-forcing metadata
            - nwm-fcst-mgr
-           - nwm-verf
+           - nwm-eval-mgr
       4. Retrieves ngencerf-ui metadata from the running UI service over HTTP
          in SLURM/AWS mode, or reads it from the sibling local ngencerf-ui
          repository in Docker development mode.
@@ -196,8 +196,8 @@ def _load_git_info_internal() -> dict[str, dict[str, str]]:
         )
         required_images_success = False
 
-    # Extract nwm-verf metadata.
-    image_name = "nwm-verf"
+    # Extract nwm-eval-mgr metadata.
+    image_name = "nwm-eval-mgr"
     container_name = f"{image_name}_temp_container"
     container_file_name = os.path.join(
         repo_root,
@@ -279,6 +279,7 @@ def _load_git_info_internal() -> dict[str, dict[str, str]]:
     merged_data: dict[str, dict[str, str]] = {}
 
     # Merge every Git-information file that was retrieved successfully.
+    logger.info(f"Merging files in directory {git_info_directory}")
     for filename in os.listdir(git_info_directory):
         if not filename.endswith(".json"):
             continue
