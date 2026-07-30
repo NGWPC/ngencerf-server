@@ -1513,7 +1513,6 @@ class VerificationJobSlurmCallbackRequestSerializer(VerificationRunIdSerializer)
     slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
 
 
-
 class RunCalibrationJob(CalibrationRunIdSerializer):
     logging_config = LoggingConfigSerializer(required=False)
 

@@ -44,9 +44,6 @@ from calibration.views.common import map_path_to_host
 
 logger = logging.getLogger(__name__)
 
-# Optional sacct columns collected after job completion (depends on Slurm version)
-SLURM_JOB_METRICS = os.environ.get('SLURM_JOB_METRICS')
-
 # Timeout (seconds) for every slurmrestd HTTP request.
 _REQUEST_TIMEOUT = 30
 
@@ -182,7 +179,6 @@ def write_slurm_script(
     - notifies Django when Slurm starts the job
     - repairs ownership and permissions under the job directory
     - runs the Singularity command under Slurm CPU affinity
-    - records optional Slurm accounting metrics
     - notifies Django with the terminal job status
 
     :param run_id: Run identifier.
@@ -217,9 +213,6 @@ def write_slurm_script(
 
     # Repair permissions from the run directory level, not only the specific input file directory
     job_dir = os.path.dirname(os.path.dirname(input_file_host))
-
-    # Performance metrics output alongside stdout log
-    performance_file = output_file_host.replace("stdout", "performance")
 
     callback_url = get_callback_url(job_type)
     callback_run_id_field = get_callback_run_id_field(job_type)
@@ -364,17 +357,6 @@ def write_slurm_script(
         script.write("fi\n\n")
 
         script.write('echo "Job completed with status $job_status and exit_code=$exit_code"\n\n')
-
-        if SLURM_JOB_METRICS:
-            # Give Slurm accounting a moment to flush final metrics before sacct.
-            script.write("sleep 5\n")
-
-            # Write configured accounting fields to the paired performance file.
-            script.write(
-                f"sacct -j $SLURM_JOB_ID "
-                f"-o {SLURM_JOB_METRICS} "
-                f"--parsable --units=K > {performance_file}\n\n"
-            )
 
         script.write('notify_job_event "$job_status"\n')
         script.write("exit $exit_code\n")
@@ -562,6 +544,7 @@ def _submit_via_slurmrestd(
         data, error = _slurm_response_payload(response)
         if error:
             return None, f"slurmrestd rejected job '{name}': {error}"
+        assert data is not None
 
         job_id = data.get("job_id")
         if not job_id:
@@ -572,6 +555,41 @@ def _submit_via_slurmrestd(
         error_msg = f"Failed to submit job script {job_script} via slurmrestd: {str(e)}"
         logger.exception(error_msg)
         return None, error_msg
+
+
+def get_slurm_job_accounting(slurm_job_id: int) -> dict[str, Any] | None:
+    """
+    Retrieve accounting data for a completed Slurm job from SlurmDB.
+
+    :param slurm_job_id: Slurm job identifier.
+    :return: SlurmDB response payload, or None if the request fails or the
+        accounting record is not available yet.
+    """
+    try:
+        response = requests.get(
+            f"{_slurmrestd_base('slurmdb')}/job/{slurm_job_id}",
+            headers=_slurm_headers(),
+            timeout=_REQUEST_TIMEOUT,
+        )
+    except Exception as e:
+        logger.warning(
+            "SlurmDB accounting request failed for job %s: %s",
+            slurm_job_id,
+            e,
+        )
+        return None
+
+    data, error = _slurm_response_payload(response)
+
+    if error:
+        logger.warning(
+            "SlurmDB accounting request failed for job %s: %s",
+            slurm_job_id,
+            error,
+        )
+        return None
+
+    return data
 
 
 def submit_job(
