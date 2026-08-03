@@ -100,7 +100,7 @@ class CalibrationSortField(_SortFieldMixin, Enum):
 
 class VerificationSortField(_SortFieldMixin, Enum):
     VERIFICATION_RUN_ID = ("verification_run_id", "id")
-    FORECAST_RUN_ID = ("forecast_run_id", "forecast_run__id")
+    HINDCAST_RUN_ID = ("hindcast_run_id", "hindcast_run__id")
     STATUS = ("status", "status__name")
     SUBMIT_DATE = ("submit_date", "submit_date")
     CREATED_AT = ("created_at", "created_at")
