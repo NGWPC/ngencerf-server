@@ -11,6 +11,16 @@ import json
 import os
 import sys
 
+# Configure SSL before importing any third-party or ngenCerf modules.
+# Some of those modules import requests, so truststore must be initialized
+# first to ensure HTTPS connections use the operating system's certificate
+# store on Windows, Linux, and macOS.
+import truststore
+
+# Make requests and other SSL clients use the operating system's
+# trusted certificate store.
+truststore.inject_into_ssl()
+
 import yaml
 
 from ngencerf.calibration_sort_fields import CalibrationSortField
@@ -509,7 +519,7 @@ def main():
         metavar="",
         required=True
     )
-    
+
     version_parser = add_parser("version", "Show local CLI version information")
     version_parser.set_defaults(func=lambda cmd_args: version())
 
