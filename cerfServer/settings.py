@@ -812,7 +812,7 @@ LOG_TO_FILE = (
 )
 
 APP_HANDLERS = ["console"]
-DB_HANDLERS = ["console"]
+DB_HANDLERS = ["db_console"]
 NGEN_LOGGING_DIR = os.path.join(BASE_DIR, "logs")
 
 if LOG_TO_FILE:
@@ -856,6 +856,11 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
             'filters': ['suppress_successful_health_check'],
+        },
+        'db_console': {
+            'level': DATABASE_LOG_LEVEL,
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
         },
         # Only define file handlers when file logging is enabled.
         # Production logs are written to stdout/stderr and collected by CloudWatch.
