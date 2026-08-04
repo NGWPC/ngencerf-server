@@ -1,7 +1,11 @@
 import ast
 import json
 import sys
-import termios
+try:
+    # Not available on Windows
+    import termios
+except ImportError:
+    termios = None
 
 
 def check_http_error(
