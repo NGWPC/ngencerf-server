@@ -687,7 +687,7 @@ class Command(BaseCommand):
                 "name": "Short Range Alaska", "internal_name": "short_range_alaska", "order": 1,
                 "data_sources": "tbd",
                 "domain": alaska_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 15, "fcst_timestep": 1,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 3, "fcst_win": 15, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "supports_hindcast": True,
                 "is_active": True
@@ -696,7 +696,7 @@ class Command(BaseCommand):
                 "name": "Short Range Extended Alaska", "internal_name": "short_range_extended_alaska", "order": 2,
                 "data_sources": "tbd",
                 "domain": alaska_domain,
-                "cycle_start": 3, "cycle_end": 21, "cycle_freq": 6, "fcst_win": 45, "fcst_timestep": 1,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 45, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "supports_hindcast": True,
                 "is_active": True
