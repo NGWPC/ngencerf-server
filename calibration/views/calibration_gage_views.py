@@ -247,6 +247,14 @@ def save_gage_tab(request: Request):
         cli=False
     )
 
+    # Geopackage and Observational were only getting set when the gage changed
+    # Need to always set them to allow the UI to self-correct when old values are set by a clone/CLI import
+    run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
+
+    run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
+
+    run.forcing_source = forcing_source
+
     # Only retrieve gage-dependent data when a gage is selected.
     if gage_changed and gage is not None:
         # Refresh module parameters for existing formulations (if any).
@@ -287,8 +295,6 @@ def save_gage_tab(request: Request):
         else:
             raise CerfException("Invalid geopackage source")
 
-        run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
-
         geopackage_path = get_geopackage_file_path(run)
         if geopackage_path:
             catchments = list(get_geometry_from_gpkg(geopackage_path)['catchments'].keys())
@@ -296,11 +302,7 @@ def save_gage_tab(request: Request):
             logger.info(f"Found {run.num_catchments} catchments in {geopackage_path}: {catchments}")
 
         geopackage_image_url = get_geopackage_image_url(geopackage_path)
-
-        run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
-
-    run.forcing_source = forcing_source
-
+    
     # -------------------------
     # Write phase
     # -------------------------
