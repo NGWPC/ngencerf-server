@@ -324,6 +324,18 @@ def write_slurm_script(
         # existing data-dir bind, and SINGULARITY_BIND additionally maps it onto
         # the container's /tmp. The label carries job_type + run_id for
         # greppability; SLURM_JOB_ID makes it unique.
+        #
+        # /var/tmp and the home directory get the same treatment: the runtime's
+        # default mounts also pass the node's own /var/tmp and /root through to
+        # the container, so anything writing there lands on the node's local
+        # root volume instead of EFS and can fill it, which takes the node (and
+        # every job on it) down. Both are redirected to subdirs of the same
+        # scratch dir: SINGULARITY_BIND covers /var/tmp, and SINGULARITY_HOME
+        # mounts .home at /root while keeping HOME=/root for the workload. The
+        # workload images bake nothing into /root at runtime (their Dockerfile
+        # /root/.cache references are build-time cache mounts), so masking it is
+        # safe. The EXIT trap and the orphan sweep clean both with everything
+        # else.
         scratch_root = os.path.join(settings.HOST_DATA_ROOT, "scratch")
         host_scratch = os.path.join(
             scratch_root, f"{job_type}-{run_id}-${{SLURM_JOB_ID}}"
@@ -343,9 +355,10 @@ def write_slurm_script(
             f"done) || true\n"
         )
         script.write(f'export TMPDIR="{host_scratch}"\n')
-        script.write('export SINGULARITY_BIND="$TMPDIR:/tmp"\n')
+        script.write('export SINGULARITY_BIND="$TMPDIR:/tmp,$TMPDIR/.vartmp:/var/tmp"\n')
+        script.write('export SINGULARITY_HOME="$TMPDIR/.home:/root"\n')
         script.write("export SINGULARITYENV_TMPDIR=/tmp\n")
-        script.write('mkdir -p "$TMPDIR"\n')
+        script.write('mkdir -p "$TMPDIR/.vartmp" "$TMPDIR/.home"\n')
         script.write("trap 'rm -rf \"$TMPDIR\"' EXIT\n\n")
 
         # Force the workload to stay inside the CPUs Slurm granted this job.
