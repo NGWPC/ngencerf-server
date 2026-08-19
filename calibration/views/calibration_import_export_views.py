@@ -303,8 +303,9 @@ def import_calibration_run_data(request: Request,
         # -----------------------------
         # Geopackage
         # -----------------------------
-        assert isinstance(geopackage_source_name, str)
-        run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
+        if geopackage_source_name:
+            assert isinstance(geopackage_source_name, str)
+            run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
         try:
             get_geopackage_from_data_services(run)
@@ -325,15 +326,15 @@ def import_calibration_run_data(request: Request,
         # -----------------------------
         # Forcing data
         # -----------------------------
-        assert isinstance(forcing_source_name, str)
-        forcing_source = (
-            ForcingSourceEnum.get_instance(forcing_source_name)
-            if forcing_source_name
-            else None
-        )
+        if forcing_source_name:
+            assert isinstance(forcing_source_name, str)
+            forcing_source = (
+                ForcingSourceEnum.get_instance(forcing_source_name)
+                if forcing_source_name
+                else None
+            )
 
-        # Must be set before get_forcing_data_from_s3() because should_use_bmi_forcing() reads it
-        run.forcing_source = forcing_source
+            run.forcing_source = forcing_source
         # -----------------------------
         # Observational data
         # -----------------------------
