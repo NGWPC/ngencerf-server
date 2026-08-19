@@ -3,7 +3,7 @@ import csv
 import logging
 import os
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, TypeAlias
 
 import toml
@@ -151,6 +151,81 @@ ConfigSection: TypeAlias = dict[str, ConfigValue]
 Config: TypeAlias = dict[str, ConfigSection]
 
 
+def nwm_retro_has_validation_data(
+        file_path: str,
+        validation_start: datetime,
+        validation_end: datetime,
+        minimum_time_steps: int = 2
+) -> bool:
+    """
+    Check whether an NWM retrospective CSV contains the required number of
+    valid time steps within the validation period.
+
+    Each qualifying row must contain:
+      - A valid value_date timestamp
+      - A numeric nwm_flow value
+
+    NWM retrospective timestamps without timezone information are interpreted
+    as UTC.
+    """
+
+    def normalize_datetime(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    validation_start = normalize_datetime(validation_start)
+    validation_end = normalize_datetime(validation_end)
+
+    try:
+        with open(file_path, mode='r', encoding='utf-8-sig', newline='') as csv_file:
+            reader = csv.DictReader(csv_file)
+
+            required_columns = {'value_date', 'nwm_flow'}
+            if not reader.fieldnames or not required_columns.issubset(reader.fieldnames):
+                logger.warning(
+                    f'NWM retrospective file {file_path} must contain the '
+                    f'columns value_date and nwm_flow'
+                )
+                return False
+
+            matching_time_steps = 0
+
+            for row in reader:
+                value_date = (row.get('value_date') or '').strip()
+                nwm_flow = (row.get('nwm_flow') or '').strip()
+
+                if not value_date or not nwm_flow:
+                    continue
+
+                try:
+                    timestamp = datetime.fromisoformat(
+                        value_date.replace('Z', '+00:00')
+                    )
+                    float(nwm_flow)
+                except ValueError:
+                    logger.warning(
+                        f'Invalid NWM retrospective row in {file_path}: '
+                        f'value_date={value_date!r}, nwm_flow={nwm_flow!r}'
+                    )
+                    continue
+
+                timestamp = normalize_datetime(timestamp)
+
+                if validation_start <= timestamp <= validation_end:
+                    matching_time_steps += 1
+
+                    if matching_time_steps >= minimum_time_steps:
+                        return True
+
+    except (OSError, csv.Error) as e:
+        logger.warning(
+            f'Unable to read NWM retrospective file {file_path}: {e}'
+        )
+
+    return False
+
+
 def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport, str | None]:
     """
     Validate the given CalibrationRun and prepare it for execution.
@@ -262,10 +337,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
                         f.write(obs_csv)
 
                     datafile['obs_dir'] = obs_dir
-
-            nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
-            if os.path.exists(nwm_retro):
-                datafile['nwmretro_file'] = nwm_retro
 
             error_message = validate_time_range_against_data(run)
             if error_message:
@@ -436,23 +507,73 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
             }
             missing_start_end_period_fields = [name for name, value in required_start_end_period_fields.items() if value is None]
             if missing_start_end_period_fields:
-                error_object.add_warning(f"Unable to calculate time values: {', '.join(missing_start_end_period_fields)}")
+                error_object.add_warning(
+                    f"Unable to calculate time values: "
+                    f"{', '.join(missing_start_end_period_fields)}"
+                )
+
             else:
+                calibration_end_period = run.calibration_end_period
+                calibration_eval_start_period = run.calibration_eval_start_period
+                calibration_eval_end_period = run.calibration_eval_end_period
+                validation_start_period = run.validation_start_period
+                validation_end_period = run.validation_end_period
+                validation_eval_start_period = run.validation_eval_start_period
+                validation_eval_end_period = run.validation_eval_end_period
+
+                # These fields were checked immediately above. The assertions
+                # also narrow their types from datetime | None to datetime.
+                assert calibration_end_period is not None
+                assert calibration_eval_start_period is not None
+                assert calibration_eval_end_period is not None
+                assert validation_start_period is not None
+                assert validation_end_period is not None
+                assert validation_eval_start_period is not None
+                assert validation_eval_end_period is not None
+
                 calibration['calib_start_period'] = format_datetime(run.calibration_start_period)
-                calibration['calib_end_period'] = format_datetime(run.calibration_end_period)
-                calibration['calib_eval_start_period'] = format_datetime(run.calibration_eval_start_period)
-                calibration['calib_eval_end_period'] = format_datetime(run.calibration_eval_end_period)
-                calibration['valid_start_period'] = format_datetime(run.validation_start_period)
-                calibration['valid_end_period'] = format_datetime(run.validation_end_period)
-                calibration['valid_eval_start_period'] = format_datetime(run.validation_eval_start_period)
-                calibration['valid_eval_end_period'] = format_datetime(run.validation_eval_end_period)
+                calibration['calib_end_period'] = format_datetime(calibration_end_period)
+                calibration['calib_eval_start_period'] = format_datetime(calibration_eval_start_period)
+                calibration['calib_eval_end_period'] = format_datetime(calibration_eval_end_period)
+                calibration['valid_start_period'] = format_datetime(validation_start_period)
+                calibration['valid_end_period'] = format_datetime(validation_end_period)
+                calibration['valid_eval_start_period'] = format_datetime(validation_eval_start_period)
+                calibration['valid_eval_end_period'] = format_datetime(
+                    validation_eval_end_period
+                )
+
                 full_eval_start, full_eval_end = get_full_evaluation_date_range(
-                    run.calibration_eval_start_period, run.calibration_eval_end_period,
-                    run.validation_eval_start_period, run.validation_eval_end_period)
+                    calibration_eval_start_period,
+                    calibration_eval_end_period,
+                    validation_eval_start_period,
+                    validation_eval_end_period
+                )
 
                 calibration['full_eval_start_period'] = format_datetime(full_eval_start)
                 calibration['full_eval_end_period'] = format_datetime(full_eval_end)
 
+                nwm_retro = os.path.join(
+                    NWM_RETROSPECTIVE_DIR,
+                    f'{run.gage.gage_id}.csv'
+                )
+
+                if os.path.exists(nwm_retro):
+                    # Require at least two valid NWM time steps within the
+                    # validation simulation period.
+                    if nwm_retro_has_validation_data(
+                            nwm_retro,
+                            validation_start_period,
+                            validation_end_period
+                    ):
+                        datafile['nwmretro_file'] = nwm_retro
+                    else:
+                        error_object.add_warning(
+                            f'NWM retrospective file for gage '
+                            f'{run.gage.gage_id} does not contain at least two '
+                            f'valid time steps between '
+                            f'{format_datetime(validation_start_period)} and '
+                            f'{format_datetime(validation_end_period)}'
+                        )
         if not is_missing(run.objective_function, 'Objective function', error_object, have_LSTM_flag=have_LSTM_flag):
             calibration['objective_function'] = run.objective_function.name.lower()
 
