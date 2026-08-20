@@ -83,9 +83,11 @@ User = get_user_model()
 # request returns. This allows the Slurm batch script to exit before Django
 # retrieves finalized accounting data from SlurmDB.
 #
-# The run is not marked DONE until finalization and end-of-job processing
-# complete successfully. If the Django server restarts during this work, the
-# run remains nonterminal and performance or other output data may be incomplete.
+# Successful and FAILED runs retain their existing finalization behavior.
+# CANCELED runs are marked terminal before finalization is queued so a
+# competing terminal callback cannot overwrite the cancellation. If the
+# Django server restarts during finalization, performance or other output
+# data may be incomplete.
 _JOB_FINALIZATION_EXECUTOR = ThreadPoolExecutor(
     max_workers=4,
     thread_name_prefix="job-finalization",
@@ -1231,13 +1233,14 @@ def finalize_job_after_terminal_callback(
     Finalize a terminal Slurm callback outside the callback request thread.
 
     Returning the callback request allows the Slurm batch script to exit. This
-    worker then waits for finalized SlurmDB accounting data and performs the
-    normal end-of-job processing. The run is marked DONE only after that
-    processing completes successfully.
+    worker then performs the normal end-of-job processing, including retrieval
+    of finalized SlurmDB accounting data. Successful runs are marked DONE only
+    after that processing completes successfully.
 
-    This work runs in the current Django process and is not durable. If the
-    server restarts during finalization, the run remains nonterminal and some
-    performance or output data may be incomplete.
+    CANCELED runs are already marked terminal before this worker is queued.
+    This work runs in the current Django process and is not durable. If
+    the server restarts during finalization, performance or other output data
+    may be incomplete.
 
     :param model_class: Concrete run model associated with the callback.
     :param run_id: Database ID of the run to finalize.
@@ -1321,7 +1324,9 @@ def handle_job_event(
         .first()
     )
 
-    # Duplicate or late callbacks should not re-run finalization.
+    # Ignore callbacks for runs that have already reached an ineligible state.
+    # Concurrent callbacks following a Slurm cancellation are additionally
+    # protected by the atomic CANCELED-state claim below.
     if run is None:
         logger.warning(
             "Ignoring callback for job_type=%s run_id=%s status=%s "
@@ -1360,24 +1365,42 @@ def handle_job_event(
         job_status,
     )
 
-    # In Slurm mode, return the callback request promptly so the batch script can
-    # exit and SlurmDB can publish final accounting data.
+    # Slurm cancellation processing runs asynchronously. Claim CANCELED
+    # immediately so a competing terminal callback cannot also see RUNNING
+    # and start a second finalization path.
+    if (
+            JOB_EXECUTION_MODE == JobExecutionMode.SLURM
+            and job_status == SlurmCallbackStatusEnum.CANCELED
+    ):
+        updated = (
+            model_class.objects
+            .filter(
+                id=run_id,
+                status__in=expected_db_statuses,
+            )
+            .update(status=StatusEnum.CANCELLED.db_instance)
+        )
+
+        if updated == 0:
+            logger.warning(
+                "Ignoring callback for job_type=%s run_id=%s status=%s "
+                "(run already transitioned)",
+                job_type,
+                run_id,
+                job_status,
+            )
+            return
+
+        run.status = StatusEnum.CANCELLED.db_instance
+
     if JOB_EXECUTION_MODE == JobExecutionMode.SLURM:
-        # The terminal callback is sent from inside the Slurm batch script.
-        # Django must return from the request before the script can exit and
-        # Slurm can mark the overall job, including its extern step, complete.
-        #
-        # Finalization therefore runs asynchronously in this Django process:
-        #   1. Return the terminal callback response.
-        #   2. Allow the Slurm batch script and job to finish.
-        #   3. Wait for finalized accounting data to appear in SlurmDB.
-        #   4. Create performance metrics and complete end-of-job processing.
         logger.info(
             "%s received terminal Slurm callback; queuing end-of-job processing",
             get_job_description(run),
         )
 
-        # Finalization runs in a worker thread and waits for finalized accounting.
+        # Finalization runs in a worker thread after the Slurm callback returns,
+        # allowing finalized accounting data to become available.
         _JOB_FINALIZATION_EXECUTOR.submit(
             finalize_job_after_terminal_callback,
             model_class,

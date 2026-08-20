@@ -23,6 +23,7 @@ import logging
 import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, Future
+from threading import Lock
 from typing import Any, Callable
 
 from calibration.enums import SlurmCallbackStatusEnum
@@ -34,6 +35,18 @@ logger = logging.getLogger(__name__)
 
 pool: ThreadPoolExecutor = ThreadPoolExecutor()
 job_registry: dict[str, subprocess.Popen] = {}
+
+# Tracks Docker jobs that are being intentionally cancelled.
+#
+# docker kill causes the corresponding `docker run` process to exit with a
+# nonzero status. Without tracking cancellation separately, the normal process
+# completion callback can incorrectly interpret that exit as a job failure and
+# send a second terminal lifecycle event.
+cancel_requested_jobs: set[str] = set()
+
+# Synchronizes cancellation with the process completion callback so the
+# completion callback cannot race with `docker kill`.
+job_registry_lock = Lock()
 
 
 def get_registry_key(job_type: str, run_id: int) -> str:
@@ -93,13 +106,17 @@ def docker_job_done_callback(
 
     The returned callback:
     - removes the job from the in-memory registry
-    - inspects the process exit code
+    - checks whether the process exited because of an intentional cancellation
+    - inspects the process exit code for normal completion
     - sends the corresponding terminal lifecycle event to Django
 
-    Exit-code handling:
+    Exit-code handling for jobs that were not intentionally cancelled:
     - 0   -> DONE
     - < 0 -> CANCELED
     - > 0 -> FAILED
+
+    An intentionally cancelled job does not send a lifecycle event from this
+    callback because cancel_docker_job() sends the authoritative CANCELED event.
 
     If callback processing itself fails, a best-effort FAILED event is sent.
 
@@ -110,10 +127,30 @@ def docker_job_done_callback(
 
     def _callback(future: Future) -> None:
         registry_key = get_registry_key(job_type, run_id)
-        job_registry.pop(registry_key, None)
 
         try:
             exit_code = future.result()
+
+            # Synchronize with cancel_docker_job(). If that function successfully
+            # issued docker kill, the resulting nonzero process exit is expected
+            # and must not generate a second terminal lifecycle event.
+            with job_registry_lock:
+                job_registry.pop(registry_key, None)
+
+                cancel_requested = registry_key in cancel_requested_jobs
+                if cancel_requested:
+                    cancel_requested_jobs.discard(registry_key)
+
+            if cancel_requested:
+                logger.info(
+                    "DOCKER job completion after cancellation for "
+                    "job_type=%s run_id=%s exit_code=%s; "
+                    "suppressing duplicate terminal lifecycle event",
+                    job_type,
+                    run_id,
+                    exit_code,
+                )
+                return
 
             if exit_code == 0:
                 status = SlurmCallbackStatusEnum.DONE
@@ -125,6 +162,12 @@ def docker_job_done_callback(
             handle_job_event(job_type, run_id, status)
 
         except Exception:
+            # Ensure registry state is cleaned up even if process.wait() or callback
+            # processing raises unexpectedly.
+            with job_registry_lock:
+                job_registry.pop(registry_key, None)
+                cancel_requested_jobs.discard(registry_key)
+
             logger.exception(
                 "DOCKER job completion callback failed for job_type=%s run_id=%s",
                 job_type,
@@ -173,7 +216,11 @@ def run_docker_job(job_type: str, run_id: int, payload: dict[str, Any]) -> None:
     process = subprocess.Popen(command, env=env)
 
     registry_key = get_registry_key(job_type, run_id)
-    job_registry[registry_key] = process
+
+    # Register the new process and clear any stale cancellation marker for this job.
+    with job_registry_lock:
+        cancel_requested_jobs.discard(registry_key)
+        job_registry[registry_key] = process
 
     handle_job_event(job_type, run_id, SlurmCallbackStatusEnum.STARTING)
 
@@ -189,6 +236,10 @@ def cancel_docker_job(job_type: str, run_id: int) -> bool:
 
     Cancellation is performed with `docker kill <container_name>`, where the
     container name matches the internal registry key.
+
+    The cancellation request is recorded before issuing docker kill so the
+    normal Docker process completion callback can distinguish an intentional
+    cancellation from a real process failure.
 
     On successful kill:
     - remove the job from the in-memory registry
@@ -208,39 +259,59 @@ def cancel_docker_job(job_type: str, run_id: int) -> bool:
         container_name,
     )
 
-    result = subprocess.run(
-        ["docker", "kill", container_name],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    # Hold the lock while issuing docker kill. The process completion callback
+    # may run immediately when the container exits, so it must not inspect the
+    # cancellation state until we know whether docker kill succeeded.
+    with job_registry_lock:
+        cancel_requested_jobs.add(registry_key)
 
-    if result.returncode == 0:
-        logger.info(
-            "Container %s killed successfully for job_type=%s run_id=%s",
-            container_name,
-            job_type,
-            run_id,
-        )
+        try:
+            result = subprocess.run(
+                ["docker", "kill", container_name],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except Exception:
+            # docker kill was not successfully issued, so this must not be
+            # treated as an intentional cancellation by the completion callback.
+            cancel_requested_jobs.discard(registry_key)
+            raise
+
+        if result.returncode != 0:
+            # The container was not killed. Remove the cancellation marker so
+            # normal process completion is still handled normally.
+            cancel_requested_jobs.discard(registry_key)
+
+            logger.error(
+                "docker kill failed for job_type=%s run_id=%s container_name=%s: %s",
+                job_type,
+                run_id,
+                container_name,
+                result.stderr.strip(),
+            )
+
+            return False
 
         job_registry.pop(registry_key, None)
 
-        # Do not let the view mark CANCELLED directly; lifecycle handling
-        # also sets run_end and executes finalization logic.
-        handle_job_event(
-            job_type,
-            run_id,
-            SlurmCallbackStatusEnum.CANCELED,
-        )
-
-        return True
-
-    logger.error(
-        "docker kill failed for job_type=%s run_id=%s container_name=%s: %s",
+    logger.info(
+        "Container %s killed successfully for job_type=%s run_id=%s",
+        container_name,
         job_type,
         run_id,
-        container_name,
-        result.stderr.strip(),
     )
 
-    return False
+    # Do not let the view mark CANCELLED directly; lifecycle handling
+    # also sets run_end and executes finalization logic.
+    #
+    # This is the authoritative terminal event for an intentional Docker
+    # cancellation. docker_job_done_callback() suppresses the process-exit
+    # event that results from docker kill.
+    handle_job_event(
+        job_type,
+        run_id,
+        SlurmCallbackStatusEnum.CANCELED,
+    )
+
+    return True
