@@ -732,7 +732,10 @@ def submit_slurm_job(job_type: str, run_id: int, payload: dict[str, Any]) -> int
        STARTING
 
     3. Generated Slurm script invokes callback endpoint with:
-       DONE / FAILED / CANCELED
+       DONE / FAILED
+
+       CANCELED is reported directly by cancel_slurm_job() after Slurm accepts
+       the cancellation request.
 
     The callback endpoint updates lifecycle state and triggers
     post-processing.
