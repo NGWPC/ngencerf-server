@@ -130,7 +130,8 @@ The script detects macOS and writes the executable to:
 ../downloads/latest/macos/ngencerf
 ```
 
-The current macOS build targets Intel (`x86_64`). On Apple Silicon, use an `x86_64` Python under Rosetta for the most reliable Intel-compatible build.
+The macOS build supports both Intel-based Macs and Macs with Apple silicon. The current build program produces an Intel (x86_64) executable, which runs natively on Intel-based Macs and on Macs with Apple silicon through Rosetta. 
+When building on a Mac with Apple silicon, use an x86_64 Python environment under Rosetta to produce the Intel-compatible executable.
 
 ### Windows
 
