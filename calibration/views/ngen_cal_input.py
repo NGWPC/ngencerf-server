@@ -4,7 +4,8 @@ import logging
 import os
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, TypeAlias
+from io import StringIO
+from typing import Any, TypeAlias, TextIO
 
 import toml
 from datetimerange import DateTimeRange
@@ -151,22 +152,19 @@ ConfigSection: TypeAlias = dict[str, ConfigValue]
 Config: TypeAlias = dict[str, ConfigSection]
 
 
-def nwm_retro_has_validation_data(
-        file_path: str,
-        validation_start: datetime,
-        validation_end: datetime,
+def csv_has_required_data(
+        csv_file: TextIO,
+        start_period: datetime,
+        end_period: datetime,
         minimum_time_steps: int = 2
 ) -> bool:
     """
-    Check whether an NWM retrospective CSV contains the required number of
-    valid time steps within the validation period.
+    Check whether a CSV contains the required number of valid time steps within
+    the specified period.
 
-    Each qualifying row must contain:
-      - A valid value_date timestamp
-      - A numeric nwm_flow value
-
-    NWM retrospective timestamps without timezone information are interpreted
-    as UTC.
+    The first column must contain a timestamp and the second column must contain
+    a numeric value. Timestamps without timezone information are interpreted as
+    UTC.
     """
 
     def normalize_datetime(value: datetime) -> datetime:
@@ -174,54 +172,44 @@ def nwm_retro_has_validation_data(
             return value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc)
 
-    validation_start = normalize_datetime(validation_start)
-    validation_end = normalize_datetime(validation_end)
+    start_period = normalize_datetime(start_period)
+    end_period = normalize_datetime(end_period)
 
     try:
-        with open(file_path, mode='r', encoding='utf-8-sig', newline='') as csv_file:
-            reader = csv.DictReader(csv_file)
+        reader = csv.reader(csv_file)
 
-            required_columns = {'value_date', 'nwm_flow'}
-            if not reader.fieldnames or not required_columns.issubset(reader.fieldnames):
-                logger.warning(
-                    f'NWM retrospective file {file_path} must contain the '
-                    f'columns value_date and nwm_flow'
-                )
-                return False
+        header = next(reader, None)
+        if not header or len(header) < 2:
+            return False
 
-            matching_time_steps = 0
+        matching_time_steps = 0
 
-            for row in reader:
-                value_date = (row.get('value_date') or '').strip()
-                nwm_flow = (row.get('nwm_flow') or '').strip()
+        for row in reader:
+            if len(row) < 2:
+                continue
 
-                if not value_date or not nwm_flow:
-                    continue
+            timestamp_value = row[0].strip()
+            data_value = row[1].strip()
 
-                try:
-                    timestamp = datetime.fromisoformat(
-                        value_date.replace('Z', '+00:00')
-                    )
-                    float(nwm_flow)
-                except ValueError:
-                    logger.warning(
-                        f'Invalid NWM retrospective row in {file_path}: '
-                        f'value_date={value_date!r}, nwm_flow={nwm_flow!r}'
-                    )
-                    continue
+            if not timestamp_value or not data_value:
+                continue
 
-                timestamp = normalize_datetime(timestamp)
+            try:
+                timestamp = datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))
+                float(data_value)
+            except ValueError:
+                continue
 
-                if validation_start <= timestamp <= validation_end:
-                    matching_time_steps += 1
+            timestamp = normalize_datetime(timestamp)
 
-                    if matching_time_steps >= minimum_time_steps:
-                        return True
+            if start_period <= timestamp <= end_period:
+                matching_time_steps += 1
 
-    except (OSError, csv.Error) as e:
-        logger.warning(
-            f'Unable to read NWM retrospective file {file_path}: {e}'
-        )
+                if matching_time_steps >= minimum_time_steps:
+                    return True
+
+    except csv.Error as e:
+        logger.warning(f'Unable to read CSV data: {e}')
 
     return False
 
@@ -526,6 +514,17 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
                     )
 
                     obs_csv = get_observational_data_from_data_services(run, date_time_range)
+                    if not csv_has_required_data(StringIO(obs_csv), calibration_start_period, calibration_end_period):
+                        error_object.add_error(
+                            f'Observational data does not contain at least two valid time steps between '
+                            f'{format_datetime(calibration_start_period)} and {format_datetime(calibration_end_period)}'
+                        )
+
+                    if not csv_has_required_data(StringIO(obs_csv), validation_start_period, validation_end_period):
+                        error_object.add_error(
+                            f'Observational data does not contain at least two valid time steps between '
+                            f'{format_datetime(validation_start_period)} and {format_datetime(validation_end_period)}'
+                        )
                     obs_path = get_observational_file_for_job(run)
                     obs_dir = os.path.dirname(obs_path)
                     os.makedirs(obs_dir, exist_ok=True)
@@ -560,19 +559,17 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
                 calibration['full_eval_end_period'] = format_datetime(full_eval_end)
 
                 if run.gage is not None:
-                    nwm_retro = os.path.join(
-                        NWM_RETROSPECTIVE_DIR,
-                        f'{run.gage.gage_id}.csv'
-                    )
+                    nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
 
                     if os.path.exists(nwm_retro):
-                        # Require at least two valid NWM time steps within the
-                        # validation simulation period.
-                        if nwm_retro_has_validation_data(
-                                nwm_retro,
-                                validation_start_period,
-                                validation_end_period
-                        ):
+                        try:
+                            with open(nwm_retro, mode='r', encoding='utf-8-sig', newline='') as csv_file:
+                                nwm_retro_has_required_data = csv_has_required_data(csv_file, validation_start_period, validation_end_period)
+                        except OSError as e:
+                            logger.warning(f'Unable to read NWM retrospective file {nwm_retro}: {e}')
+                            nwm_retro_has_required_data = False
+
+                        if nwm_retro_has_required_data:
                             datafile['nwmretro_file'] = nwm_retro
                         else:
                             error_object.add_warning(
