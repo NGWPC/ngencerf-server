@@ -269,7 +269,7 @@ The server comes up at http://localhost:8000 and Postgres at localhost:5432.
 - **Force a static-data reload:** static data loads once on first start, tracked by `../data/.ngencerf-init/.load_static`. Delete that file to reload on the next start.
 - **Shell into the running container:** `docker exec -it $(docker ps -qf name=ngencerf-services) bash`.
 
-> Production uses `production-pw.yaml` + `cerfServer/.env-override` and is launched via Parallel Works.
+> Parallel Works production deploys from the `development-pw` branch, which carries its own `production-pw.yaml` + `cerfServer/.env-override`. AWS deployments inject configuration through ECS task definitions.
 
 
 # User Authentication
