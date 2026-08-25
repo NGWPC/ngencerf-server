@@ -3,8 +3,9 @@ import csv
 import logging
 import os
 from collections import defaultdict
-from datetime import datetime
-from typing import Any, TypeAlias
+from datetime import datetime, timezone
+from io import StringIO
+from typing import Any, TypeAlias, TextIO
 
 import toml
 from datetimerange import DateTimeRange
@@ -151,6 +152,68 @@ ConfigSection: TypeAlias = dict[str, ConfigValue]
 Config: TypeAlias = dict[str, ConfigSection]
 
 
+def csv_has_required_data(
+        csv_file: TextIO,
+        start_period: datetime,
+        end_period: datetime,
+        minimum_time_steps: int = 2
+) -> bool:
+    """
+    Check whether a CSV contains the required number of valid time steps within
+    the specified period.
+
+    The first column must contain a timestamp and the second column must contain
+    a numeric value. Timestamps without timezone information are interpreted as
+    UTC.
+    """
+
+    def normalize_datetime(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    start_period = normalize_datetime(start_period)
+    end_period = normalize_datetime(end_period)
+
+    try:
+        reader = csv.reader(csv_file)
+
+        header = next(reader, None)
+        if not header or len(header) < 2:
+            return False
+
+        matching_time_steps = 0
+
+        for row in reader:
+            if len(row) < 2:
+                continue
+
+            timestamp_value = row[0].strip()
+            data_value = row[1].strip()
+
+            if not timestamp_value or not data_value:
+                continue
+
+            try:
+                timestamp = datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))
+                float(data_value)
+            except ValueError:
+                continue
+
+            timestamp = normalize_datetime(timestamp)
+
+            if start_period <= timestamp <= end_period:
+                matching_time_steps += 1
+
+                if matching_time_steps >= minimum_time_steps:
+                    return True
+
+    except csv.Error as e:
+        logger.warning(f'Unable to read CSV data: {e}')
+
+    return False
+
+
 def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport, str | None]:
     """
     Validate the given CalibrationRun and prepare it for execution.
@@ -224,6 +287,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
         modules_by_id = get_cached_modules_by_id()  # authoritative, no DB or disk after first hit
         modules_by_name = {m.name: m for m in modules_by_id.values()}  # lightweight derived view for name-based lookups
 
+        observational_source_available = False
+
         # Validate and configure the gage ID and station name
         if not is_missing(run.gage, 'gage_id', error_object):
             general['basin'] = run.gage.gage_id
@@ -238,34 +303,14 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
                 forcing_provider = 'bmi'
                 forcing_configuration = run.forcing_source.name.lower()
 
-                # if not use_bmi:
-                #     # CSV forcing path rules apply
-                #     if not is_missing(run.forcing_eds_dir_path, "Forcing directory", error_object):
-                #         pass
-                #
                 forcing['forcing_provider'] = forcing_provider
                 forcing['forcing_configuration'] = forcing_configuration.lower()
 
-            if not is_missing(run.observational_source, 'Observational source', error_object):
-                if build:
-                    # Get the observational data
-                    date_time_range = DateTimeRange(
-                        min(run.calibration_start_period, run.validation_start_period),
-                        max(run.calibration_end_period, run.validation_end_period),
-                    )
-                    obs_csv = get_observational_data_from_data_services(run, date_time_range)
-                    obs_path = get_observational_file_for_job(run)
-                    obs_dir = os.path.dirname(obs_path)
-                    os.makedirs(obs_dir, exist_ok=True)
-
-                    with open(obs_path, "w", encoding="utf-8", newline="") as f:
-                        f.write(obs_csv)
-
-                    datafile['obs_dir'] = obs_dir
-
-            nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
-            if os.path.exists(nwm_retro):
-                datafile['nwmretro_file'] = nwm_retro
+            observational_source_available = not is_missing(
+                run.observational_source,
+                'Observational source',
+                error_object
+            )
 
             error_message = validate_time_range_against_data(run)
             if error_message:
@@ -436,23 +481,104 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
             }
             missing_start_end_period_fields = [name for name, value in required_start_end_period_fields.items() if value is None]
             if missing_start_end_period_fields:
-                error_object.add_warning(f"Unable to calculate time values: {', '.join(missing_start_end_period_fields)}")
+                error_object.add_warning(
+                    f"Unable to calculate time values: "
+                    f"{', '.join(missing_start_end_period_fields)}"
+                )
+
             else:
+                calibration_end_period = run.calibration_end_period
+                calibration_eval_start_period = run.calibration_eval_start_period
+                calibration_eval_end_period = run.calibration_eval_end_period
+                validation_start_period = run.validation_start_period
+                validation_end_period = run.validation_end_period
+                validation_eval_start_period = run.validation_eval_start_period
+                validation_eval_end_period = run.validation_eval_end_period
+
+                # These fields were checked immediately above. The assertions
+                # also narrow their types from datetime | None to datetime.
+                calibration_start_period = run.calibration_start_period
+                assert calibration_start_period is not None
+                assert calibration_end_period is not None
+                assert calibration_eval_start_period is not None
+                assert calibration_eval_end_period is not None
+                assert validation_start_period is not None
+                assert validation_end_period is not None
+                assert validation_eval_start_period is not None
+                assert validation_eval_end_period is not None
+
+                if observational_source_available and build:
+                    date_time_range = DateTimeRange(
+                        min(calibration_start_period, validation_start_period),
+                        max(calibration_end_period, validation_end_period),
+                    )
+
+                    obs_csv = get_observational_data_from_data_services(run, date_time_range)
+                    if not csv_has_required_data(StringIO(obs_csv), calibration_start_period, calibration_end_period):
+                        error_object.add_error(
+                            f'Observational data does not contain at least two valid time steps between '
+                            f'{format_datetime(calibration_start_period)} and {format_datetime(calibration_end_period)}'
+                        )
+
+                    if not csv_has_required_data(StringIO(obs_csv), validation_start_period, validation_end_period):
+                        error_object.add_error(
+                            f'Observational data does not contain at least two valid time steps between '
+                            f'{format_datetime(validation_start_period)} and {format_datetime(validation_end_period)}'
+                        )
+                    obs_path = get_observational_file_for_job(run)
+                    obs_dir = os.path.dirname(obs_path)
+                    os.makedirs(obs_dir, exist_ok=True)
+
+                    with open(
+                            obs_path,
+                            'w',
+                            encoding='utf-8',
+                            newline=''
+                    ) as f:
+                        f.write(obs_csv)
+
+                    datafile['obs_dir'] = obs_dir
+
                 calibration['calib_start_period'] = format_datetime(run.calibration_start_period)
-                calibration['calib_end_period'] = format_datetime(run.calibration_end_period)
-                calibration['calib_eval_start_period'] = format_datetime(run.calibration_eval_start_period)
-                calibration['calib_eval_end_period'] = format_datetime(run.calibration_eval_end_period)
-                calibration['valid_start_period'] = format_datetime(run.validation_start_period)
-                calibration['valid_end_period'] = format_datetime(run.validation_end_period)
-                calibration['valid_eval_start_period'] = format_datetime(run.validation_eval_start_period)
-                calibration['valid_eval_end_period'] = format_datetime(run.validation_eval_end_period)
+                calibration['calib_end_period'] = format_datetime(calibration_end_period)
+                calibration['calib_eval_start_period'] = format_datetime(calibration_eval_start_period)
+                calibration['calib_eval_end_period'] = format_datetime(calibration_eval_end_period)
+                calibration['valid_start_period'] = format_datetime(validation_start_period)
+                calibration['valid_end_period'] = format_datetime(validation_end_period)
+                calibration['valid_eval_start_period'] = format_datetime(validation_eval_start_period)
+                calibration['valid_eval_end_period'] = format_datetime(validation_eval_end_period)
+
                 full_eval_start, full_eval_end = get_full_evaluation_date_range(
-                    run.calibration_eval_start_period, run.calibration_eval_end_period,
-                    run.validation_eval_start_period, run.validation_eval_end_period)
+                    calibration_eval_start_period,
+                    calibration_eval_end_period,
+                    validation_eval_start_period,
+                    validation_eval_end_period
+                )
 
                 calibration['full_eval_start_period'] = format_datetime(full_eval_start)
                 calibration['full_eval_end_period'] = format_datetime(full_eval_end)
 
+                if run.gage is not None:
+                    nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
+
+                    if os.path.exists(nwm_retro):
+                        try:
+                            with open(nwm_retro, mode='r', encoding='utf-8-sig', newline='') as csv_file:
+                                nwm_retro_has_required_data = csv_has_required_data(csv_file, validation_start_period, validation_end_period)
+                        except OSError as e:
+                            logger.warning(f'Unable to read NWM retrospective file {nwm_retro}: {e}')
+                            nwm_retro_has_required_data = False
+
+                        if nwm_retro_has_required_data:
+                            datafile['nwmretro_file'] = nwm_retro
+                        else:
+                            error_object.add_warning(
+                                f'NWM retrospective file for gage '
+                                f'{run.gage.gage_id} does not contain at least two '
+                                f'valid time steps between '
+                                f'{format_datetime(validation_start_period)} and '
+                                f'{format_datetime(validation_end_period)}'
+                            )
         if not is_missing(run.objective_function, 'Objective function', error_object, have_LSTM_flag=have_LSTM_flag):
             calibration['objective_function'] = run.objective_function.name.lower()
 
