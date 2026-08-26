@@ -514,16 +514,16 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport,
                     )
 
                     obs_csv = get_observational_data_from_data_services(run, date_time_range)
-                    if not csv_has_required_data(StringIO(obs_csv), calibration_start_period, calibration_end_period):
+                    if not csv_has_required_data(StringIO(obs_csv), calibration_eval_start_period, calibration_eval_end_period):
                         error_object.add_error(
                             f'Observational data does not contain at least two valid time steps between '
-                            f'{format_datetime(calibration_start_period)} and {format_datetime(calibration_end_period)}'
+                            f'{format_datetime(calibration_eval_start_period)} and {format_datetime(calibration_eval_end_period)}'
                         )
 
-                    if not csv_has_required_data(StringIO(obs_csv), validation_start_period, validation_end_period):
+                    if not csv_has_required_data(StringIO(obs_csv), validation_eval_start_period, validation_eval_end_period):
                         error_object.add_error(
                             f'Observational data does not contain at least two valid time steps between '
-                            f'{format_datetime(validation_start_period)} and {format_datetime(validation_end_period)}'
+                            f'{format_datetime(validation_eval_start_period)} and {format_datetime(validation_eval_end_period)}'
                         )
                     obs_path = get_observational_file_for_job(run)
                     obs_dir = os.path.dirname(obs_path)
