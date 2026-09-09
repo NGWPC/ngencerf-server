@@ -34,13 +34,15 @@ Note that the .env file is not checked in to Git
 
 # Install Postgres
 
-See your administer for instructions on installing Postgres locally.  Connection values can
+See your administrator for instructions on installing Postgres locally.  Connection values can
 be specified in `.env`, e.g., CERF_SERVER_DATABAWSE_HOST, CERF_SERVER_DATABASE_USER, etc.  Also, see `settings.py`
+
+There is no specific dependency on Postgres or any specific release of Postgres.  Any version should work, as well as alternatives such as SqlLite
 
 
 # Install Redis
 Redis is used for the cache.  It is memory-only and non-persistent.  When the server is restarted, the cache *must* be cleared.
-See your administer for instructions on installing Redis locally.  Each instance of the server needs to have its own istance of Redis,
+See your administrator for instructions on installing Redis locally.  Each instance of the server needs to have its own instance of Redis,
 so it should be installed for use by a single developer.
 
 The file 'redis.conf.dev' has the configuration needed for Redis
