@@ -68,7 +68,9 @@ permissions:
 env:
   REGISTRY: ghcr.io
   PYTHON_VERSION: '3.12'
-  BASE_NAME: python:3.12-slim-bookworm
+  # base image the Dockerfiles build FROM, pinned by digest (keep the tag and
+  # digest in sync with BASE_TAG / PYTHON_IMAGE_DIGEST in both Dockerfiles)
+  BASE_NAME: python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
 
 jobs:
   # Build the ngencerf CLI executables. PyInstaller cannot cross-compile, so each
@@ -200,13 +202,22 @@ jobs:
           # 3. Base image metadata for the OCI base.* labels. skopeo reads the
           #    remote manifest without pulling. base_revision is best-effort:
           #    base images that publish no revision label (e.g. python:3.12-slim-bookworm)
-          #    stay "unknown"; base_digest still pins the exact base image.
+          #    stay "unknown"; base_digest records the exact base image, which
+          #    the Dockerfiles already pin by digest.
           # ----------------------------------------------------------------
           if ! command -v skopeo >/dev/null 2>&1; then
             sudo apt-get update -y
             sudo apt-get install -y --no-install-recommends skopeo
           fi
-          BASE_INSPECT=$(skopeo inspect --override-os linux --override-arch amd64 "docker://${BASE_NAME}")
+          # skopeo rejects tag@digest references; when the base is pinned by
+          # digest, inspect it as name@digest (drop the :tag on the last path component)
+          SKOPEO_REF="${BASE_NAME}"
+          if [[ "${BASE_NAME}" == *@* ]]; then
+            repo="${BASE_NAME%%@*}"; digest="${BASE_NAME##*@}"
+            case "${repo##*/}" in *:*) repo="${repo%:*}";; esac
+            SKOPEO_REF="${repo}@${digest}"
+          fi
+          BASE_INSPECT=$(skopeo inspect --override-os linux --override-arch amd64 "docker://${SKOPEO_REF}")
           BASE_DIGEST=$(echo "$BASE_INSPECT" | jq -r '.Digest // "unknown"')
           BASE_REVISION=$(echo "$BASE_INSPECT" | jq -r '.Labels["org.opencontainers.image.revision"] // .Labels["io.ngwpc.image.base.revision"] // "unknown"')
 

@@ -2397,39 +2397,39 @@ Invalidates Docker cache for dependency fetch/install layers.
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Build-time |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded. |
 
-### `BASE_REPO`, `BASE_TAG`
+### `BASE_REPO`, `BASE_TAG`, `PYTHON_IMAGE_DIGEST`
 
-Base Python image repository and tag.
+Base Python image repository, tag, and the digest the tag is pinned to. The `FROM` line uses all three (`repo:tag@digest`), so the digest is what gets pulled; refresh the tag and digest together, in both Dockerfiles and in the `BASE_NAME` value in `.github/workflows/cicd.yml`.
 
 | Attribute | Value |
 |---|---|
 | Type | Strings |
-| Default Value | `python`, `3.12-slim-bookworm` |
+| Default Value | `python`, `3.12-slim-bookworm`, current index digest of that tag |
 | Whether It Is Required or Optional | Required |
-| Example Values | `python`, `3.14-slim-bookworm` |
+| Example Values | `python`, `3.14-slim-bookworm`, `sha256:...` from `docker buildx imagetools inspect python:3.14-slim-bookworm` |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `Dockerfile.production-pw` |
+| Where It Is Read in Code | `Dockerfile`, `Dockerfile.production-pw` (image selection block and the `FROM` line) |
 | What Breaks If It Is Missing | Base `FROM` is invalid. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Build-time |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Defaults hardcoded. |
 
-### `GO_IMAGE`
+### `GO_IMAGE`, `GO_IMAGE_DIGEST`
 
-Go toolchain image used by production Singularity build.
+Go toolchain image used by production Singularity build, and the digest its tag is pinned to (`FROM ${GO_IMAGE}@${GO_IMAGE_DIGEST}`). Refresh both together.
 
 | Attribute | Value |
 |---|---|
-| Type | Image reference |
-| Default Value | `golang:1.25.11-bookworm` |
+| Type | Image reference, digest |
+| Default Value | `golang:1.25.11-bookworm`, current index digest of that tag |
 | Whether It Is Required or Optional | Required for production image build |
-| Example Values | Pinned image digest |
+| Example Values | `golang:1.25.11-bookworm`, `sha256:...` from `docker buildx imagetools inspect golang:1.25.11-bookworm` |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `Dockerfile.production-pw:33,41` |
+| Where It Is Read in Code | `Dockerfile.production-pw` (image selection block and the `go-toolchain` stage `FROM` line) |
 | What Breaks If It Is Missing | Production build stage fails. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Build-time |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded. |
+| Whether It Is Hardcoded Anywhere; If So, Where? | Defaults hardcoded. |
 
 ### `SINGULARITY_VERSION`
 
@@ -2472,7 +2472,7 @@ OCI provenance metadata for base image.
 | Attribute | Value |
 |---|---|
 | Type | Strings |
-| Default Value | Derived name; other values `unknown` |
+| Default Value | Derived name (`repo:tag@digest`); `BASE_DIGEST` defaults to `PYTHON_IMAGE_DIGEST`; `BASE_REVISION` `unknown` |
 | Whether It Is Required or Optional | Optional metadata |
 | Example Values | Image name, digest, Git SHA |
 | Whether It Is Environment-Specific | No |

@@ -28,12 +28,20 @@ ARG NGEN_FORCING_REF=development
 
 ############################################################################
 # Image selection
+#
+# The base is pinned by digest so it cannot change underneath the same tag.
+# The digest is what gets pulled; the tag stays for readability. It is the
+# multi-arch index digest, so builds still resolve the right platform. Refresh
+# BASE_TAG and PYTHON_IMAGE_DIGEST together, in both Dockerfiles and in the
+# BASE_NAME value in .github/workflows/cicd.yml:
+#   docker buildx imagetools inspect python:<version>-slim-bookworm
 ############################################################################
 
 ARG BASE_REPO=python
 ARG BASE_TAG=3.12-slim-bookworm
+ARG PYTHON_IMAGE_DIGEST=sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
 
-FROM ${BASE_REPO}:${BASE_TAG}
+FROM ${BASE_REPO}:${BASE_TAG}@${PYTHON_IMAGE_DIGEST}
 
 # Re-expose args after FROM for the remaining build stage
 # Keeps whatever value was already set
@@ -53,8 +61,12 @@ ARG NGEN_FORCING_REF
 # OCI Metadata Arguments
 ARG BASE_REPO
 ARG BASE_TAG
-ARG BASE_NAME="${BASE_REPO}:${BASE_TAG}"
-ARG BASE_DIGEST="unknown"
+ARG PYTHON_IMAGE_DIGEST
+ARG BASE_NAME="${BASE_REPO}:${BASE_TAG}@${PYTHON_IMAGE_DIGEST}"
+# The base is pinned by digest above, so the label defaults to that same
+# digest (CI passes the inspected value, which is the same). Override the base
+# args and BASE_DIGEST together when building from a different base.
+ARG BASE_DIGEST="${PYTHON_IMAGE_DIGEST}"
 ARG BASE_REVISION="unknown"
 ARG IMAGE_SOURCE="unknown"
 ARG IMAGE_VENDOR="unknown"
