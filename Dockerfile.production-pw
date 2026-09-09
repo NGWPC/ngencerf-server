@@ -28,19 +28,29 @@ ARG NGEN_FORCING_REF=development
 
 ############################################################################
 # Image selection
+#
+# Both bases are pinned by digest so they cannot change underneath the same
+# tag. The digest is what gets pulled; the tag stays for readability. They are
+# multi-arch index digests, so builds still resolve the right platform. Refresh
+# a tag and its digest together, in both Dockerfiles and in the BASE_NAME
+# value in .github/workflows/cicd.yml:
+#   docker buildx imagetools inspect python:<version>-slim-bookworm
+#   docker buildx imagetools inspect golang:<version>-bookworm
 ############################################################################
 
 ARG GO_IMAGE=golang:1.25.11-bookworm
+ARG GO_IMAGE_DIGEST=sha256:b96f24a8d7d010ea0acb9c3ba99064740f02b6b984612b28bd3c9c5ab9453e38
 ARG BASE_REPO=python
 ARG BASE_TAG=3.12-slim-bookworm
+ARG PYTHON_IMAGE_DIGEST=sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
 ARG SINGULARITY_VERSION=4.4.2
 
 # SingularityCE 4.4 requires Go 1.25.6 or newer. Use the official Go
 # Bookworm image as the build-toolchain source rather than Debian's older
 # golang-go package.
-FROM ${GO_IMAGE} AS go-toolchain
+FROM ${GO_IMAGE}@${GO_IMAGE_DIGEST} AS go-toolchain
 
-FROM ${BASE_REPO}:${BASE_TAG}
+FROM ${BASE_REPO}:${BASE_TAG}@${PYTHON_IMAGE_DIGEST}
 
 # Make the current Go toolchain available while building SingularityCE.
 COPY --from=go-toolchain /usr/local/go /usr/local/go
@@ -66,8 +76,12 @@ ARG SINGULARITY_VERSION
 # OCI Metadata Arguments
 ARG BASE_REPO
 ARG BASE_TAG
-ARG BASE_NAME="${BASE_REPO}:${BASE_TAG}"
-ARG BASE_DIGEST="unknown"
+ARG PYTHON_IMAGE_DIGEST
+ARG BASE_NAME="${BASE_REPO}:${BASE_TAG}@${PYTHON_IMAGE_DIGEST}"
+# The base is pinned by digest above, so the label defaults to that same
+# digest (CI passes the inspected value, which is the same). Override the base
+# args and BASE_DIGEST together when building from a different base.
+ARG BASE_DIGEST="${PYTHON_IMAGE_DIGEST}"
 ARG BASE_REVISION="unknown"
 ARG IMAGE_SOURCE="unknown"
 ARG IMAGE_VENDOR="unknown"
