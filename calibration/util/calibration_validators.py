@@ -654,7 +654,7 @@ class CalibrationRunListResponse(BaseSerializer):
 class FooterResponseSerializer(BaseSerializer):
     ngenCerf_version = serializers.CharField(required=True)
     ngenCerf_date = serializers.CharField(required=True)
-    ngenCerf_copyright = serializers.CharField(required=True)
+    ngenCerf_copyright = serializers.CharField(required=True, allow_blank=True, allow_null=True)
     contact_email = serializers.CharField(required=True, allow_blank=True)
 
 

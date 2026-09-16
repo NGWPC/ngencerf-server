@@ -42,7 +42,7 @@ DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 NGENCERF_VERSION = os.getenv("NGENCERF_VERSION", "<unknown>")
 NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "<unknown>")
-NGENCERF_COPYRIGHT = f"© 2024-{datetime.now().year}, RTX"
+NGENCERF_COPYRIGHT = None
 
 # used to find ngencerf-ui Docker image
 NGENCERF_UI_TAG = os.getenv("NGENCERF_UI_TAG", "latest")
