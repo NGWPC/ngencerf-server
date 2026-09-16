@@ -42,6 +42,7 @@ DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 NGENCERF_VERSION = os.getenv("NGENCERF_VERSION", "<unknown>")
 NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "<unknown>")
+# The UI is smart enough to not display the copyright if blank or empty
 NGENCERF_COPYRIGHT = None
 
 # used to find ngencerf-ui Docker image
