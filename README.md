@@ -2,6 +2,17 @@
 These instructions are primarily for installing ngencerf-server in your local development environment.  Requires an AWS account with S3 bucket access.
 An EDFS server is also required.  The url of the server is specified in `.env`
 
+# Additional documentation
+
+- [ngenCERF_Server_Configuration_Reference.md](ngenCERF_Server_Configuration_Reference.md): every environment variable, startup flag, and hardcoded setting, with defaults and where each is read.
+- [Readme_supporting_services.md](Readme_supporting_services.md): what the server requires from PostgreSQL and Redis, and the provisioning files shipped in this repo.
+- [Readme_portable_deployment.md](Readme_portable_deployment.md): running without container bind mounts, without Docker, or on a plain Linux host; which paths are configurable.
+- [Readme_active_directory_doc.md](Readme_active_directory_doc.md): Active Directory / LDAP authentication implementation.
+- [Readme_active_directory_flow.md](Readme_active_directory_flow.md): authentication and Active Directory notes for the UI.
+- [Readme_auth_flow.md](Readme_auth_flow.md): MFA authentication, UI integration guide.
+- [password_reset.md](password_reset.md): resetting a user password through the API or console email flow.
+- [cli/README.md](cli/README.md): the ngencerf command-line client.
+
 # Create virtual environment and install dependencies
 
 Connect to the root directory where you cloned the server repo, assumed to be `$cerfServer`, for example, `~/ngecerf-server/`
@@ -38,8 +49,9 @@ See your administrator for instructions on installing Postgres locally. Connecti
 set in `.env` (`CERF_SERVER_DATABASE_HOST`, `CERF_SERVER_DATABASE_USER`, and so on; see `settings.py`).
 A local Postgres without TLS needs `CERF_SERVER_DATABASE_SSLMODE=disable`.
 
-Postgres is required (the database engine is fixed in `settings.py`), but no particular release and no
-extensions: any recent version works. Everything the server needs from Postgres is listed in
+Postgres is the supported and tested database, with no particular release and no extensions required:
+any recent version works. The engine is set in `settings.py` (`DATABASES`) and could be switched to another
+Django backend such as SQLite, which is untested. Everything the server needs from Postgres is listed in
 [Readme_supporting_services.md](Readme_supporting_services.md).
 
 

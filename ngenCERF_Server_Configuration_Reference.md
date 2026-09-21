@@ -792,6 +792,23 @@ In-container directory used to inspect Singularity images/Git information in Slu
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only, coordinated with the mount |
 | Whether It Is Hardcoded Anywhere; If So, Where? | The default only. AWS mounts EFS at the default path in `django.tf`. |
 
+#### `NGENCERF_TEMP_DIR`
+
+Base directory for the server's own temporary files: the ZIP download workspace (`ZIP_TEMP_DIR`) and the S3 download fallback in `cloud_util`. Access to `/tmp` is not guaranteed in every environment, so the base is configurable; `/tmp` remains the fallback.
+
+| Attribute | Value |
+|---|---|
+| Type | Directory path |
+| Default Value | Python's `tempfile.gettempdir()`: `TMPDIR`, `TEMP` or `TMP` if set, else `/tmp` |
+| Whether It Is Required or Optional | Optional |
+| Example Values | `/var/tmp/ngencerf` |
+| Whether It Is Environment-Specific | Yes |
+| Whether It Is Secret or Sensitive | No |
+| Where It Is Read in Code | `cerfServer/settings.py:347`; `calibration/util/cloud_util.py:1249` |
+| What Breaks If It Is Missing | Default applies. If the configured directory cannot be created, startup fails at the `ZIP_TEMP_DIR` creation. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
+| Whether It Is Hardcoded Anywhere; If So, Where? | No. The `mkstemp` calls in `container_util` and `git_util` use the destination file's directory by design and are not affected. |
+
 #### `CAL_MGR_DOCKER_CMD`, `NGEN_FORECAST_DOCKER_CMD`, `NWM_EVAL_DOCKER_CMD`
 
 Optional overrides for the Docker-mode job launcher templates (calibration/validation, cold start/forecast/hindcast, verification): a different image reference, extra flags, or another container runtime. The server formats `{name}` into the template, splits it on whitespace, and appends the workload entrypoint arguments; completion is judged by the exit code.
@@ -1867,15 +1884,15 @@ Local workspace used to build ZIP downloads.
 | Attribute | Value |
 |---|---|
 | Type | Directory path |
-| Default Value | `/tmp/ngencerf-zips` |
+| Default Value | `<NGENCERF_TEMP_DIR>/ngencerf-zips` (`/tmp/ngencerf-zips` with nothing set) |
 | Whether It Is Required or Optional | Required for ZIP generation |
-| Example Values | `/mnt/tmp/zips` |
+| Example Values | `/var/tmp/ngencerf/ngencerf-zips` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:336-337`; download views |
+| Where It Is Read in Code | `cerfServer/settings.py:350-351`; download views |
 | What Breaks If It Is Missing | Startup directory creation or ZIP construction fails. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only, through `NGENCERF_TEMP_DIR` |
+| Whether It Is Hardcoded Anywhere; If So, Where? | Only the `ngencerf-zips` subdirectory name. |
 
 ### `ZIP_DOWNLOAD_URL_TTL_SECONDS`
 

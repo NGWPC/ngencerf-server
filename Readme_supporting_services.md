@@ -13,8 +13,10 @@ The environment variables named here are described in full in
 
 # PostgreSQL
 
-**Required.** The database engine is fixed to `django.db.backends.postgresql`
-in `cerfServer/settings.py` (driver: psycopg 3), so no other database works.
+**Required.** PostgreSQL is the supported and tested database. The engine is
+set to `django.db.backends.postgresql` (driver: psycopg 3) in the `DATABASES`
+block of `cerfServer/settings.py`; switching it to another Django backend such
+as SQLite is possible there but untested.
 
 What the server needs from it:
 

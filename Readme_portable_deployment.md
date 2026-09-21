@@ -32,6 +32,7 @@ communicate any other way.
 | `HOST_DATA_ROOT` | `settings.py` | `CONTAINER_DATA_ROOT` | Only differs when the jobs run on another machine or the host path differs from the container path. |
 | `SINGULARITY_DIR` | `settings.py` | `/ngencerf/containers` | Slurm mode only; where the server reads the `.sif` images for the About page. |
 | `RUN_CERF_FLAG_DIRECTORY` | `runCerf.sh` | `./` (image: `/ngencerf/ngencerf-server/.init`) | Small marker files that stop first-boot work from re-running. Must persist across restarts. |
+| `NGENCERF_TEMP_DIR` | `settings.py` | Python's `tempfile.gettempdir()` (`TMPDIR` if set, else `/tmp`) | Base for the server's own temporary files (the ZIP download workspace, the S3 download fallback). Set it where `/tmp` is unavailable, read-only, or too small. Created at startup if missing. |
 | `NGEN_CAL_DATA_PATH`, `NGENCERF_INIT_PATH`, `NGENCERF_LOGS_PATH`, `POSTGRES_DATA_PATH` | `compose.yaml` only | see README | Host side of the dev-compose bind mounts (server data, init, logs, and the dev Postgres data directory). |
 | `CAL_MGR_DOCKER_CMD`, `NGEN_FORECAST_DOCKER_CMD`, `NWM_EVAL_DOCKER_CMD` | `settings.py` | `docker run ...` | Job launcher templates for DOCKER mode. Override to change the image reference, add flags, or use another container runtime. |
 
@@ -95,6 +96,9 @@ Give the container its own storage instead:
 - Pass `CONTAINER_DATA_ROOT` and `HOST_DATA_ROOT` (and `RUN_CERF_FLAG_DIRECTORY`
   if you moved it) in the container environment. The image's own defaults are
   guarded, so values from the environment win.
+- If `/tmp` inside the container is unavailable or read-only, set
+  `NGENCERF_TEMP_DIR` to a writable directory; the server keeps its own
+  temporary files there.
 
 The consequence is the hard requirement above: the jobs must run in that same
 filesystem. A job launched by `docker run` on the host cannot see a directory
