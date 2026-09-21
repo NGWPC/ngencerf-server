@@ -68,6 +68,7 @@ from boto3.exceptions import S3UploadFailedError
 from botocore import UNSIGNED
 from botocore.config import Config
 from botocore.exceptions import ProfileNotFound
+from django.conf import settings
 
 from calibration.views.called_from import called_from
 
@@ -1242,8 +1243,11 @@ def localize_to_path(
             if os.path.exists(tmp_download):
                 os.remove(tmp_download)
 
-    # Fallback: temp file if cache disabled
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmpf:
+    # Fallback: temp file if cache disabled (under the configurable temp base,
+    # see settings.NGENCERF_TEMP_DIR)
+    with tempfile.NamedTemporaryFile(
+        suffix=suffix, delete=False, dir=settings.NGENCERF_TEMP_DIR
+    ) as tmpf:
         tmp_path = tmpf.name
     try:
         logger.info(f"Downloading remote file to temp: {orig} → {tmp_path}")

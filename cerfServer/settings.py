@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 import json
 import os
+import tempfile
 from datetime import timedelta, datetime, timezone
 from enum import StrEnum, auto
 from urllib.parse import urlparse, urlunparse
@@ -333,8 +334,20 @@ NGENCERF_ZIPS_S3_PATH = os.getenv('NGENCERF_ZIPS_S3_PATH')
 # Use None for AWS Dev (uses default profile)
 NGENCERF_RW_PROFILE = os.getenv('NGENCERF_RW_PROFILE') or None
 
+# Base directory for the server's own temporary files. Access to /tmp is not
+# guaranteed everywhere, so the base is configurable: NGENCERF_TEMP_DIR wins
+# when set; otherwise Python's tempfile.gettempdir() applies, which honors
+# the standard TMPDIR / TEMP / TMP variables and falls back to /tmp. Everything
+# the server creates itself goes under it: the ZIP workspace below and the S3
+# download fallback in cloud_util (the tempfile.mkstemp calls in container_util
+# and git_util deliberately use the destination file's own directory instead,
+# so their atomic rename stays on one filesystem). The directory is created at
+# startup if missing (the makedirs below creates it as the ZIP workspace's
+# parent).
+NGENCERF_TEMP_DIR = os.getenv('NGENCERF_TEMP_DIR') or tempfile.gettempdir()
+
 # Local temp directory for building ZIPs before upload (and for CLI zips)
-ZIP_TEMP_DIR = os.path.join('/tmp', 'ngencerf-zips')
+ZIP_TEMP_DIR = os.path.join(NGENCERF_TEMP_DIR, 'ngencerf-zips')
 os.makedirs(ZIP_TEMP_DIR, exist_ok=True)
 
 # How long a presigned download URL is valid
@@ -610,7 +623,7 @@ if JOB_EXECUTION_MODE == JobExecutionMode.SLURM_MOCK and not DEBUG:
 # defaults. Completion is judged by the exit code of the launched process
 # (0 = done, anything else = failed). Rules for an override:
 #   - keep {name}: cancellation is `docker kill <name>`, so a launcher that
-#     does not create a container with that name cannot be cancelled from the
+#     does not create a container with that name cannot be canceled from the
 #     UI (and the docker binary is what gets called, even for another runtime);
 #   - any other literal brace must be doubled ({{ and }}) because the string
 #     goes through str.format;
