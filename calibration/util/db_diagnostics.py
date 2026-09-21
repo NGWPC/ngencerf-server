@@ -59,7 +59,10 @@ def _parse_statement_timeout(options_str: str | None) -> str | None:
     return m.group(1) if m else None
 
 
-def log_db_diagnostics_on_failure(alias: str = 'default', settings_dict: dict | None = None) -> None:
+def log_db_diagnostics_on_failure(
+        alias: str = 'default',
+        settings_dict: dict | None = None
+) -> None:
     """
     Log diagnostic information when a database connection fails.
 
@@ -96,6 +99,14 @@ def log_db_diagnostics_on_failure(alias: str = 'default', settings_dict: dict | 
 
     except Exception as e:
         logger.error(f"[DB Diagnostics] Could not retrieve DB settings: {e}")
+
+    # The diagnostics below query PostgreSQL system views such as
+    # pg_stat_activity. Other database backends do not provide these views.
+    if not (settings_dict or {}).get(
+        'ENGINE',
+        '',
+    ).startswith('django.db.backends.postgresql'):
+        return
 
     # ---- Postgres activity stats ----
     try:

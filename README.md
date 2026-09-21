@@ -8,7 +8,7 @@ An EDFS server is also required.  The url of the server is specified in `.env`
 - [Additional documentation](#additional-documentation)
 - [Create virtual environment and install dependencies](#create-virtual-environment-and-install-dependencies)
 - [Setup local configuration](#setup-local-configuration)
-- [Install Postgres](#install-postgres)
+- [Configure the Database](#configure-the-database)
 - [Install Redis](#install-redis)
 - [Create data directory](#create-data-directory)
 - [Access to AWS](#access-to-aws)
@@ -23,7 +23,7 @@ An EDFS server is also required.  The url of the server is specified in `.env`
 # Additional documentation
 
 - [ngenCERF_Server_Configuration_Reference.md](ngenCERF_Server_Configuration_Reference.md): every environment variable, startup flag, and hardcoded setting, with defaults and where each is read.
-- [Readme_supporting_services.md](Readme_supporting_services.md): what the server requires from PostgreSQL and Redis, and the provisioning files shipped in this repo.
+- [Readme_supporting_services.md](Readme_supporting_services.md): database and Redis requirements, including PostgreSQL and SQLite configuration, and the provisioning files shipped in this repo.
 - [Readme_portable_deployment.md](Readme_portable_deployment.md): running without container bind mounts, without Docker, or on a plain Linux host; which paths are configurable.
 - [Readme_active_directory_doc.md](Readme_active_directory_doc.md): Active Directory / LDAP authentication implementation.
 - [Readme_active_directory_flow.md](Readme_active_directory_flow.md): authentication and Active Directory notes for the UI.
@@ -61,17 +61,40 @@ cp $cerfServer/cerfServer/__.env $cerfServer/.env
 This template file is suitable for development and no changes need to be made.
 Note that the .env file is not checked in to Git
 
-# Install Postgres
+# Configure the database
 
-See your administrator for instructions on installing Postgres locally. Connection values are
-set in `.env` (`CERF_SERVER_DATABASE_HOST`, `CERF_SERVER_DATABASE_USER`, and so on; see `settings.py`).
-A local Postgres without TLS needs `CERF_SERVER_DATABASE_SSLMODE=disable`.
+PostgreSQL remains the default, supported, and tested database. 
+See your administrator for instructions on installing it locally. 
+Connection values are set in `.env` (`CERF_SERVER_DATABASE_HOST`, `CERF_SERVER_DATABASE_USER`, and so on; see `settings.py`). 
+A local PostgreSQL server without TLS needs `CERF_SERVER_DATABASE_SSLMODE=disable`.
 
-Postgres is the supported and tested database, with no particular release and no extensions required:
-any recent version works. The engine is set in `settings.py` (`DATABASES`) and could be switched to another
-Django backend such as SQLite, which is untested. Everything the server needs from Postgres is listed in
+The database backend is selected with `CERF_SERVER_DATABASE_ENGINE`. 
+Its default remains:
+
+```text
+CERF_SERVER_DATABASE_ENGINE=django.db.backends.postgresql
+```
+
+PostgreSQL has no required extensions, and any recent version should work. Everything the server needs from PostgreSQL is listed in
 [Readme_supporting_services.md](Readme_supporting_services.md).
 
+For lightweight local development, SQLite can be used without installing or running a database server:
+
+```text
+CERF_SERVER_DATABASE_ENGINE=django.db.backends.sqlite3
+CERF_SERVER_DATABASE_NAME=/absolute/path/to/ngencerf.sqlite3
+```
+
+If `CERF_SERVER_DATABASE_NAME` is omitted while SQLite is selected, the
+database file defaults to `db.sqlite3` in the repository root. The PostgreSQL
+host, port, user, password, SSL, connection-timeout, and statement-timeout
+settings are ignored in SQLite mode. `runCerf.sh` applies the same Django
+migrations and initialization commands to the selected database.
+
+SQLite is intended for local development and testing. PostgreSQL remains the
+production database. Other Django database backends may be selected through
+`CERF_SERVER_DATABASE_ENGINE`, but they require the appropriate Python driver
+and may require additional backend-specific settings or testing.
 
 # Install Redis
 Redis is used only as the cache. It is memory-only and non-persistent, and `runCerf.sh` clears it at every start.

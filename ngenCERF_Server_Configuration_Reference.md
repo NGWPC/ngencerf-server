@@ -41,7 +41,7 @@ Enables Django debug behavior and controls the default for file logging.
 | Example Values | `false` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:40` |
+| Where It Is Read in Code | `cerfServer/settings.py:41` |
 | What Breaks If It Is Missing | Server starts in debug mode, exposing unsafe development behavior. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded in `settings.py`; AWS sets `False` in `django.tf`. |
@@ -58,7 +58,7 @@ Django cryptographic signing key.
 | Example Values | Random high-entropy string |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | **Secret** |
-| Where It Is Read in Code | `cerfServer/settings.py:68` |
+| Where It Is Read in Code | `cerfServer/settings.py:70` |
 | What Breaks If It Is Missing | Server starts with a known insecure key; signed data and tokens are unsafe. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Insecure fallback is hardcoded in `settings.py`; AWS injects a Secrets Manager value. |
@@ -75,7 +75,7 @@ Comma-separated hostnames accepted in the HTTP `Host` header.
 | Example Values | `api.example.gov,internal-alb.example` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:129-136` |
+| Where It Is Read in Code | `cerfServer/settings.py:131-138` |
 | What Breaks If It Is Missing | Requests for unlisted hosts return HTTP 400 `DisallowedHost`. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Local defaults are hardcoded; AWS adds the ALB name and configured hosts. |
@@ -92,7 +92,7 @@ ECS-provided metadata endpoint used to add the task private IPv4 address to `ALL
 | Example Values | `http://169.254.170.2/v4/...` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure metadata |
-| Where It Is Read in Code | `cerfServer/settings.py:142-155` |
+| Where It Is Read in Code | `cerfServer/settings.py:144-157` |
 | What Breaks If It Is Missing | Startup continues; direct ALB health checks may fail if the task IP is not otherwise allowed. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Platform-managed |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Behavior and one-second timeout are hardcoded. |
@@ -109,7 +109,7 @@ Comma-separated browser origins permitted by Django CORS middleware.
 | Example Values | `https://cerf.example.gov` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:158-165` |
+| Where It Is Read in Code | `cerfServer/settings.py:160-167` |
 | What Breaks If It Is Missing | The localhost development allowlist is used. Cross-origin browser requests from any other UI origin are blocked. The current same-origin AWS deployment is unaffected. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Local UI origin is hardcoded. Not set in the supplied `django.tf`. |
@@ -126,7 +126,7 @@ Comma-separated origins trusted for state-changing browser requests such as admi
 | Example Values | `https://ngencerf.example.gov` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:171-178` |
+| Where It Is Read in Code | `cerfServer/settings.py:173-180` |
 | What Breaks If It Is Missing | Django rejects affected state-changing browser requests from an untrusted public origin. Environments without a separate public HTTPS origin are unaffected. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | The empty default is hardcoded. `django.tf` conditionally sets the configured public URL when `var.public_url` is not empty. |
@@ -143,7 +143,7 @@ Makes Django trust a front-end proxy's `X-Forwarded-Proto` header and treat requ
 | Example Values | `true` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:180-188` |
+| Where It Is Read in Code | `cerfServer/settings.py:182-190` |
 | What Breaks If It Is Missing | Django may generate HTTP redirects or absolute URLs and may not treat proxied requests as secure. Direct HTTP and non-proxied environments are unaffected. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | The `false` default and trusted header mapping are hardcoded. `django.tf` conditionally sets `true` when `var.public_url` is not empty. |
@@ -160,7 +160,7 @@ Enables mandatory MFA policy and enrollment flow.
 | Example Values | `true` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:190`; `calibration/auth_mfa/policy.py` |
+| Where It Is Read in Code | `cerfServer/settings.py:192`; `calibration/auth_mfa/policy.py` |
 | What Breaks If It Is Missing | Password-only authentication remains enabled. Existing MFA data remains stored but is not globally required. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded; AWS conditionally sets `true`. |
@@ -177,7 +177,7 @@ Enables Active Directory authentication.
 | Example Values | `true` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:192`; AD authentication backend |
+| Where It Is Read in Code | `cerfServer/settings.py:194`; AD authentication backend |
 | What Breaks If It Is Missing | Authentication falls back to local Django users. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded; AWS conditionally sets `true`. |
@@ -194,7 +194,7 @@ Server port and implicit port appended to `NGENCERF_BASE_URL`.
 | Example Values | `8000`, `443` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:770`; `runCerf.sh:43,93-96,1098` |
+| Where It Is Read in Code | `cerfServer/settings.py:828`; `runCerf.sh:43,93-98,1103` |
 | What Breaks If It Is Missing | Django uses 8000, but startup script exits if its environment file leaves it empty. Invalid values stop startup. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default 8000 is present in `settings.py`, `cerfserver.env`, ECS port mapping, and load balancer configuration. |
@@ -211,7 +211,7 @@ Public/internal API base used for Slurm and manager callbacks. Missing scheme is
 | Example Values | `http://internal-alb:80/api` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:772-777`; generated input and Slurm callback code |
+| Where It Is Read in Code | `cerfServer/settings.py:830-835`; generated input and Slurm callback code |
 | What Breaks If It Is Missing | Local default is used; remote jobs cannot call back successfully. Invalid URL stops startup. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Local URL is hardcoded; AWS constructs ALB URL with `/api`. |
@@ -231,7 +231,7 @@ Server release version displayed by the landing/about API.
 | Example Values | `2.0.0` |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:42`; landing view |
+| Where It Is Read in Code | `cerfServer/settings.py:43`; landing view |
 | What Breaks If It Is Missing | UI/API reports an unknown version. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only, or rebuild if baked into image |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Fallback is hardcoded; snapshot value is in `version.env`. |
@@ -248,7 +248,7 @@ Release date displayed by the landing/about API.
 | Example Values | `2026-08-31` |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:43`; landing view |
+| Where It Is Read in Code | `cerfServer/settings.py:44`; landing view |
 | What Breaks If It Is Missing | UI/API reports an unknown date. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only, or rebuild if baked into image |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Fallback is hardcoded; snapshot value is in `version.env`. |
@@ -265,7 +265,7 @@ Support/contact address displayed by the landing/about API.
 | Example Values | `support@example.gov` |
 | Whether It Is Environment-Specific | Possibly |
 | Whether It Is Secret or Sensitive | Personal/contact information |
-| Where It Is Read in Code | `cerfServer/settings.py:44`; landing view |
+| Where It Is Read in Code | `cerfServer/settings.py:45`; landing view |
 | What Breaks If It Is Missing | UI displays an unknown or blank contact. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Fallback is hardcoded. |
@@ -282,7 +282,7 @@ Tag used to identify the ngenCERF UI Docker image.
 | Example Values | `2.0.0`, `sha-abc123` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:48`; Git-information utility |
+| Where It Is Read in Code | `cerfServer/settings.py:50`; Git-information utility |
 | What Breaks If It Is Missing | Mutable `latest` tag is assumed when this setting is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default `latest` is hardcoded. It is not set in the supplied `django.tf`. |
@@ -299,7 +299,7 @@ Base URL of the running UI service, used to locate UI build metadata.
 | Example Values | `http://internal-alb` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:52-55`; `calibration/util/git_util.py` |
+| Where It Is Read in Code | `cerfServer/settings.py:54-57`; `calibration/util/git_util.py` |
 | What Breaks If It Is Missing | UI Git information cannot be retrieved remotely; local URL is attempted. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Local URL is hardcoded; AWS uses ALB default route. |
@@ -316,7 +316,7 @@ Direct URL of the UI build-time Git-information JSON file.
 | Example Values | `https://ui.example/ngencerf-ui_git_info.json` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:59-62`; `calibration/util/git_util.py` |
+| Where It Is Read in Code | `cerfServer/settings.py:61-64`; `calibration/util/git_util.py` |
 | What Breaks If It Is Missing | Derived URL is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Filename and derivation are hardcoded. |
@@ -336,7 +336,7 @@ AD DNS domain and fallback LDAP host source.
 | Example Values | `corp.example.gov` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure data |
-| Where It Is Read in Code | `cerfServer/settings.py:195` |
+| Where It Is Read in Code | `cerfServer/settings.py:197` |
 | What Breaks If It Is Missing | Default NOAA domain is used and may point to the wrong directory. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded. |
@@ -353,7 +353,7 @@ LDAP/LDAPS service URI.
 | Example Values | `ldaps://ad.example.gov` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure data |
-| Where It Is Read in Code | `cerfServer/settings.py:198`; AD service |
+| Where It Is Read in Code | `cerfServer/settings.py:200`; AD service |
 | What Breaks If It Is Missing | AD login fails if the derived or supplied endpoint is unreachable. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | URI derivation is hardcoded; AWS conditionally supplies it. |
@@ -370,7 +370,7 @@ Base distinguished name for user searches.
 | Example Values | `DC=corp,DC=example,DC=gov` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive directory structure |
-| Where It Is Read in Code | `cerfServer/settings.py:201-204`; AD service |
+| Where It Is Read in Code | `cerfServer/settings.py:203-206`; AD service |
 | What Breaks If It Is Missing | Users outside the default DN cannot be found. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | NOAA DN is hardcoded; supplied AWS file does not override it. |
@@ -387,7 +387,7 @@ Service account DN used for LDAP searches.
 | Example Values | `CN=svc-ngencerf,OU=Service Accounts,DC=...` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive identifier |
-| Where It Is Read in Code | `cerfServer/settings.py:206`; AD service |
+| Where It Is Read in Code | `cerfServer/settings.py:208`; AD service |
 | What Breaks If It Is Missing | Directory bind/search fails in typical AD configurations. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Empty fallback is hardcoded; AWS conditionally supplies it. |
@@ -404,7 +404,7 @@ Password for the LDAP bind account.
 | Example Values | Secret value |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | **Secret** |
-| Where It Is Read in Code | `cerfServer/settings.py:207`; AD service |
+| Where It Is Read in Code | `cerfServer/settings.py:209`; AD service |
 | What Breaks If It Is Missing | LDAP bind and AD authentication fail. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Empty fallback is hardcoded; AWS injects Secrets Manager JSON key `password`. |
@@ -421,7 +421,7 @@ Enables LDAP SSL behavior. Must agree with `LDAP_SERVER_URI`.
 | Example Values | `true` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:211`; AD service |
+| Where It Is Read in Code | `cerfServer/settings.py:213`; AD service |
 | What Breaks If It Is Missing | Unencrypted LDAP behavior is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default false is hardcoded. |
@@ -438,7 +438,7 @@ LDAP network timeout in seconds.
 | Example Values | `5`, `30` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:213`; AD service |
+| Where It Is Read in Code | `cerfServer/settings.py:215`; AD service |
 | What Breaks If It Is Missing | Ten-second timeout is used; invalid integer stops startup. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded. |
@@ -455,7 +455,7 @@ Environment name used to derive authorized AD group names.
 | Example Values | `dev`, `uat`, `prod` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive authorization configuration |
-| Where It Is Read in Code | `cerfServer/settings.py:215-217`; AD service |
+| Where It Is Read in Code | `cerfServer/settings.py:217-219`; AD service |
 | What Breaks If It Is Missing | Required groups become `ngencerf-local-users` and `ngencerf-local-admins`, likely denying intended users. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Group patterns are hardcoded as `ngencerf-{system}-users/admins`. |
@@ -463,94 +463,111 @@ Environment name used to derive authorized AD group names.
 
 ### Database and cache
 
-#### `CERF_SERVER_DATABASE_NAME`
+#### `CERF_SERVER_DATABASE_ENGINE`
 
-PostgreSQL database name.
+Django database backend used by the server.
 
 | Attribute | Value |
 |---|---|
-| Type | String |
-| Default Value | `postgres` |
-| Whether It Is Required or Optional | Required outside default local database |
-| Example Values | `ngencerf` |
+| Type | Django database backend path |
+| Default Value | `django.db.backends.postgresql` |
+| Whether It Is Required or Optional | Optional |
+| Example Values | `django.db.backends.postgresql`, `django.db.backends.sqlite3` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:962` |
-| What Breaks If It Is Missing | Connects to database `postgres`; application migrations/data may be absent. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Default in settings/local settings; AWS sets `ngencerf`. |
+| Where It Is Read in Code | `cerfServer/settings.py:1005-1008` |
+| What Breaks If It Is Missing | Nothing. PostgreSQL remains selected. An invalid or unavailable backend causes Django database initialization or connection to fail. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | `django.db.backends.postgresql` is the hardcoded default in `cerfServer/settings.py`. The Python driver required by the selected backend must be installed. |
+
+#### `CERF_SERVER_DATABASE_NAME`
+
+Database name or, when SQLite is selected, database-file path.
+
+| Attribute | Value |
+|---|---|
+| Type | String or file path |
+| Default Value | `postgres` for PostgreSQL; `<repository-root>/db.sqlite3` for SQLite |
+| Whether It Is Required or Optional | Optional when the backend-specific default is acceptable |
+| Example Values | `ngencerf`, `/srv/ngencerf/ngencerf.sqlite3` |
+| Whether It Is Environment-Specific | Yes |
+| Whether It Is Secret or Sensitive | No |
+| Where It Is Read in Code | `cerfServer/settings.py:1017-1030` |
+| What Breaks If It Is Missing | PostgreSQL connects to the database named `postgres`. SQLite uses `db.sqlite3` in the repository root. The selected default database may not contain the required migrations or application data. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The PostgreSQL and SQLite defaults are hardcoded in `cerfServer/settings.py`; AWS sets the PostgreSQL database name to `ngencerf`. |
 
 #### `CERF_SERVER_DATABASE_USER`
 
-PostgreSQL login role.
+Database login role for network database backends. It is omitted from the Django database configuration when SQLite is selected.
 
 | Attribute | Value |
 |---|---|
 | Type | String |
 | Default Value | `postgres` |
-| Whether It Is Required or Optional | Required outside local development |
+| Whether It Is Required or Optional | Required for PostgreSQL outside local development; not used by SQLite |
 | Example Values | `ngencerf` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive identifier |
-| Where It Is Read in Code | `cerfServer/settings.py:963` |
-| What Breaks If It Is Missing | Attempts privileged/default `postgres` login and normally fails. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Default in settings/local settings; AWS sets `ngencerf`. |
+| Where It Is Read in Code | `cerfServer/settings.py:1033-1049` |
+| What Breaks If It Is Missing | PostgreSQL attempts to use the default `postgres` role and normally fails outside local development. Nothing breaks in SQLite mode because this setting is ignored. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The `postgres` fallback is hardcoded in `cerfServer/settings.py`; AWS supplies `ngencerf`. |
 
 #### `CERF_SERVER_DATABASE_PASSWORD`
 
-PostgreSQL password.
+Database password for network database backends. It is omitted from the Django database configuration when SQLite is selected.
 
 | Attribute | Value |
 |---|---|
 | Type | String |
 | Default Value | `postgres` |
-| Whether It Is Required or Optional | Required outside local development |
+| Whether It Is Required or Optional | Required for PostgreSQL outside local development; not used by SQLite |
 | Example Values | Secret value |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | **Secret** |
-| Where It Is Read in Code | `cerfServer/settings.py:964` |
-| What Breaks If It Is Missing | Authentication normally fails; insecure default may work locally. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Insecure fallback exists in source; AWS injects a Secrets Manager value. |
+| Where It Is Read in Code | `cerfServer/settings.py:1033-1049` |
+| What Breaks If It Is Missing | PostgreSQL authentication normally fails unless the insecure development fallback is accepted. Nothing breaks in SQLite mode because this setting is ignored. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The insecure `postgres` fallback is hardcoded in `cerfServer/settings.py`; AWS injects the production value from AWS Secrets Manager. |
 
 #### `CERF_SERVER_DATABASE_HOST`
 
-PostgreSQL hostname.
+Database hostname for network database backends. It is omitted from the Django database configuration when SQLite is selected.
 
 | Attribute | Value |
 |---|---|
-| Type | Hostname/IP |
+| Type | Hostname or IP address |
 | Default Value | `localhost` |
-| Whether It Is Required or Optional | Required when database is remote |
-| Example Values | RDS endpoint |
+| Whether It Is Required or Optional | Required when a network database is remote; not used by SQLite |
+| Example Values | RDS endpoint, `localhost` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure data |
-| Where It Is Read in Code | `cerfServer/settings.py:965` |
-| What Breaks If It Is Missing | Attempts local PostgreSQL and fails in normal containers. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded; AWS supplies RDS address. |
+| Where It Is Read in Code | `cerfServer/settings.py:1033-1049` |
+| What Breaks If It Is Missing | PostgreSQL attempts to connect locally and fails in normal production containers. Nothing breaks in SQLite mode because this setting is ignored. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The `localhost` fallback is hardcoded in `cerfServer/settings.py`; AWS supplies the RDS endpoint. |
 
 #### `CERF_SERVER_DATABASE_PORT`
 
-PostgreSQL TCP port.
+Database TCP port for network database backends. It is omitted from the Django database configuration when SQLite is selected.
 
 | Attribute | Value |
 |---|---|
-| Type | Integer |
-| Default Value | `5432` |
-| Whether It Is Required or Optional | Optional |
-| Example Values | `5432` |
+| Type | Integer for PostgreSQL; string for other network backends |
+| Default Value | `5432` for PostgreSQL; empty for other network backends |
+| Whether It Is Required or Optional | Optional for PostgreSQL; backend-dependent for other network databases; not used by SQLite |
+| Example Values | `5432`, `3306` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:966` |
-| What Breaks If It Is Missing | Standard PostgreSQL port is used; invalid integer stops startup. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded. |
+| Where It Is Read in Code | `cerfServer/settings.py:1033-1049` |
+| What Breaks If It Is Missing | PostgreSQL uses port `5432`. Other network backends receive an empty port and use backend-specific behavior. Nothing breaks in SQLite mode because this setting is ignored. An invalid PostgreSQL port stops startup when it is converted to an integer. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | PostgreSQL port `5432` is hardcoded as the default in `cerfServer/settings.py`. |
 
 #### `CERF_SERVER_DATABASE_CONN_MAX_AGE`
 
-Django persistent connection lifetime in seconds.
+Django persistent database-connection lifetime in seconds.
 
 | Attribute | Value |
 |---|---|
@@ -560,78 +577,78 @@ Django persistent connection lifetime in seconds.
 | Example Values | `0`, `60`, `300` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:967` |
-| What Breaks If It Is Missing | Connections persist for 60 seconds; invalid integer stops startup. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded. |
+| Where It Is Read in Code | `cerfServer/settings.py:1023-1030` |
+| What Breaks If It Is Missing | Nothing. Connections use a maximum lifetime of 60 seconds. An invalid non-integer value stops startup. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The 60-second default is hardcoded in `cerfServer/settings.py`. |
 
 #### `CERF_SERVER_DATABASE_CONNECT_TIMEOUT`
 
-PostgreSQL connection timeout in seconds.
+PostgreSQL connection timeout in seconds. It is not added to the Django database configuration for SQLite or other database backends.
 
 | Attribute | Value |
 |---|---|
 | Type | Integer |
 | Default Value | `10` |
-| Whether It Is Required or Optional | Optional |
+| Whether It Is Required or Optional | Optional for PostgreSQL; ignored by SQLite and other backends |
 | Example Values | `5`, `30` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:946` |
-| What Breaks If It Is Missing | Ten-second timeout is used; invalid integer stops startup. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded. |
+| Where It Is Read in Code | `cerfServer/settings.py:1053-1066` |
+| What Breaks If It Is Missing | Nothing. PostgreSQL uses a ten-second connection timeout. An invalid non-integer value stops startup when PostgreSQL is selected. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The ten-second PostgreSQL default is hardcoded in `cerfServer/settings.py`. |
 
 #### `CERF_SERVER_DATABASE_OPTIONS`
 
-libpq connection options; default applies a statement timeout.
+PostgreSQL/libpq connection options. The default applies a ten-second statement timeout. This setting is not added to the Django database configuration for SQLite or other database backends.
 
 | Attribute | Value |
 |---|---|
 | Type | String |
 | Default Value | `-c statement_timeout=10000ms` |
-| Whether It Is Required or Optional | Optional |
+| Whether It Is Required or Optional | Optional for PostgreSQL; ignored by SQLite and other backends |
 | Example Values | `-c statement_timeout=30000ms` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:947-950` |
-| What Breaks If It Is Missing | Queries retain ten-second statement timeout. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded. |
+| Where It Is Read in Code | `cerfServer/settings.py:1053-1066` |
+| What Breaks If It Is Missing | Nothing. PostgreSQL uses the default ten-second statement timeout. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The default libpq option is hardcoded in `cerfServer/settings.py`. |
 
 #### `CERF_SERVER_DATABASE_SSLMODE`
 
-PostgreSQL SSL mode.
+PostgreSQL/libpq SSL mode. This setting is not added to the Django database configuration for SQLite or other database backends.
 
 | Attribute | Value |
 |---|---|
-| Type | libpq SSL mode string |
+| Type | libpq SSL-mode string |
 | Default Value | `require` |
-| Whether It Is Required or Optional | Optional; should remain secure in production |
+| Whether It Is Required or Optional | Optional for PostgreSQL; should remain secure in production; ignored by SQLite and other backends |
 | Example Values | `verify-full`, `require`, `disable` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:951` |
-| What Breaks If It Is Missing | TLS is required but server identity is not verified. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Default `require` is hardcoded. |
+| Where It Is Read in Code | `cerfServer/settings.py:1053-1066` |
+| What Breaks If It Is Missing | Nothing. PostgreSQL requires TLS but does not verify the server identity unless a stricter mode is configured. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The `require` default is hardcoded in `cerfServer/settings.py`. |
 
 #### `CERF_SERVER_DATABASE_SSLROOTCERT`
 
-Path to trusted PostgreSQL/RDS CA bundle.
+Path to a trusted PostgreSQL or Amazon RDS CA bundle. This setting is not added to the Django database configuration for SQLite or other database backends.
 
 | Attribute | Value |
 |---|---|
 | Type | File path |
 | Default Value | None |
-| Whether It Is Required or Optional | Conditional for `verify-ca`/`verify-full` |
+| Whether It Is Required or Optional | Required only for PostgreSQL `verify-ca` or `verify-full`; ignored by SQLite and other backends |
 | Example Values | `/ngencerf/aws_cert/global-bundle.pem` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:954-957` |
-| What Breaks If It Is Missing | No CA path is passed; behavior depends on SSL mode/system trust. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only if file already exists; otherwise image or mount change |
-| Whether It Is Hardcoded Anywhere; If So, Where? | RDS certificate directory is baked into production image. |
+| Where It Is Read in Code | `cerfServer/settings.py:1068-1073` |
+| What Breaks If It Is Missing | No CA path is passed to PostgreSQL. The result depends on the configured SSL mode and system trust store. It has no effect in SQLite mode. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only if the referenced file already exists; otherwise an image or mount change is required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The RDS certificate directory is included in the production image. |
 
 #### `REDIS_URL`
 
@@ -645,7 +662,7 @@ Django Redis cache connection URL and database number.
 | Example Values | `rediss://cache.example:6379/1` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | May contain credentials; sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:242-250` |
+| Where It Is Read in Code | `cerfServer/settings.py:244-252` |
 | What Breaks If It Is Missing | Attempts local Redis; cache-backed operations fail if unavailable. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Local URL is hardcoded; AWS uses ElastiCache TLS URL. |
@@ -665,7 +682,7 @@ Base URL for hydrofabric, streamflow observations, and module metadata services.
 | Example Values | `https://edfs.example.gov/` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure data |
-| Where It Is Read in Code | `cerfServer/settings.py:315`; `calibration/views/data_services.py` |
+| Where It Is Read in Code | `cerfServer/settings.py:317`; `calibration/views/data_services.py` |
 | What Breaks If It Is Missing | Data service URL construction/fetches fail; supplied Terraform notes an invalid-environment error. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Endpoint suffixes are hardcoded in `settings.py`; AWS supplies base URL. |
@@ -682,7 +699,7 @@ MSWM enterprise-data environment selector.
 | Example Values | `test`, `oe` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:316`; `calibration/views/data_services.py` |
+| Where It Is Read in Code | `cerfServer/settings.py:318`; `calibration/views/data_services.py` |
 | What Breaks If It Is Missing | Environment validation or downstream MSWM requests fail. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | No fallback; AWS supplies Terraform variable. |
@@ -699,7 +716,7 @@ S3 URI/prefix holding archived run directories.
 | Example Values | `s3://bucket/env/archives/` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure data |
-| Where It Is Read in Code | `cerfServer/settings.py:326`; landing/archive views |
+| Where It Is Read in Code | `cerfServer/settings.py:328`; landing/archive views |
 | What Breaks If It Is Missing | Server starts, but archive listing, archive, restore, and cleanup features fail or report not configured. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | No application default; AWS supplies Terraform variable. |
@@ -716,7 +733,7 @@ S3 URI/prefix holding generated downloadable ZIP files.
 | Example Values | `s3://bucket/env/zips/` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure data |
-| Where It Is Read in Code | `cerfServer/settings.py:329`; download/cloud utilities |
+| Where It Is Read in Code | `cerfServer/settings.py:331`; download/cloud utilities |
 | What Breaks If It Is Missing | ZIP upload/download workflow fails or cannot provide URLs. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | No application default; AWS supplies Terraform variable. |
@@ -733,7 +750,7 @@ Optional named AWS profile for read/write S3 operations. Empty selects the defau
 | Example Values | `ngwpc-sandbox` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive identifier |
-| Where It Is Read in Code | `cerfServer/settings.py:333`; cloud utilities |
+| Where It Is Read in Code | `cerfServer/settings.py:335`; cloud utilities |
 | What Breaks If It Is Missing | Default credential chain is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | `None` behavior is hardcoded. |
@@ -753,7 +770,7 @@ Host/compute-node path corresponding to `CONTAINER_DATA_ROOT`; used for Docker m
 | Example Values | `/ngencerf-app/data/ngen-cal-data` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure path |
-| Where It Is Read in Code | `cerfServer/settings.py:385`; execution adapters |
+| Where It Is Read in Code | `cerfServer/settings.py:398`; execution adapters |
 | What Breaks If It Is Missing | Defaults to `CONTAINER_DATA_ROOT`; jobs cannot find shared input/output when the host path differs. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | No. AWS supplies the compute-node path in `django.tf`; the dev `compose.yaml` passes `NGEN_CAL_DATA_PATH` as this variable. |
@@ -770,7 +787,7 @@ Directory the server reads and writes run data under; the workload runtimes must
 | Example Values | `/srv/ngencerf/data` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:384`; many modules via the derived `NGEN_*_DIR` settings |
+| Where It Is Read in Code | `cerfServer/settings.py:397`; many modules via the derived `NGEN_*_DIR` settings |
 | What Breaks If It Is Missing | Default applies. A value that differs between the server and the job runtime, or changes on a deployment with existing runs, breaks every run path. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only, coordinated with the job runtime's bind (dev `compose.yaml` and `runCerf.sh` read the same variable) |
 | Whether It Is Hardcoded Anywhere; If So, Where? | The default only. AWS mounts EFS at the default path in `django.tf`. |
@@ -787,7 +804,7 @@ In-container directory used to inspect Singularity images/Git information in Slu
 | Example Values | `/containers` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:390`; Git utility |
+| Where It Is Read in Code | `cerfServer/settings.py:403`; Git utility |
 | What Breaks If It Is Missing | Default applies; if the images are elsewhere, Singularity metadata/image lookup fails. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only, coordinated with the mount |
 | Whether It Is Hardcoded Anywhere; If So, Where? | The default only. AWS mounts EFS at the default path in `django.tf`. |
@@ -821,7 +838,7 @@ Optional overrides for the Docker-mode job launcher templates (calibration/valid
 | Example Values | `docker run --rm --network host --name {name} -v /srv/ngencerf:/srv/ngencerf ghcr.io/ngwpc/nwm-cal-mgr:latest` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:628-644`; `calibration/run_util/job_executor_docker.py` |
+| Where It Is Read in Code | `cerfServer/settings.py:633-649`; `calibration/run_util/job_executor_docker.py` |
 | What Breaks If It Is Missing | Defaults apply. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Defaults only. Cancellation is `docker kill <name>`, so keep `{name}` in an override. |
@@ -838,7 +855,7 @@ Selects job adapter. Accepted names are defined by `JobExecutionMode` (including
 | Example Values | `SLURM` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:555-568` |
+| Where It Is Read in Code | `cerfServer/settings.py:591-604` |
 | What Breaks If It Is Missing | Docker adapter is used. Invalid value exits startup; `SLURM_MOCK` with debug false raises an error. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded; AWS derives value from `enable_pcs`. |
@@ -855,7 +872,7 @@ Ordered JSON rules mapping maximum catchment count to Slurm partition/node type.
 | Example Values | `[[250,"small"],[-1,"large"]]` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:381-438`; input builder |
+| Where It Is Read in Code | `cerfServer/settings.py:417-480`; input builder |
 | What Breaks If It Is Missing | Invalid JSON/rules stop startup. Missing uses AWS-instance-type defaults that may not match cluster partitions. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default partitions are hardcoded; not set in supplied `django.tf`. |
@@ -872,7 +889,7 @@ Ordered JSON rules mapping maximum catchment count to MPI node count. Final rule
 | Example Values | `[[100,1],[-1,4]]` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:487-550`; input builder |
+| Where It Is Read in Code | `cerfServer/settings.py:523-586`; input builder |
 | What Breaks If It Is Missing | Invalid JSON/rules stop startup; missing uses hardcoded scaling values. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | The default rule set is hardcoded in `settings.py`. AWS overrides it in `django.tf`, changing the 251-500 catchment band from 6 nodes to 5. |
@@ -889,7 +906,7 @@ Base URL of `slurmrestd`.
 | Example Values | `http://10.0.0.10:6820` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure data |
-| Where It Is Read in Code | `cerfServer/settings.py:461`; `job_executor_slurm.py` |
+| Where It Is Read in Code | `cerfServer/settings.py:497`; `job_executor_slurm.py` |
 | What Breaks If It Is Missing | Slurm submissions, queries, and cancellations fail. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Empty fallback; AWS derives from PCS endpoint. |
@@ -906,7 +923,7 @@ Slurm REST API version included in request paths.
 | Example Values | `v0.0.43` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:462`; Slurm adapter |
+| Where It Is Read in Code | `cerfServer/settings.py:498`; Slurm adapter |
 | What Breaks If It Is Missing | Default is used; mismatch causes REST 404/schema failures. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded and repeated in AWS config. |
@@ -923,7 +940,7 @@ Secrets Manager ARN of PCS Slurm JWT signing key.
 | Example Values | `arn:aws:secretsmanager:...:secret:...` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | **Secret reference/sensitive** |
-| Where It Is Read in Code | `cerfServer/settings.py:463`; Slurm adapter |
+| Where It Is Read in Code | `cerfServer/settings.py:499`; Slurm adapter |
 | What Breaks If It Is Missing | JWT cannot be signed; Slurm REST calls fail authentication. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Empty fallback; AWS derives from PCS cluster. |
@@ -940,7 +957,7 @@ POSIX username claim placed in Slurm JWT/header.
 | Example Values | `root`, `ngencerf` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:464`; Slurm adapter |
+| Where It Is Read in Code | `cerfServer/settings.py:500`; Slurm adapter |
 | What Breaks If It Is Missing | Default root identity is used. Incorrect value causes authorization or ownership problems. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default root is hardcoded and repeated in AWS. |
@@ -957,7 +974,7 @@ POSIX UID claim used for Slurm REST requests.
 | Example Values | `0`, `1001` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:465`; Slurm adapter |
+| Where It Is Read in Code | `cerfServer/settings.py:501`; Slurm adapter |
 | What Breaks If It Is Missing | UID 0 is used; invalid integer stops startup. Incorrect value causes authorization/ownership problems. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded and repeated in AWS. |
@@ -974,7 +991,7 @@ POSIX GID claim used for Slurm REST requests.
 | Example Values | `0`, `1001` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:466`; Slurm adapter |
+| Where It Is Read in Code | `cerfServer/settings.py:502`; Slurm adapter |
 | What Breaks If It Is Missing | GID 0 is used; invalid integer stops startup. Incorrect value causes authorization/ownership problems. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded and repeated in AWS. |
@@ -991,7 +1008,7 @@ Lifetime of each signed Slurm REST token.
 | Example Values | `300`, `600` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:467`; Slurm adapter |
+| Where It Is Read in Code | `cerfServer/settings.py:503`; Slurm adapter |
 | What Breaks If It Is Missing | Ten-minute tokens are used; invalid integer stops startup. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded; omitted from supplied AWS task config. |
@@ -1008,7 +1025,7 @@ JSON array of `KEY=VALUE` strings exported to Slurm jobs; must be non-empty for 
 | Example Values | `["PATH=/opt/aws/pcs/...:/bin","HOME=/root"]` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Can be sensitive if secrets are added |
-| Where It Is Read in Code | `cerfServer/settings.py:468-473`; Slurm adapter |
+| Where It Is Read in Code | `cerfServer/settings.py:504-509`; Slurm adapter |
 | What Breaks If It Is Missing | Default environment is used; malformed JSON stops startup. Missing required scheduler path can prevent commands from running. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default is hardcoded; AWS overrides PATH for PCS 25.11. |
@@ -1025,7 +1042,7 @@ Compute-node path to calibration manager SIF.
 | Example Values | `/ngencerf-app/singularity/nwm-cal-mgr.sif` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure path |
-| Where It Is Read in Code | `cerfServer/settings.py:605-607` |
+| Where It Is Read in Code | `cerfServer/settings.py:663-665` |
 | What Breaks If It Is Missing | Generated command contains `None`; calibration and validation jobs fail. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only if image exists |
 | Whether It Is Hardcoded Anywhere; If So, Where? | No default; AWS supplies this value. |
@@ -1042,7 +1059,7 @@ Compute-node path to forecast manager SIF.
 | Example Values | `/ngencerf-app/singularity/nwm-fcst-mgr.sif` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure path |
-| Where It Is Read in Code | `cerfServer/settings.py:609-611` |
+| Where It Is Read in Code | `cerfServer/settings.py:667-669` |
 | What Breaks If It Is Missing | Generated command contains `None`; forecast-family jobs fail. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only if image exists |
 | Whether It Is Hardcoded Anywhere; If So, Where? | No application default; AWS supplies the stable SIF symlink path. |
@@ -1059,7 +1076,7 @@ Compute-node path to evaluation manager SIF.
 | Example Values | `/ngencerf-app/singularity/nwm-eval-mgr.sif` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure path |
-| Where It Is Read in Code | `cerfServer/settings.py:613-615` |
+| Where It Is Read in Code | `cerfServer/settings.py:671-673` |
 | What Breaks If It Is Missing | Generated command contains `None`; verification jobs fail. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only if image exists |
 | Whether It Is Hardcoded Anywhere; If So, Where? | No application default; AWS supplies the stable SIF symlink path. |
@@ -1080,7 +1097,7 @@ Root Python logger threshold.
 | Example Values | `WARNING` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:797` |
+| Where It Is Read in Code | `cerfServer/settings.py:855` |
 | What Breaks If It Is Missing | INFO threshold is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded. |
@@ -1097,7 +1114,7 @@ Default handler threshold and fallback for calibration/server loggers.
 | Example Values | `INFO` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:798` |
+| Where It Is Read in Code | `cerfServer/settings.py:856` |
 | What Breaks If It Is Missing | DEBUG handler threshold is used, potentially producing verbose logs. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded. |
@@ -1114,7 +1131,7 @@ Django, Djoser, SimpleJWT, and DB retry logger level.
 | Example Values | `WARNING` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:799` |
+| Where It Is Read in Code | `cerfServer/settings.py:857` |
 | What Breaks If It Is Missing | INFO threshold is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded. |
@@ -1131,7 +1148,7 @@ Django, Djoser, SimpleJWT, and DB retry logger level.
 | Example Values | `ERROR` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:800` |
+| Where It Is Read in Code | `cerfServer/settings.py:858` |
 | What Breaks If It Is Missing | Django logger level is inherited. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Derivation hardcoded. |
@@ -1148,7 +1165,7 @@ Django database backend logger and database log-file level.
 | Example Values | `ERROR` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:801` |
+| Where It Is Read in Code | `cerfServer/settings.py:859` |
 | What Breaks If It Is Missing | WARNING threshold is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded. |
@@ -1165,7 +1182,7 @@ Django database backend logger and database log-file level.
 | Example Values | `INFO` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:802` |
+| Where It Is Read in Code | `cerfServer/settings.py:860` |
 | What Breaks If It Is Missing | Default handler level is inherited. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Derivation hardcoded. |
@@ -1182,7 +1199,7 @@ Enables local `logs/ngencerf.log` and `logs/ngencerf_db.log` in addition to cons
 | Example Values | `false` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:810-812` |
+| Where It Is Read in Code | `cerfServer/settings.py:868-870` |
 | What Breaks If It Is Missing | File logging follows debug setting. In production, console-only output is expected for CloudWatch. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default relationship and file paths are hardcoded. |
@@ -1357,7 +1374,7 @@ Number of Gunicorn worker processes.
 | Example Values | `8`, `24` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1082-1095` |
+| Where It Is Read in Code | `runCerf.sh:1091-1100` |
 | What Breaks If It Is Missing | The calculated value, with a minimum of 2 and maximum of 8, is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Docker/AWS hardcode 24. |
@@ -1374,7 +1391,7 @@ Worker timeout in seconds.
 | Example Values | `120`, `300` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1097,1108` |
+| Where It Is Read in Code | `runCerf.sh:1102,1113` |
 | What Breaks If It Is Missing | 120 seconds is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded; not supplied by AWS. |
@@ -1391,7 +1408,7 @@ Gunicorn bind address.
 | Example Values | `127.0.0.1:8000`, `0.0.0.0:8000` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1098,1107` |
+| Where It Is Read in Code | `runCerf.sh:1103,1112` |
 | What Breaks If It Is Missing | All interfaces on `PORT` are used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Binding behavior hardcoded. |
@@ -1408,7 +1425,7 @@ Requests handled before recycling a worker.
 | Example Values | `1000` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1104` |
+| Where It Is Read in Code | `runCerf.sh:1109` |
 | What Breaks If It Is Missing | Workers recycle after 300 requests. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded and repeated in AWS/Docker env. |
@@ -1425,7 +1442,7 @@ Random jitter added to worker recycle threshold.
 | Example Values | `50`, `100` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1105` |
+| Where It Is Read in Code | `runCerf.sh:1110` |
 | What Breaks If It Is Missing | Up to 100 requests of jitter is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded and repeated in AWS/Docker env. |
@@ -1442,7 +1459,7 @@ Grace period for workers to finish during restart/shutdown.
 | Example Values | `120` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1109` |
+| Where It Is Read in Code | `runCerf.sh:1114` |
 | What Breaks If It Is Missing | Gunicorn uses the 30-second application fallback. AWS production supplies 120 seconds. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | The 30-second fallback is hardcoded in `runCerf.sh`; `django.tf` explicitly supplies the 120-second AWS production value. |
@@ -1459,7 +1476,7 @@ Forces reinstall of Git-sourced Python packages during local development startup
 | Example Values | `1` |
 | Whether It Is Environment-Specific | Development only |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:682+` |
+| Where It Is Read in Code | `runCerf.sh:685+` |
 | What Breaks If It Is Missing | Nothing; development SHA-marker logic decides whether to reinstall. Production is unaffected. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded. |
@@ -1510,7 +1527,7 @@ Enables Django development auto-reloader.
 | Example Values | `./runCerf.sh auto_reload` |
 | Whether It Is Environment-Specific | Development only |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:653-662,1114-1119` |
+| Where It Is Read in Code | `runCerf.sh:653-662,1119-1124` |
 | What Breaks If It Is Missing | Server runs with `--noreload` in development. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Invocation-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Token spelling hardcoded. |
@@ -1566,7 +1583,7 @@ Django email delivery backend.
 | Example Values | SMTP backend |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:25` |
+| Where It Is Read in Code | `cerfServer/settings.py:26` |
 | What Breaks If It Is Missing | Django default SMTP behavior could be attempted; current console backend means mail is logged, not delivered. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1583,7 +1600,7 @@ Disables DRF token model in favor of JWT/stateless use.
 | Example Values | Token model path |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:93` |
+| Where It Is Read in Code | `cerfServer/settings.py:95` |
 | What Breaks If It Is Missing | Authentication semantics change. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1600,7 +1617,7 @@ Default authentication, permission, and schema classes.
 | Example Values | Django REST Framework settings |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:95-102` |
+| Where It Is Read in Code | `cerfServer/settings.py:97-104` |
 | What Breaks If It Is Missing | Framework defaults may expose or reject endpoints differently. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1617,7 +1634,7 @@ OpenAPI title, description, version, and schema serving behavior.
 | Example Values | OpenAPI metadata |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:104-109` |
+| Where It Is Read in Code | `cerfServer/settings.py:106-111` |
 | What Breaks If It Is Missing | drf-spectacular defaults apply. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. API version is independent of `NGENCERF_VERSION`. |
@@ -1634,7 +1651,7 @@ User/password-reset behavior and serializers.
 | Example Values | Djoser settings |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:254-265` |
+| Where It Is Read in Code | `cerfServer/settings.py:256-267` |
 | What Breaks If It Is Missing | Djoser defaults change account and reset behavior. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1651,7 +1668,7 @@ JWT access-token lifetime.
 | Example Values | `5 minutes`, `1 hour` |
 | Whether It Is Environment-Specific | Possibly |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:268-276` |
+| Where It Is Read in Code | `cerfServer/settings.py:270-278` |
 | What Breaks If It Is Missing | SimpleJWT default applies if removed. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1685,7 +1702,7 @@ Django password validation policy.
 | Example Values | Django validators |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:280-285` |
+| Where It Is Read in Code | `cerfServer/settings.py:282-287` |
 | What Breaks If It Is Missing | Weak passwords may be accepted depending on call path. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1702,7 +1719,7 @@ Default application language.
 | Example Values | `en-gb` |
 | Whether It Is Environment-Specific | Possibly |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:288` |
+| Where It Is Read in Code | `cerfServer/settings.py:290` |
 | What Breaks If It Is Missing | Django default language applies. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1719,7 +1736,7 @@ Django application timezone.
 | Example Values | `America/New_York` |
 | Whether It Is Environment-Specific | Possibly |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:289` |
+| Where It Is Read in Code | `cerfServer/settings.py:291` |
 | What Breaks If It Is Missing | Django default timezone applies and timestamps may be interpreted differently. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1736,7 +1753,7 @@ Enables Django internationalization.
 | Example Values | `false` |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:290` |
+| Where It Is Read in Code | `cerfServer/settings.py:292` |
 | What Breaks If It Is Missing | Translation support changes. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1753,7 +1770,7 @@ Enables timezone-aware datetimes.
 | Example Values | `false` |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:291` |
+| Where It Is Read in Code | `cerfServer/settings.py:293` |
 | What Breaks If It Is Missing | Datetime semantics change and comparisons may fail. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1770,7 +1787,7 @@ URL prefix for server static files/downloads.
 | Example Values | `/static/` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:294` |
+| Where It Is Read in Code | `cerfServer/settings.py:296` |
 | What Breaks If It Is Missing | Django default `/static/` may not match ALB/API routing. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1787,7 +1804,7 @@ Additional static source directories.
 | Example Values | Other directories |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:296-298` |
+| Where It Is Read in Code | `cerfServer/settings.py:298-300` |
 | What Breaks If It Is Missing | Download artifacts are not collected/served as static files. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived path. |
@@ -1804,7 +1821,7 @@ Additional static source directories.
 | Example Values | `/var/www/static` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:300` |
+| Where It Is Read in Code | `cerfServer/settings.py:302` |
 | What Breaks If It Is Missing | Django cannot collect static files to intended destination. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived path. |
@@ -1821,7 +1838,7 @@ Source identifier passed to enterprise data services.
 | Example Values | `nhf` |
 | Whether It Is Environment-Specific | Possibly |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:310`; data services |
+| Where It Is Read in Code | `cerfServer/settings.py:312`; data services |
 | What Breaks If It Is Missing | Requests omit/use wrong hydrofabric source. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1838,7 +1855,7 @@ Relative module metadata endpoint.
 | Example Values | API-relative path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:311`; data services |
+| Where It Is Read in Code | `cerfServer/settings.py:313`; data services |
 | What Breaks If It Is Missing | Metadata fetch URL cannot be built correctly. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1855,7 +1872,7 @@ Relative streamflow information endpoint template.
 | Example Values | API-relative path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:312`; data services |
+| Where It Is Read in Code | `cerfServer/settings.py:314`; data services |
 | What Breaks If It Is Missing | Observation availability/info fetch fails. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1872,7 +1889,7 @@ Relative streamflow CSV endpoint template.
 | Example Values | API-relative path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:313`; data services |
+| Where It Is Read in Code | `cerfServer/settings.py:315`; data services |
 | What Breaks If It Is Missing | Observation data fetch fails. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1906,7 +1923,7 @@ Presigned download URL validity.
 | Example Values | `900` |
 | Whether It Is Environment-Specific | Possibly |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:340`; download views |
+| Where It Is Read in Code | `cerfServer/settings.py:354`; download views |
 | What Breaks If It Is Missing | URL generation needs a replacement value. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1923,7 +1940,7 @@ S3 ZIP retention and status-cache period.
 | Example Values | `86400` |
 | Whether It Is Environment-Specific | Possibly |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:343`; download/cleanup views |
+| Where It Is Read in Code | `cerfServer/settings.py:357`; download/cleanup views |
 | What Breaks If It Is Missing | Cleanup/status behavior lacks a retention threshold. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1940,7 +1957,7 @@ In-container application/repository root.
 | Example Values | `/opt/ngen` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:351` |
+| Where It Is Read in Code | `cerfServer/settings.py:365` |
 | What Breaks If It Is Missing | Derived repository paths break. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code plus image rebuild |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1957,7 +1974,7 @@ Django applications loaded at startup, including DRF, Djoser, SimpleJWT, CORS, O
 | Example Values | Django application labels |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:71-89` |
+| Where It Is Read in Code | `cerfServer/settings.py:73-91` |
 | What Breaks If It Is Missing | Models, middleware integration, authentication, migrations, or APIs fail to load. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -1974,7 +1991,7 @@ Ordered Django request/response middleware chain.
 | Example Values | Django middleware paths |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:111-126` |
+| Where It Is Read in Code | `cerfServer/settings.py:113-128` |
 | What Breaks If It Is Missing | Security, sessions, authentication, OTP, CORS, diagnostics, or compression behavior fails or changes. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes; ordering is significant. |
@@ -1991,7 +2008,7 @@ Root Django URL configuration module.
 | Example Values | `project.urls` |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:219` |
+| Where It Is Read in Code | `cerfServer/settings.py:221` |
 | What Breaks If It Is Missing | Django cannot resolve application URLs. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -2008,7 +2025,7 @@ Django template engine, directory, app discovery, and context processors.
 | Example Values | Django template settings |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:221-235` |
+| Where It Is Read in Code | `cerfServer/settings.py:223-237` |
 | What Breaks If It Is Missing | Admin and template-rendered views fail. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -2025,7 +2042,7 @@ Ordered AD and local authentication backends.
 | Example Values | Backend import paths |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:237-240` |
+| Where It Is Read in Code | `cerfServer/settings.py:239-242` |
 | What Breaks If It Is Missing | Users cannot authenticate through the removed backend; ordering changes fallback behavior. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -2042,7 +2059,7 @@ Django cache backend and Redis client implementation.
 | Example Values | Django cache configuration |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | May contain credentials via `REDIS_URL` |
-| Where It Is Read in Code | `cerfServer/settings.py:242-250` |
+| Where It Is Read in Code | `cerfServer/settings.py:244-252` |
 | What Breaks If It Is Missing | Cache operations fail or use Django defaults if removed. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy except Redis URL |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Backend/client are hardcoded; location is environment-driven. |
@@ -2059,7 +2076,7 @@ Custom Django user model.
 | Example Values | `app.User` |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | Security-sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:252` |
+| Where It Is Read in Code | `cerfServer/settings.py:254` |
 | What Breaks If It Is Missing | Authentication and user foreign keys break; changing after migrations is high risk. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code, migrations, and redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -2076,7 +2093,7 @@ WSGI application entry point.
 | Example Values | Import path |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:278` |
+| Where It Is Read in Code | `cerfServer/settings.py:280` |
 | What Breaks If It Is Missing | WSGI server cannot load the application. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -2093,7 +2110,7 @@ Default Django model primary-key field type.
 | Example Values | `django.db.models.AutoField` |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:305` |
+| Where It Is Read in Code | `cerfServer/settings.py:307` |
 | What Breaks If It Is Missing | Django default/warnings apply; changing may create migrations and schema differences. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code, migrations, and redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -2105,12 +2122,12 @@ Allowed/available BMI forcing periods for AORC and NWM retrospective domains.
 | Attribute | Value |
 |---|---|
 | Type | DateTimeRange values |
-| Default Value | AORC is computed; CONUS `1979-01-01`–`2023-01-31`; Hawaii `1994-01-01`–`2013-12-31`; Alaska `1981-01-01`–`2019-12-31`; Puerto Rico `2008-01-01`–`2023-06-30` |
+| Default Value | AORC is computed; CONUS `1979-01-01`-`2023-01-31`; Hawaii `1994-01-01`-`2013-12-31`; Alaska `1981-01-01`-`2019-12-31`; Puerto Rico `2008-01-01`-`2023-06-30` |
 | Whether It Is Required or Optional | Required for forcing validation |
 | Example Values | Updated dataset coverage dates |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:319-323`; tuning views |
+| Where It Is Read in Code | `cerfServer/settings.py:321-325`; tuning views |
 | What Breaks If It Is Missing | UI/server cannot validate forcing-date availability correctly. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, except AORC is returned by `get_aorc_conus_bmi_date_range()`. |
@@ -2127,7 +2144,7 @@ Static model/forcing data root.
 | Example Values | Derived path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:699` and consumers |
+| Where It Is Read in Code | `cerfServer/settings.py:704` and consumers |
 | What Breaks If It Is Missing | Model templates and static inputs cannot be found. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy or coordinated symlink |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived. |
@@ -2144,7 +2161,7 @@ Calibration working root.
 | Example Values | Derived path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:700` and consumers |
+| Where It Is Read in Code | `cerfServer/settings.py:705` and consumers |
 | What Breaks If It Is Missing | Calibration work files cannot be created/found. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived. |
@@ -2161,7 +2178,7 @@ Verification working root.
 | Example Values | Derived path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:701` and consumers |
+| Where It Is Read in Code | `cerfServer/settings.py:706` and consumers |
 | What Breaks If It Is Missing | Verification work files cannot be created/found. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived. |
@@ -2178,7 +2195,7 @@ ngen-forcing-owned BMI forcing work root.
 | Example Values | Derived path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:704` and input builder |
+| Where It Is Read in Code | `cerfServer/settings.py:709` and input builder |
 | What Breaks If It Is Missing | Forcing generation and references fail. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived. |
@@ -2195,7 +2212,7 @@ Calibration run output root.
 | Example Values | Derived path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:707` and run models/utilities |
+| Where It Is Read in Code | `cerfServer/settings.py:712` and run models/utilities |
 | What Breaks If It Is Missing | Run output cannot be found or stored. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived. |
@@ -2212,7 +2229,7 @@ Commands/images for calibration, forecast, and evaluation in Docker mode.
 | Example Values | Docker command strings |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:628-656` |
+| Where It Is Read in Code | `cerfServer/settings.py:633-660` |
 | What Breaks If It Is Missing | Jobs cannot launch. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only: each template is overridable by the env var of the same name (see `CAL_MGR_DOCKER_CMD` above) |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Defaults only. These are fallback/local runtime commands; AWS uses Slurm when PCS is enabled. |
@@ -2229,7 +2246,7 @@ Command templates and bind mount for Slurm mode.
 | Example Values | Singularity command strings |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:670-696` |
+| Where It Is Read in Code | `cerfServer/settings.py:675-701` |
 | What Breaks If It Is Missing | Jobs cannot launch or cannot access shared data. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
@@ -2477,7 +2494,7 @@ SingularityCE source version built into production image.
 | Example Values | `4.4.2` |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `Dockerfile.production-pw:36,185` |
+| Where It Is Read in Code | `Dockerfile.production-pw:46,74,199` |
 | What Breaks If It Is Missing | Clone/build fails. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Build-time |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded. |
@@ -2494,7 +2511,7 @@ Boost source version built in production image.
 | Example Values | `1.86.0` |
 | Whether It Is Environment-Specific | No |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `Dockerfile.production-pw:197-202` |
+| Where It Is Read in Code | `Dockerfile.production-pw:211-216` |
 | What Breaks If It Is Missing | Download/build fails. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Build-time |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded. |

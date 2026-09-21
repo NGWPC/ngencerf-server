@@ -1,7 +1,7 @@
 # Supporting services
 
-What the ngenCERF server requires from the services it does not ship itself:
-PostgreSQL and Redis. This is written for whoever provides those services,
+What the ngenCERF server requires from its database and cache. The default
+services are PostgreSQL and Redis. This is written for whoever provides them,
 whether that is a developer's laptop, the AWS deployment (RDS and ElastiCache,
 created by the `nwm-ngencerf-infra` repository), or a Parallel Works cluster
 (both run in containers next to the server). In the reference deployments both
@@ -11,12 +11,15 @@ instances instead, the requirements below are the complete list.
 The environment variables named here are described in full in
 `ngenCERF_Server_Configuration_Reference.md`.
 
-# PostgreSQL
+# Database
 
-**Required.** PostgreSQL is the supported and tested database. The engine is
-set to `django.db.backends.postgresql` (driver: psycopg 3) in the `DATABASES`
-block of `cerfServer/settings.py`; switching it to another Django backend such
-as SQLite is possible there but untested.
+**Required.** PostgreSQL is the default, supported, and tested database.
+The backend is selected by `CERF_SERVER_DATABASE_ENGINE`, whose default remains `django.db.backends.postgresql` using the psycopg 3 driver.
+
+SQLite is available for lightweight local development by setting the engine to `django.db.backends.sqlite3`. 
+Other Django database backends require their corresponding Python driver and may need additional backend-specific settings.
+
+## PostgreSQL requirements
 
 What the server needs from it:
 
@@ -36,24 +39,45 @@ it.
 
 Connection settings, all read from the environment:
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `CERF_SERVER_DATABASE_HOST` | `localhost` | Host name of the database server |
-| `CERF_SERVER_DATABASE_PORT` | `5432` | Port |
-| `CERF_SERVER_DATABASE_NAME` | `postgres` | Database name |
-| `CERF_SERVER_DATABASE_USER` | `postgres` | Role the server connects as |
-| `CERF_SERVER_DATABASE_PASSWORD` | `postgres` | Its password (a secret in any real deployment) |
-| `CERF_SERVER_DATABASE_SSLMODE` | `require` | libpq `sslmode`. `require` refuses a server without TLS; use `disable` for a local Postgres, `verify-full` with a CA bundle in production |
-| `CERF_SERVER_DATABASE_SSLROOTCERT` | unset | CA bundle path for `verify-ca` / `verify-full` (the production image bakes the AWS RDS bundle at `/ngencerf/aws_cert/global-bundle.pem`) |
-| `CERF_SERVER_DATABASE_CONNECT_TIMEOUT` | `10` | Seconds to wait for a connection |
-| `CERF_SERVER_DATABASE_OPTIONS` | `-c statement_timeout=10000ms` | libpq options string; the default aborts any statement longer than 10 seconds |
-| `CERF_SERVER_DATABASE_CONN_MAX_AGE` | `60` | Seconds a connection is reused (Django `CONN_MAX_AGE`) |
+| Variable                               | Default                        | Meaning                                                                                                                                   |
+| -------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `CERF_SERVER_DATABASE_ENGINE`          | `django.db.backends.postgresql` | Django database backend                                                                                                                   |
+| `CERF_SERVER_DATABASE_HOST`            | `localhost`                    | Host name of the database server                                                                                                          |
+| `CERF_SERVER_DATABASE_PORT`            | `5432`                         | Port                                                                                                                                      |
+| `CERF_SERVER_DATABASE_NAME`            | `postgres`                     | Database name                                                                                                                             |
+| `CERF_SERVER_DATABASE_USER`            | `postgres`                     | Role the server connects as                                                                                                               |
+| `CERF_SERVER_DATABASE_PASSWORD`        | `postgres`                     | Its password (a secret in any real deployment)                                                                                            |
+| `CERF_SERVER_DATABASE_SSLMODE`         | `require`                      | libpq `sslmode`. `require` refuses a server without TLS; use `disable` for a local Postgres, `verify-full` with a CA bundle in production |
+| `CERF_SERVER_DATABASE_SSLROOTCERT`     | unset                          | CA bundle path for `verify-ca` / `verify-full` (the production image bakes the AWS RDS bundle at `/ngencerf/aws_cert/global-bundle.pem`)  |
+| `CERF_SERVER_DATABASE_CONNECT_TIMEOUT` | `10`                           | Seconds to wait for a connection                                                                                                          |
+| `CERF_SERVER_DATABASE_OPTIONS`         | `-c statement_timeout=10000ms` | libpq options string; the default aborts any statement longer than 10 seconds                                                             |
+| `CERF_SERVER_DATABASE_CONN_MAX_AGE`    | `60`                           | Seconds a connection is reused (Django `CONN_MAX_AGE`)                                                                                    |
 
 First start against an empty database: `runCerf.sh` applies the migrations,
 creates the superuser named by `DJANGO_SUPERUSER_EMAIL` /
 `DJANGO_SUPERUSER_PASSWORD` if it does not exist, seeds the reference tables
 (`manage.py init_sql`), and loads the gage data (`manage.py init_gages`).
 Nothing has to be created by hand beyond the empty database and the role.
+
+## SQLite for local development
+
+SQLite does not require a separate database service or credentials. 
+Configure it in `cerfServer/.env` with:
+
+```text
+CERF_SERVER_DATABASE_ENGINE=django.db.backends.sqlite3
+CERF_SERVER_DATABASE_NAME=/absolute/path/to/ngencerf.sqlite3
+```
+
+If the name is omitted, the SQLite file defaults to `db.sqlite3` in the repository root. 
+The containing directory must exist and be writable by the
+server process. PostgreSQL-only connection variables are ignored, including
+host, port, user, password, SSL, connect timeout, and libpq options.
+
+`runCerf.sh` applies the normal Django migrations and initialization commands
+to SQLite. SQLite is useful for development and basic testing, but it has not
+been qualified for production or for the concurrency of a deployed ngenCERF
+server. PostgreSQL remains the production database.
 
 # Redis
 
@@ -95,7 +119,7 @@ Configuration files shipped in this repository, for running Redis yourself:
 
 # Other provisioning files in this repository
 
-None of these are needed to install PostgreSQL or Redis; they are listed so
+None of these are needed to configure the database or Redis; they are listed so
 that an administrator knows what they are.
 
 - `gunicorn_conf.py`: Gunicorn hooks used when the server starts under
