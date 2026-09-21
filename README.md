@@ -50,10 +50,14 @@ The file 'redis.conf.dev' has the configuration needed for Redis
 # Create data directory
 
 Create a directory that will hold the data.  It can be anything, such as `~/ngwpc/data`.  
-But a symbolic link needs to be created to match the location specified by `CONTAINER_DATA_ROOT`, defined in `settings.py`.
-which, by default, is `/ngencerf/data`.  For development, you can change this value to match your local directory.
+The server looks for it at `CONTAINER_DATA_ROOT`, an environment variable read by `settings.py` that defaults to `/ngencerf/data`.
+You have two options:
 
-Enter these commands to create the top-level `/ngencerf` directory and then create the symbolic link
+1. Keep the default and create a symbolic link so `/ngencerf/data` points at your directory (commands below), or
+2. Set `CONTAINER_DATA_ROOT` and `HOST_DATA_ROOT` in `cerfServer/.env` to your directory and skip the link
+   (see [Directory structure](#directory-structure) and [Readme_portable_deployment.md](Readme_portable_deployment.md)).
+
+For option 1, enter these commands to create the top-level `/ngencerf` directory and then create the symbolic link
 
 ```
 sudo mkdir /ngencerf
@@ -221,7 +225,11 @@ Follow these steps to pull the latest docker containers.
 
 # Directory structure
 
-By convention with the Docker images, the CONTAINER_DATA_ROOT is at `/ngencerf/data`.   This is defined in `settings.py` and should not change without proper coordination.
+By convention with the Docker images, `CONTAINER_DATA_ROOT` is `/ngencerf/data`. It is an environment variable read by `settings.py`
+(default `/ngencerf/data`), together with `HOST_DATA_ROOT`, the same directory as seen by whatever launches the jobs
+(the Docker host in DOCKER mode, the compute node in SLURM mode; defaults to `CONTAINER_DATA_ROOT`).
+The server and the job runtime must agree on `CONTAINER_DATA_ROOT`, and it must not change on a deployment that already
+has runs, because stored run paths embed it. See [Readme_portable_deployment.md](Readme_portable_deployment.md) for running without mounts.
 
 `/ngencerf/data` contains `ngen-static-files` and `ngen-cal-work`
 
@@ -277,9 +285,26 @@ server starts in order to clean up any Calibrations or Validations that were run
 # Run the server in Docker
 
 The dev stack (server + Postgres + Redis) runs via `compose.yaml`. All dev
-values are baked in as defaults, so **no `--env-file` is needed** — just make
-sure the `/ngencerf/data` symlink (see [Create data directory](#create-data-directory)) exists and its `ngen-static-files`
-directory is populated (see [Static Files](#static-files)).
+values are baked in as defaults, so **no `--env-file` is needed**. Make sure the
+data directory exists (by default the `/ngencerf/data` symlink, see [Create data directory](#create-data-directory))
+and that its `ngen-static-files` directory is populated (see [Static Files](#static-files)).
+
+The compose file is for development only (production is covered in the note at the end of this section).
+Its bind mounts exist because ngenCERF is a distributed system: the Django server and the jobs it launches run as
+separate processes (on separate machines under Slurm) and exchange large run directories through a shared directory
+tree, so that tree cannot be private to any one container. Every host-side path in `compose.yaml` is a variable with
+the historical default:
+
+| Variable | Default | Mounted at (inside the container) |
+|---|---|---|
+| `NGEN_CAL_DATA_PATH` | `/ngencerf/data/` | `CONTAINER_DATA_ROOT` (default `/ngencerf/data`); also passed to the server as `HOST_DATA_ROOT` |
+| `NGENCERF_INIT_PATH` | `../data/.ngencerf-init` | `/ngencerf/ngencerf-server/.init/` |
+| `NGENCERF_LOGS_PATH` | `../logs/ngencerf-server` | `/ngencerf/ngencerf-server/logs/` |
+| `POSTGRES_DATA_PATH` | `../data/db` | `/var/lib/postgresql/data` (the dev `db` service) |
+
+For example: `NGEN_CAL_DATA_PATH=$HOME/ngwpc/data NGENCERF_LOGS_PATH=/var/log/ngencerf docker compose up ngencerf-services`.
+Running without bind mounts, without Docker, or on a plain Linux host is covered in
+[Readme_portable_deployment.md](Readme_portable_deployment.md).
 
 ```
 CACHE_BUST=$(date +%s) docker compose up --build ngencerf-services

@@ -743,7 +743,7 @@ Optional named AWS profile for read/write S3 operations. Empty selects the defau
 
 #### `HOST_DATA_ROOT`
 
-Host/compute-node path corresponding to container `/ngencerf/data`; used for Docker mounts and Slurm path translation.
+Host/compute-node path corresponding to `CONTAINER_DATA_ROOT`; used for Docker mounts and Slurm path translation.
 
 | Attribute | Value |
 |---|---|
@@ -753,10 +753,61 @@ Host/compute-node path corresponding to container `/ngencerf/data`; used for Doc
 | Example Values | `/ngencerf-app/data/ngen-cal-data` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | Sensitive infrastructure path |
-| Where It Is Read in Code | `cerfServer/settings.py:364`; execution adapters |
-| What Breaks If It Is Missing | Local-equivalent path is used; jobs cannot find shared input/output when host mount differs. |
+| Where It Is Read in Code | `cerfServer/settings.py:385`; execution adapters |
+| What Breaks If It Is Missing | Defaults to `CONTAINER_DATA_ROOT`; jobs cannot find shared input/output when the host path differs. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Container root is hardcoded; AWS supplies compute-node path. |
+| Whether It Is Hardcoded Anywhere; If So, Where? | No. AWS supplies the compute-node path in `django.tf`; the dev `compose.yaml` passes `NGEN_CAL_DATA_PATH` as this variable. |
+
+#### `CONTAINER_DATA_ROOT`
+
+Directory the server reads and writes run data under; the workload runtimes must see the same data at the same path (the server writes absolute paths under this root into job configs and the database).
+
+| Attribute | Value |
+|---|---|
+| Type | Directory path |
+| Default Value | `/ngencerf/data` |
+| Whether It Is Required or Optional | Optional; the default matches the Docker images and the AWS/PW mounts |
+| Example Values | `/srv/ngencerf/data` |
+| Whether It Is Environment-Specific | Yes |
+| Whether It Is Secret or Sensitive | No |
+| Where It Is Read in Code | `cerfServer/settings.py:384`; many modules via the derived `NGEN_*_DIR` settings |
+| What Breaks If It Is Missing | Default applies. A value that differs between the server and the job runtime, or changes on a deployment with existing runs, breaks every run path. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only, coordinated with the job runtime's bind (dev `compose.yaml` and `runCerf.sh` read the same variable) |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The default only. AWS mounts EFS at the default path in `django.tf`. |
+
+#### `SINGULARITY_DIR`
+
+In-container directory used to inspect Singularity images/Git information in Slurm mode.
+
+| Attribute | Value |
+|---|---|
+| Type | Directory path |
+| Default Value | `/ngencerf/containers` |
+| Whether It Is Required or Optional | Conditional for Slurm |
+| Example Values | `/containers` |
+| Whether It Is Environment-Specific | Yes |
+| Whether It Is Secret or Sensitive | No |
+| Where It Is Read in Code | `cerfServer/settings.py:390`; Git utility |
+| What Breaks If It Is Missing | Default applies; if the images are elsewhere, Singularity metadata/image lookup fails. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only, coordinated with the mount |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The default only. AWS mounts EFS at the default path in `django.tf`. |
+
+#### `CAL_MGR_DOCKER_CMD`, `NGEN_FORECAST_DOCKER_CMD`, `NWM_EVAL_DOCKER_CMD`
+
+Optional overrides for the Docker-mode job launcher templates (calibration/validation, cold start/forecast/hindcast, verification): a different image reference, extra flags, or another container runtime. The server formats `{name}` into the template, splits it on whitespace, and appends the workload entrypoint arguments; completion is judged by the exit code.
+
+| Attribute | Value |
+|---|---|
+| Type | Command template string |
+| Default Value | `docker run --rm [--network host] --name {name} -v <HOST_DATA_ROOT>:<CONTAINER_DATA_ROOT> <image>` |
+| Whether It Is Required or Optional | Optional |
+| Example Values | `docker run --rm --network host --name {name} -v /srv/ngencerf:/srv/ngencerf ghcr.io/ngwpc/nwm-cal-mgr:latest` |
+| Whether It Is Environment-Specific | Yes |
+| Whether It Is Secret or Sensitive | No |
+| Where It Is Read in Code | `cerfServer/settings.py:628-644`; `calibration/run_util/job_executor_docker.py` |
+| What Breaks If It Is Missing | Defaults apply. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
+| Whether It Is Hardcoded Anywhere; If So, Where? | Defaults only. Cancellation is `docker kill <name>`, so keep `{name}` in an override. |
 
 #### `JOB_EXECUTION_MODE`
 
@@ -1204,10 +1255,10 @@ Persistent directory for initialization, fingerprint, and dependency SHA marker 
 | Example Values | `/ngencerf/ngencerf-server/.init` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:220-258` |
+| Where It Is Read in Code | `runCerf.sh:223-261` |
 | What Breaks If It Is Missing | Defaults to current directory; startup exits if directory cannot be created. Ephemeral path causes repeated initialization. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only/mount change |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Defaults and marker filenames are hardcoded. |
+| Whether It Is Hardcoded Anywhere; If So, Where? | Marker filenames are hardcoded. The Docker default in `cerfserver-docker.env` is guarded (`${RUN_CERF_FLAG_DIRECTORY:-...}`) so a value supplied by the deployment environment wins. |
 
 ### `DJANGO_SUPERUSER_EMAIL`
 
@@ -1877,40 +1928,6 @@ In-container application/repository root.
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code plus image rebuild |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
 
-### `CONTAINER_DATA_ROOT`
-
-Shared data path expected inside server and runtime containers.
-
-| Attribute | Value |
-|---|---|
-| Type | Directory path |
-| Default Value | `/ngencerf/data` |
-| Whether It Is Required or Optional | Required |
-| Example Values | `/data` |
-| Whether It Is Environment-Specific | Yes |
-| Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:363`; many modules |
-| What Breaks If It Is Missing | Almost all static, work, run, and forcing paths break. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Code plus coordinated mount/redeploy |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Yes; repeated in Docker/AWS mounts. |
-
-### `SINGULARITY_DIR`
-
-In-container directory used to inspect Singularity images/Git information.
-
-| Attribute | Value |
-|---|---|
-| Type | Directory path |
-| Default Value | `/ngencerf/containers` |
-| Whether It Is Required or Optional | Conditional for Slurm |
-| Example Values | `/containers` |
-| Whether It Is Environment-Specific | Yes |
-| Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:367`; Git utility |
-| What Breaks If It Is Missing | Singularity metadata/image lookup fails. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Code plus coordinated mount/redeploy |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Yes; repeated in AWS mount. |
-
 ### `INSTALLED_APPS`
 
 Django applications loaded at startup, including DRF, Djoser, SimpleJWT, CORS, OTP, and calibration.
@@ -2093,7 +2110,7 @@ Static model/forcing data root.
 | Example Values | Derived path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:646` and consumers |
+| Where It Is Read in Code | `cerfServer/settings.py:699` and consumers |
 | What Breaks If It Is Missing | Model templates and static inputs cannot be found. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy or coordinated symlink |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived. |
@@ -2110,7 +2127,7 @@ Calibration working root.
 | Example Values | Derived path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:647` and consumers |
+| Where It Is Read in Code | `cerfServer/settings.py:700` and consumers |
 | What Breaks If It Is Missing | Calibration work files cannot be created/found. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived. |
@@ -2127,7 +2144,7 @@ Verification working root.
 | Example Values | Derived path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:648` and consumers |
+| Where It Is Read in Code | `cerfServer/settings.py:701` and consumers |
 | What Breaks If It Is Missing | Verification work files cannot be created/found. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived. |
@@ -2144,7 +2161,7 @@ ngen-forcing-owned BMI forcing work root.
 | Example Values | Derived path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:651` and input builder |
+| Where It Is Read in Code | `cerfServer/settings.py:704` and input builder |
 | What Breaks If It Is Missing | Forcing generation and references fail. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived. |
@@ -2161,7 +2178,7 @@ Calibration run output root.
 | Example Values | Derived path |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:654` and run models/utilities |
+| Where It Is Read in Code | `cerfServer/settings.py:707` and run models/utilities |
 | What Breaks If It Is Missing | Run output cannot be found or stored. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes, derived. |
@@ -2178,10 +2195,10 @@ Commands/images for calibration, forecast, and evaluation in Docker mode.
 | Example Values | Docker command strings |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:578-602` |
+| Where It Is Read in Code | `cerfServer/settings.py:628-656` |
 | What Breaks If It Is Missing | Jobs cannot launch. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Yes. These are fallback/local runtime commands; AWS uses Slurm when PCS is enabled. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only: each template is overridable by the env var of the same name (see `CAL_MGR_DOCKER_CMD` above) |
+| Whether It Is Hardcoded Anywhere; If So, Where? | Defaults only. These are fallback/local runtime commands; AWS uses Slurm when PCS is enabled. |
 
 ### Singularity runtime commands
 
@@ -2195,7 +2212,7 @@ Command templates and bind mount for Slurm mode.
 | Example Values | Singularity command strings |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `cerfServer/settings.py:617-643` |
+| Where It Is Read in Code | `cerfServer/settings.py:670-696` |
 | What Breaks If It Is Missing | Jobs cannot launch or cannot access shared data. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Yes. |
