@@ -29,7 +29,7 @@ from typing import Any, Callable
 from calibration.enums import SlurmCallbackStatusEnum
 from calibration.run_util.job_lifecycle import handle_job_event
 from calibration.run_util.job_runtime_mapping import get_job_runtime_details
-from cerfServer.settings import DOCKER_RUNTIME_INFO
+from cerfServer.settings import DOCKER_RUNTIME_INFO, CONTAINER_CLI
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +267,7 @@ def cancel_docker_job(job_type: str, run_id: int) -> bool:
 
         try:
             result = subprocess.run(
-                ["docker", "kill", container_name],
+                [CONTAINER_CLI, "kill", container_name],
                 check=False,
                 capture_output=True,
                 text=True,

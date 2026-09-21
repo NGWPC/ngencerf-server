@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 import json
 import os
+import shutil
 import tempfile
 from datetime import timedelta, datetime, timezone
 from enum import StrEnum, auto
@@ -607,8 +608,9 @@ if JOB_EXECUTION_MODE == JobExecutionMode.SLURM_MOCK and not DEBUG:
 # Runtime commands
 # ------------------------------------------------------------
 
-# Docker command templates used when JOB_EXECUTION_MODE=DOCKER.
-# Use {name} placeholder for the Docker container name.
+# Container command templates used when JOB_EXECUTION_MODE=DOCKER.
+# Supports Docker (default) or Podman via auto-detection or CONTAINER_CLI env var.
+# Use {name} placeholder for the container name.
 # --rm ensures containers are auto-removed after exit.
 #
 # Each template can be overridden by an environment variable of the same name
@@ -630,22 +632,30 @@ if JOB_EXECUTION_MODE == JobExecutionMode.SLURM_MOCK and not DEBUG:
 #   - arguments are split on whitespace, so paths with spaces are not
 #     supported (same as the defaults).
 
+CONTAINER_CLI = os.getenv(
+    "CONTAINER_CLI",
+    "docker" if shutil.which("docker") else "podman"
+)
+
+# Optional volume mount flags (e.g. ':Z' for rootless Podman under SELinux)
+CONTAINER_VOLUME_FLAGS = os.getenv("CONTAINER_VOLUME_FLAGS", "")
+
 CAL_MGR_DOCKER_CMD = os.getenv(
     "CAL_MGR_DOCKER_CMD",
-    f"docker run --rm --network host --name {{name}} "
-    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-cal-mgr"
+    f"{CONTAINER_CLI} run --rm --network host --name {{name}} "
+    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT}{CONTAINER_VOLUME_FLAGS} nwm-cal-mgr"
 )
 
 NGEN_FORECAST_DOCKER_CMD = os.getenv(
     "NGEN_FORECAST_DOCKER_CMD",
-    f"docker run --rm --name {{name}} "
-    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-fcst-mgr"
+    f"{CONTAINER_CLI} run --rm --name {{name}} "
+    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT}{CONTAINER_VOLUME_FLAGS} nwm-fcst-mgr"
 )
 
 NWM_EVAL_DOCKER_CMD = os.getenv(
     "NWM_EVAL_DOCKER_CMD",
-    f"docker run --rm --name {{name}} "
-    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-eval-mgr"
+    f"{CONTAINER_CLI} run --rm --name {{name}} "
+    f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT}{CONTAINER_VOLUME_FLAGS} nwm-eval-mgr"
 )
 
 
