@@ -45,6 +45,9 @@ cerfServer/.env-override):
                              'Docker' to skip local venv/AWS-check logic.
   REQUIRED_PYTHON            Required Python version, e.g. 3.11 or python3.11.
   RUN_CERF_FLAG_DIRECTORY    Directory for SHA/gage marker files (default ./).
+  CONTAINER_DATA_ROOT        Data directory root (default /ngencerf/data);
+                             ngen-static-files lives under it. Same variable
+                             settings.py reads.
   FORCE_REINSTALL_VCS        1 to force reinstall of git-based dependencies.
   DJANGO_SUPERUSER_EMAIL/
   DJANGO_SUPERUSER_PASSWORD  Bootstrap a superuser if not already present.
@@ -981,10 +984,12 @@ echo
 echo --------------------------------------------------------
 #=======================================================================
 # Ensure bmi_forcing_templates in ngen-static-files
-#   - Docker: copy from image-staged /ngencerf/prebuilt into bind-mounted dir
-#   - Non-Docker: clone from Git into /ngencerf/data/ngen-static-files
+#   - Docker: copy from image-staged /ngencerf/prebuilt into the data dir
+#   - Non-Docker: clone from Git into ${CONTAINER_DATA_ROOT}/ngen-static-files
+#   STATIC_DIR follows CONTAINER_DATA_ROOT (same env var and default that
+#   settings.py uses for NGEN_STATIC_DIR) so the two never disagree.
 #=======================================================================
-STATIC_DIR="/ngencerf/data/ngen-static-files"
+STATIC_DIR="${CONTAINER_DATA_ROOT:-/ngencerf/data}/ngen-static-files"
 TARGET_DIR="${STATIC_DIR}/bmi_forcing_templates"
 
 # Create static base and ensure a clean target location (shared logic)

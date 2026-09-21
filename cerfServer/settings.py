@@ -352,20 +352,42 @@ ZIP_RETENTION_SECONDS = 3600
 REPO_ROOT = '/ngen-app'
 NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
 
-# This must match the shared data mount path expected inside the runtime containers.
-# Do not change this location unless all runtime containers and Slurm bindings
-# are updated consistently.
+# CONTAINER_DATA_ROOT is the directory the server reads and writes run data
+# under. The workload runtimes (the nwm-cal-mgr / nwm-fcst-mgr / nwm-eval-mgr
+# containers, or their Apptainer images under Slurm) must see the same data at
+# the same path, because the server writes absolute paths under this root into
+# job configs and into the database, and the bind in the command templates
+# below maps HOST_DATA_ROOT onto it.
 #
-# You may store the actual data elsewhere on the host filesystem and create
-# a symbolic link to /ngencerf/data:
+# Both roots are read from the environment so the server does not assume any
+# particular mount layout. Rules when overriding CONTAINER_DATA_ROOT:
+#   - the server and the job runtime must agree on the value, and the run
+#     directories must be visible at that path on both sides (a shared
+#     filesystem, a bind mount, or simply the same machine);
+#   - do not change it on a deployment that already has runs: stored
+#     job_data_dir values embed the old root.
+# The default /ngencerf/data matches the Docker images and the AWS / Parallel
+# Works mounts.
+#
+# When the server and the jobs share one filesystem (local development, a
+# single-host install) set CONTAINER_DATA_ROOT and HOST_DATA_ROOT to the same
+# directory and nothing needs to be mounted. The historical alternative,
+# keeping the default and creating a symlink, still works:
 #
 # sudo mkdir /ngencerf
 # sudo ln -s ~/your/data/dir /ngencerf/data
-CONTAINER_DATA_ROOT = '/ngencerf/data'
+#
+# HOST_DATA_ROOT is the same tree as seen by whoever launches the job (the
+# Docker host in DOCKER mode, the compute node in SLURM mode). It defaults to
+# CONTAINER_DATA_ROOT, which is correct whenever both run on one machine.
+# See Readme_portable_deployment.md for running without mounts or Docker.
+CONTAINER_DATA_ROOT = os.getenv('CONTAINER_DATA_ROOT', '/ngencerf/data')
 HOST_DATA_ROOT = os.getenv('HOST_DATA_ROOT', CONTAINER_DATA_ROOT)
 
-# Used only by get_git_info when running in Slurm mode with singularities
-SINGULARITY_DIR = '/ngencerf/containers'
+# Directory the server reads the workload .sif images from (get_git_info in
+# Slurm mode only). Read from the environment for the same reason as
+# CONTAINER_DATA_ROOT; the default matches the AWS mount.
+SINGULARITY_DIR = os.getenv('SINGULARITY_DIR', '/ngencerf/containers')
 
 # -----------------------------
 # Slurm partition / node rules
@@ -575,18 +597,40 @@ if JOB_EXECUTION_MODE == JobExecutionMode.SLURM_MOCK and not DEBUG:
 # Docker command templates used when JOB_EXECUTION_MODE=DOCKER.
 # Use {name} placeholder for the Docker container name.
 # --rm ensures containers are auto-removed after exit.
+#
+# Each template can be overridden by an environment variable of the same name
+# (CAL_MGR_DOCKER_CMD, NGEN_FORECAST_DOCKER_CMD, NWM_EVAL_DOCKER_CMD), so the
+# launcher is configuration rather than code: a different image reference
+# (ghcr.io/ngwpc/nwm-cal-mgr:latest instead of the bare local tag), extra
+# flags (--user, an additional -v, --gpus), or another container runtime
+# (podman run). The template is only the launcher:
+# job_executor_docker.build_docker_command formats {name} into it, splits it
+# on whitespace, and appends the workload entrypoint arguments
+# (<command> <input file> ... <stdout file>) exactly as it does for the
+# defaults. Completion is judged by the exit code of the launched process
+# (0 = done, anything else = failed). Rules for an override:
+#   - keep {name}: cancellation is `docker kill <name>`, so a launcher that
+#     does not create a container with that name cannot be cancelled from the
+#     UI (and the docker binary is what gets called, even for another runtime);
+#   - any other literal brace must be doubled ({{ and }}) because the string
+#     goes through str.format;
+#   - arguments are split on whitespace, so paths with spaces are not
+#     supported (same as the defaults).
 
-CAL_MGR_DOCKER_CMD = (
+CAL_MGR_DOCKER_CMD = os.getenv(
+    "CAL_MGR_DOCKER_CMD",
     f"docker run --rm --network host --name {{name}} "
     f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-cal-mgr"
 )
 
-NGEN_FORECAST_DOCKER_CMD = (
+NGEN_FORECAST_DOCKER_CMD = os.getenv(
+    "NGEN_FORECAST_DOCKER_CMD",
     f"docker run --rm --name {{name}} "
     f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-fcst-mgr"
 )
 
-NWM_EVAL_DOCKER_CMD = (
+NWM_EVAL_DOCKER_CMD = os.getenv(
+    "NWM_EVAL_DOCKER_CMD",
     f"docker run --rm --name {{name}} "
     f"-v {HOST_DATA_ROOT}:{CONTAINER_DATA_ROOT} nwm-eval-mgr"
 )

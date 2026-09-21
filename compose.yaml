@@ -23,8 +23,10 @@ services:
     image: postgres:16
     ports:
       - "5432:5432"
+    # Host path is a variable like the server's mounts; the default keeps the
+    # historical ../data/db next to this repo.
     volumes:
-      - ../data/db:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_PATH:-../data/db}:/var/lib/postgresql/data
     # Throwaway dev creds; overridable via shell env if ever needed.
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-postgres}
@@ -60,14 +62,24 @@ services:
     pull_policy: build
     ports:
       - "8000:8000"
+    # Every host-side path is a variable so this file assumes no particular
+    # host layout; the defaults keep the historical sibling directories
+    # (../data and ../logs next to this repo) and the README's /ngencerf/data
+    # symlink. The container side of the data mount follows
+    # CONTAINER_DATA_ROOT, the same setting the server reads. See
+    # Readme_portable_deployment.md for running without bind mounts.
     volumes:
-      - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
-      - ${NGEN_CAL_DATA_PATH:-/ngencerf/data/}:/ngencerf/data/
-      - ../logs/ngencerf-server:/ngencerf/ngencerf-server/logs/
-    # NGEN_CAL_DATA_PATH defaults to the README's /ngencerf/data symlink;
-    # DB creds default to the throwaway dev postgres/postgres.
+      - ${NGENCERF_INIT_PATH:-../data/.ngencerf-init}:/ngencerf/ngencerf-server/.init/
+      - ${NGEN_CAL_DATA_PATH:-/ngencerf/data/}:${CONTAINER_DATA_ROOT:-/ngencerf/data}/
+      - ${NGENCERF_LOGS_PATH:-../logs/ngencerf-server}:/ngencerf/ngencerf-server/logs/
+    # NGEN_CAL_DATA_PATH is handed to the server as HOST_DATA_ROOT (the name
+    # settings.py reads) so DOCKER-mode job containers bind the real host
+    # directory rather than the container-side path; CONTAINER_DATA_ROOT is
+    # passed so the server and the mount above agree. DB creds default to the
+    # throwaway dev postgres/postgres.
     environment:
-      - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH:-/ngencerf/data/}
+      - HOST_DATA_ROOT=${NGEN_CAL_DATA_PATH:-/ngencerf/data/}
+      - CONTAINER_DATA_ROOT=${CONTAINER_DATA_ROOT:-/ngencerf/data}
       - CERF_SERVER_DATABASE_NAME=${POSTGRES_DB:-postgres}
       - CERF_SERVER_DATABASE_USER=${POSTGRES_USER:-postgres}
       - CERF_SERVER_DATABASE_PASSWORD=${POSTGRES_PASSWORD:-postgres}
