@@ -2,6 +2,24 @@
 These instructions are primarily for installing ngencerf-server in your local development environment.  Requires an AWS account with S3 bucket access.
 An EDFS server is also required.  The url of the server is specified in `.env`
 
+# Table of Contents
+
+- [Target Environment](#target-environment)
+- [Additional documentation](#additional-documentation)
+- [Create virtual environment and install dependencies](#create-virtual-environment-and-install-dependencies)
+- [Setup local configuration](#setup-local-configuration)
+- [Install Postgres](#install-postgres)
+- [Install Redis](#install-redis)
+- [Create data directory](#create-data-directory)
+- [Access to AWS](#access-to-aws)
+- [Archive/Zips Directory](#archivezips-directory)
+- [Static Files](#static-files)
+- [User Authentication](#user-authentication)
+- [Runtime environments](#runtime-environments)
+- [Directory structure](#directory-structure)
+- [Running the server](#running-the-server)
+- [Run the server in Docker](#run-the-server-in-docker)
+
 # Additional documentation
 
 - [ngenCERF_Server_Configuration_Reference.md](ngenCERF_Server_Configuration_Reference.md): every environment variable, startup flag, and hardcoded setting, with defaults and where each is read.
