@@ -34,18 +34,22 @@ Note that the .env file is not checked in to Git
 
 # Install Postgres
 
-See your administrator for instructions on installing Postgres locally.  Connection values can
-be specified in `.env`, e.g., CERF_SERVER_DATABAWSE_HOST, CERF_SERVER_DATABASE_USER, etc.  Also, see `settings.py`
+See your administrator for instructions on installing Postgres locally. Connection values are
+set in `.env` (`CERF_SERVER_DATABASE_HOST`, `CERF_SERVER_DATABASE_USER`, and so on; see `settings.py`).
+A local Postgres without TLS needs `CERF_SERVER_DATABASE_SSLMODE=disable`.
 
-There is no specific dependency on Postgres or any specific release of Postgres.  Any version should work, as well as alternatives such as SqlLite
+Postgres is required (the database engine is fixed in `settings.py`), but no particular release and no
+extensions: any recent version works. Everything the server needs from Postgres is listed in
+[Readme_supporting_services.md](Readme_supporting_services.md).
 
 
 # Install Redis
-Redis is used for the cache.  It is memory-only and non-persistent.  When the server is restarted, the cache *must* be cleared.
-See your administrator for instructions on installing Redis locally.  Each instance of the server needs to have its own instance of Redis,
-so it should be installed for use by a single developer.
+Redis is used only as the cache. It is memory-only and non-persistent, and `runCerf.sh` clears it at every start.
+See your administrator for instructions on installing Redis locally. Each instance of the server needs its own Redis
+(or its own database index), so install it for use by a single developer. Point the server at it with `REDIS_URL` in `.env`.
 
-The file 'redis.conf.dev' has the configuration needed for Redis
+The file `redis/redis.conf.dev` is a ready-made configuration for a local `redis-server`. Everything the server needs
+from Redis is listed in [Readme_supporting_services.md](Readme_supporting_services.md).
 
 # Create data directory
 
