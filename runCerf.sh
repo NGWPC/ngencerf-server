@@ -21,7 +21,7 @@ Usage: ./runCerf.sh [COMMAND] [OPTIONS]
 
 Starts the ngenCERF Django server (dev runserver or Gunicorn/Uvicorn ASGI),
 handling venv setup, dependency installs, gage/static data initialization,
-database migrations and Redis cache flushing.
+database migrations and Django cache clearing.
 
 Commands:
   (none)            Start the server normally.
@@ -1047,16 +1047,13 @@ else
 fi
 
 #=======================================================================
-# Flush Redis cache at startup (all environments)
-#   - Redis is cache-only; safe to clear on every server start
-#   - Uses Django's configured cache (REDIS_URL + TLS) via the clear_cache
-#     management command, so it works on AWS ElastiCache and local
-#     docker-compose alike.
+# Clear Django's configured cache at startup (all environments)
+#   - Works with the production Redis cache and the development LocMemCache.
 #=======================================================================
 echo
 echo --------------------------------------------------------
-echo "Flushing Redis cache..."
-run_manage_command clear_cache || echo "WARNING: Redis cache clear failed"
+echo "Clearing Django cache..."
+run_manage_command clear_cache || echo "WARNING: Django cache clear failed"
 
 #=======================================================================
 # Pre-start hook and start server

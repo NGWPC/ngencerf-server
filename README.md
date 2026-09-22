@@ -9,7 +9,7 @@ An EDFS server is also required.  The url of the server is specified in `.env`
 - [Create virtual environment and install dependencies](#create-virtual-environment-and-install-dependencies)
 - [Setup local configuration](#setup-local-configuration)
 - [Configure the Database](#configure-the-database)
-- [Install Redis](#install-redis)
+- [Configure the cache](#configure-the-cache)
 - [Create data directory](#create-data-directory)
 - [Access to AWS](#access-to-aws)
 - [Archive/Zips Directory](#archivezips-directory)
@@ -23,7 +23,7 @@ An EDFS server is also required.  The url of the server is specified in `.env`
 # Additional documentation
 
 - [ngenCERF_Server_Configuration_Reference.md](ngenCERF_Server_Configuration_Reference.md): every environment variable, startup flag, and hardcoded setting, with defaults and where each is read.
-- [Readme_supporting_services.md](Readme_supporting_services.md): database and Redis requirements, including PostgreSQL and SQLite configuration, and the provisioning files shipped in this repo.
+- [Readme_supporting_services.md](Readme_supporting_services.md): database and cache requirements, including PostgreSQL, SQLite, Redis, and local-memory cache configuration.
 - [Readme_portable_deployment.md](Readme_portable_deployment.md): running without container bind mounts, without Docker, or on a plain Linux host; which paths are configurable.
 - [Readme_active_directory_doc.md](Readme_active_directory_doc.md): Active Directory / LDAP authentication implementation.
 - [Readme_active_directory_flow.md](Readme_active_directory_flow.md): authentication and Active Directory notes for the UI.
@@ -96,10 +96,21 @@ production database. Other Django database backends may be selected through
 `CERF_SERVER_DATABASE_ENGINE`, but they require the appropriate Python driver
 and may require additional backend-specific settings or testing.
 
-# Install Redis
-Redis is used only as the cache. It is memory-only and non-persistent, and `runCerf.sh` clears it at every start.
-See your administrator for instructions on installing Redis locally. Each instance of the server needs its own Redis
-(or its own database index), so install it for use by a single developer. Point the server at it with `REDIS_URL` in `.env`.
+# Configure the cache
+
+Redis remains the default cache and is required for production because Gunicorn
+workers must share cached values. Point the server at Redis with `REDIS_URL` in
+`.env`. The cache is non-persistent, and `runCerf.sh` clears it at every start.
+
+For single-process local development without Gunicorn, Redis can be avoided by
+setting this in `.env`:
+
+```text
+CERF_SERVER_CACHE_BACKEND=django.core.cache.backends.locmem.LocMemCache
+```
+
+Django's local-memory cache is private to each process. Do not use it with
+Gunicorn or any deployment that runs more than one server process.
 
 The file `redis/redis.conf.dev` is a ready-made configuration for a local `redis-server`. Everything the server needs
 from Redis is listed in [Readme_supporting_services.md](Readme_supporting_services.md).

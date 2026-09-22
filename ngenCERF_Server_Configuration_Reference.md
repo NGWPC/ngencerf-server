@@ -650,6 +650,23 @@ Path to a trusted PostgreSQL or Amazon RDS CA bundle. This setting is not added 
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only if the referenced file already exists; otherwise an image or mount change is required |
 | Whether It Is Hardcoded Anywhere; If So, Where? | The RDS certificate directory is included in the production image. |
 
+#### `CERF_SERVER_CACHE_BACKEND`
+
+Django cache backend. Redis remains the default so all Gunicorn workers share one cache. Django's local-memory backend may be selected for single-process development without Redis.
+
+| Attribute | Value |
+|---|---|
+| Type | Python import path |
+| Default Value | `django_redis.cache.RedisCache` |
+| Whether It Is Required or Optional | Optional; default is appropriate for production |
+| Example Values | `django.core.cache.backends.locmem.LocMemCache` |
+| Whether It Is Environment-Specific | Yes |
+| Whether It Is Secret or Sensitive | No |
+| Where It Is Read in Code | `cerfServer/settings.py:246` |
+| What Breaks If It Is Missing | Nothing; Redis remains the selected backend. Using `LocMemCache` with multiple Gunicorn workers creates separate per-worker caches and produces inconsistent cached state. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | The Redis backend is the hardcoded default. |
+
 #### `REDIS_URL`
 
 Django Redis cache connection URL and database number.
@@ -658,12 +675,12 @@ Django Redis cache connection URL and database number.
 |---|---|
 | Type | Redis URL |
 | Default Value | `redis://127.0.0.1:6379/1` |
-| Whether It Is Required or Optional | Required when Redis is remote |
+| Whether It Is Required or Optional | Required when the Redis backend is selected and Redis is remote; ignored by `LocMemCache` |
 | Example Values | `rediss://cache.example:6379/1` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | May contain credentials; sensitive |
-| Where It Is Read in Code | `cerfServer/settings.py:244-252` |
-| What Breaks If It Is Missing | Attempts local Redis; cache-backed operations fail if unavailable. |
+| Where It Is Read in Code | `cerfServer/settings.py:250` |
+| What Breaks If It Is Missing | When Redis is selected, the server attempts local Redis and cache-backed operations fail if it is unavailable. It has no effect with `LocMemCache`. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Local URL is hardcoded; AWS uses ElastiCache TLS URL. |
 
@@ -1374,7 +1391,7 @@ Number of Gunicorn worker processes.
 | Example Values | `8`, `24` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1091-1100` |
+| Where It Is Read in Code | `runCerf.sh:1088-1097` |
 | What Breaks If It Is Missing | The calculated value, with a minimum of 2 and maximum of 8, is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Docker/AWS hardcode 24. |
@@ -1391,7 +1408,7 @@ Worker timeout in seconds.
 | Example Values | `120`, `300` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1102,1113` |
+| Where It Is Read in Code | `runCerf.sh:1099,1110` |
 | What Breaks If It Is Missing | 120 seconds is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded; not supplied by AWS. |
@@ -1408,7 +1425,7 @@ Gunicorn bind address.
 | Example Values | `127.0.0.1:8000`, `0.0.0.0:8000` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1103,1112` |
+| Where It Is Read in Code | `runCerf.sh:1100,1109` |
 | What Breaks If It Is Missing | All interfaces on `PORT` are used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Binding behavior hardcoded. |
@@ -1425,7 +1442,7 @@ Requests handled before recycling a worker.
 | Example Values | `1000` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1109` |
+| Where It Is Read in Code | `runCerf.sh:1106` |
 | What Breaks If It Is Missing | Workers recycle after 300 requests. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded and repeated in AWS/Docker env. |
@@ -1442,7 +1459,7 @@ Random jitter added to worker recycle threshold.
 | Example Values | `50`, `100` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1110` |
+| Where It Is Read in Code | `runCerf.sh:1107` |
 | What Breaks If It Is Missing | Up to 100 requests of jitter is used. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Default hardcoded and repeated in AWS/Docker env. |
@@ -1459,7 +1476,7 @@ Grace period for workers to finish during restart/shutdown.
 | Example Values | `120` |
 | Whether It Is Environment-Specific | Yes |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:1114` |
+| Where It Is Read in Code | `runCerf.sh:1111` |
 | What Breaks If It Is Missing | Gunicorn uses the 30-second application fallback. AWS production supplies 120 seconds. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Environment-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | The 30-second fallback is hardcoded in `runCerf.sh`; `django.tf` explicitly supplies the 120-second AWS production value. |
@@ -1527,7 +1544,7 @@ Enables Django development auto-reloader.
 | Example Values | `./runCerf.sh auto_reload` |
 | Whether It Is Environment-Specific | Development only |
 | Whether It Is Secret or Sensitive | No |
-| Where It Is Read in Code | `runCerf.sh:653-662,1119-1124` |
+| Where It Is Read in Code | `runCerf.sh:653-662,1116-1121` |
 | What Breaks If It Is Missing | Server runs with `--noreload` in development. |
 | Whether It Can Be Changed Without Rebuilding or Redeploying | Invocation-only |
 | Whether It Is Hardcoded Anywhere; If So, Where? | Token spelling hardcoded. |
@@ -2049,20 +2066,20 @@ Ordered AD and local authentication backends.
 
 ### `CACHES`
 
-Django cache backend and Redis client implementation.
+Django cache configuration assembled from `CERF_SERVER_CACHE_BACKEND`. Redis-specific location and client options are added only when the Redis backend is selected.
 
 | Attribute | Value |
 |---|---|
 | Type | Mapping |
-| Default Value | `django_redis.cache.RedisCache` with `DefaultClient` |
+| Default Value | `django_redis.cache.RedisCache` with `DefaultClient`; optional `LocMemCache` for single-process development |
 | Whether It Is Required or Optional | Required for caching |
 | Example Values | Django cache configuration |
 | Whether It Is Environment-Specific | Yes |
-| Whether It Is Secret or Sensitive | May contain credentials via `REDIS_URL` |
+| Whether It Is Secret or Sensitive | May contain credentials via `REDIS_URL` when Redis is selected |
 | Where It Is Read in Code | `cerfServer/settings.py:244-252` |
-| What Breaks If It Is Missing | Cache operations fail or use Django defaults if removed. |
-| Whether It Can Be Changed Without Rebuilding or Redeploying | Code/redeploy except Redis URL |
-| Whether It Is Hardcoded Anywhere; If So, Where? | Backend/client are hardcoded; location is environment-driven. |
+| What Breaks If It Is Missing | Cache operations fall back to Django's implicit default configuration if the setting is removed. Selecting `LocMemCache` in a multi-process deployment causes each process to have an independent cache. |
+| Whether It Can Be Changed Without Rebuilding or Redeploying | Backend and Redis URL are environment-controlled; server restart required |
+| Whether It Is Hardcoded Anywhere; If So, Where? | Redis is the hardcoded backend default; Redis client options are added conditionally in `settings.py`. |
 
 ### `AUTH_USER_MODEL`
 

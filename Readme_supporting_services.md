@@ -79,12 +79,24 @@ to SQLite. SQLite is useful for development and basic testing, but it has not
 been qualified for production or for the concurrency of a deployed ngenCERF
 server. PostgreSQL remains the production database.
 
-# Redis
+# Cache
 
-**Required, as a cache only.** The server uses django-redis for Django's
-cache framework and for nothing else: no sessions, no queues, no pub/sub.
+Redis is the default cache and is required for production and other
+multi-process deployments. The server uses django-redis for Django's cache
+framework and for nothing else: no sessions, no queues, no pub/sub.
 
-What the server needs from it:
+For single-process local development, Django's local-memory cache can be used
+instead of Redis:
+
+```text
+CERF_SERVER_CACHE_BACKEND=django.core.cache.backends.locmem.LocMemCache
+```
+
+The local-memory cache is private to one process. It is suitable when using
+Django's development server without Gunicorn, but it must not be used with
+multiple Gunicorn workers because workers would not share cached values.
+
+When the Redis backend is selected, the server needs:
 
 - A reachable Redis instance, any recent version. Development runs 7.2
   (`compose.yaml`), AWS runs ElastiCache Redis 7.1. Nothing version-specific
@@ -99,11 +111,12 @@ What the server needs from it:
 - Optional TLS (`rediss://`) and optional password authentication, both
   expressed in the URL.
 
-Connection setting:
+Cache settings:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `REDIS_URL` | `redis://127.0.0.1:6379/1` | Full connection URL including the database index; `rediss://host:6379/1` for TLS (AWS), `redis://:password@host:6379/1` for password auth |
+| `CERF_SERVER_CACHE_BACKEND` | `django_redis.cache.RedisCache` | Django cache backend. Set to `django.core.cache.backends.locmem.LocMemCache` only for single-process development without Redis. |
+| `REDIS_URL` | `redis://127.0.0.1:6379/1` | Redis connection URL, used only when the Redis backend is selected. Include the database index; use `rediss://host:6379/1` for TLS (AWS) or `redis://:password@host:6379/1` for password authentication. |
 
 Configuration files shipped in this repository, for running Redis yourself:
 
@@ -119,7 +132,7 @@ Configuration files shipped in this repository, for running Redis yourself:
 
 # Other provisioning files in this repository
 
-None of these are needed to configure the database or Redis; they are listed so
+None of these are needed to configure the database or cache; they are listed so
 that an administrator knows what they are.
 
 - `gunicorn_conf.py`: Gunicorn hooks used when the server starts under

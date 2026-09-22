@@ -241,15 +241,15 @@ AUTHENTICATION_BACKENDS = [
     "calibration.auth.active_directory_backend.LocalUserBackend",
 ]
 
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.getenv('REDIS_URL', "redis://127.0.0.1:6379/1"),
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient"
-        }
-    }
-}
+# Redis provides a shared cache for multi-worker production deployments.
+# LocMemCache may be selected for single-process development without Redis.
+CACHE_BACKEND = os.getenv('CERF_SERVER_CACHE_BACKEND', 'django_redis.cache.RedisCache')
+CACHES = {'default': {'BACKEND': CACHE_BACKEND}}
+if CACHE_BACKEND == 'django_redis.cache.RedisCache':
+    CACHES['default'].update({
+        'LOCATION': os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/1'),
+        'OPTIONS': {'CLIENT_CLASS': 'django_redis.client.DefaultClient'},
+    })
 
 AUTH_USER_MODEL = 'calibration.CustomUser'
 

@@ -48,7 +48,7 @@ Prerequisites, derived from what the server image installs (`Dockerfile`).
 Package names are Debian/Ubuntu; map them to your distribution:
 
 - Python 3.12 (the version `cerfserver.env` pins in `REQUIRED_PYTHON`; NumPy 1.x caps it there)
-- PostgreSQL (the default) or SQLite for lightweight local development, plus Redis (see the README sections "Configure the database" and "Install Redis")
+- PostgreSQL (the default) or SQLite for lightweight local development, plus Redis for multi-process deployments; single-process development may use Django's local-memory cache (see the README sections "Configure the database" and "Configure the cache")
 - `git`, `curl`, `ca-certificates`, `jq`
 - build tools for the Python packages: `gcc`, `g++`, `make`, `pkg-config`, `libpq-dev`
 - GDAL/PROJ for GeoPandas/Fiona: `gdal-bin`, `libgdal-dev`, `libproj-dev`, `proj-data`
