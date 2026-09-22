@@ -310,12 +310,21 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Enterprise Data
 # -----------------------------
 HYDROFABRIC_SOURCE = 'nhf'
-ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = 'api/v1/modules/parameter_metadata/'
-ENTERPRISE_DATA_OBSERVATION_DATA_INFO_ENDPOINT = 'api/v1/streamflow_observations/{gage_id}/info'
-ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = 'api/v1/streamflow_observations/{gage_id}/csv'
+# These endpoints are relative to ENTERPRISE_DATA_URL, whose value includes the
+# API prefix (for example, https://edfs.example.gov/api/v1/). Keep the endpoint
+# paths free of a leading slash so urllib.parse.urljoin preserves that prefix.
+ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = 'modules/parameter_metadata/'
+ENTERPRISE_DATA_OBSERVATION_DATA_INFO_ENDPOINT = 'streamflow_observations/{gage_id}/info'
+ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = 'streamflow_observations/{gage_id}/csv'
 
-ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL')
-ENTERPRISE_DATA_ENV = os.getenv('ENTERPRISE_DATA_ENV')
+ENTERPRISE_DATA_URL = (os.getenv('ENTERPRISE_DATA_URL') or '').strip()
+if ENTERPRISE_DATA_URL:
+    # urljoin treats a base without a trailing slash as a file and would replace
+    # its final path component (for example, "v1"). Normalize it once here for
+    # both the local requests and call_icefabric_gpkg.
+    ENTERPRISE_DATA_URL = ENTERPRISE_DATA_URL.rstrip('/') + '/'
+else:
+    ENTERPRISE_DATA_URL = None
 
 # Default time range for BMI forcing data
 FORCING_AORC_CONUS_BMI_DATE_RANGE = get_aorc_conus_bmi_date_range()

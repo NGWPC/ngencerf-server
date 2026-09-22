@@ -138,6 +138,8 @@ def get_geopackage_from_data_services(run: CalibrationRun):
     MSWM performs the Data Services lookup and writes the GeoPackage file. This function
     does not set a file path on the run or save the run.
 
+    The configured Enterprise Data API base URL is passed directly to MSWM
+
     :param run: CalibrationRun instance with associated gage information.
     """
     if run.gage:
@@ -150,7 +152,7 @@ def get_geopackage_from_data_services(run: CalibrationRun):
             'gage',
             run.gage.domain.name,
             geopackage_dir,
-            settings.ENTERPRISE_DATA_ENV,
+            settings.ENTERPRISE_DATA_URL,
             settings.HYDROFABRIC_SOURCE,
         ]
 
