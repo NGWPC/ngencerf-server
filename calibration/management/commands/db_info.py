@@ -9,5 +9,12 @@ class Command(BaseCommand):
         db_info = settings.DATABASES['default']
         self.stdout.write(f"Database Engine: {db_info['ENGINE']}")
         self.stdout.write(f"Database Name: {db_info['NAME']}")
-        self.stdout.write(f"Database URL: {db_info['HOST']}:{db_info['PORT']}")
-        self.stdout.write(f"Database User: {db_info['USER']}")
+
+        if db_info['ENGINE'] == 'django.db.backends.sqlite3':
+            self.stdout.write(f"Database File: {db_info['NAME']}")
+        else:
+            self.stdout.write(
+                f"Database URL: "
+                f"{db_info.get('HOST', '')}:{db_info.get('PORT', '')}"
+            )
+            self.stdout.write(f"Database User: {db_info.get('USER', '')}")

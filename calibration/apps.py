@@ -16,8 +16,13 @@ def print_db_info():
     db_info = settings.DATABASES['default']
     logger.info(f"Database Engine: {db_info['ENGINE']}")
     logger.info(f"Database Name: {db_info['NAME']}")
-    logger.info(f"Database URL: {db_info['HOST']}:{db_info['PORT']}")
-    logger.info(f"Database User: {db_info['USER']}")
+
+    if db_info['ENGINE'] == 'django.db.backends.sqlite3':
+        logger.info(f"Database File: {db_info['NAME']}")
+    else:
+        logger.info(f"Database URL: "
+            f"{db_info.get('HOST', '')}:{db_info.get('PORT', '')}")
+        logger.info(f"Database User: {db_info.get('USER', '')}")
 
 
 def log_worker_info():

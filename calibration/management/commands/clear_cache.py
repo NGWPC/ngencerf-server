@@ -7,8 +7,9 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Flush the Django (Redis) cache. Safe to run on every startup since sessions are DB-backed."
+    help = "Clear Django's configured cache. Safe to run on every startup since sessions are database-backed."
+
 
     def handle(self, *args, **options):
         cache.clear()
-        logger.info("Redis cache cleared.")
+        logger.info("Django cache cleared.")

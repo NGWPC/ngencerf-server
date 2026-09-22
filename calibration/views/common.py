@@ -1433,12 +1433,16 @@ def get_elapsed_str(request: Request) -> str:
 def readonly_transaction() -> Iterator[None]:
     """
     Context manager to enforce a read-only transaction.
-    Use this for functions that only query the database.
-    Prevents write locks and reduces contention.
+
+    Use this for functions that only query the database. PostgreSQL enforces
+    read-only access at the database level. Other Django backends still receive
+    an atomic transaction, but may not support a portable SQL command that
+    marks the transaction read-only.
     """
     with transaction.atomic(savepoint=False):
-        with connection.cursor() as cursor:
-            cursor.execute("SET TRANSACTION READ ONLY")
+        if connection.vendor == 'postgresql':
+            with connection.cursor() as cursor:
+                cursor.execute("SET TRANSACTION READ ONLY")
         yield
 
 

@@ -2,10 +2,28 @@
 These instructions are primarily for installing ngencerf-server in your local development environment.  Requires an AWS account with S3 bucket access.
 An EDFS server is also required.  The url of the server is specified in `.env`
 
+# Table of Contents
+
+- [Target Environment](#target-environment)
+- [Additional documentation](#additional-documentation)
+- [Create virtual environment and install dependencies](#create-virtual-environment-and-install-dependencies)
+- [Setup local configuration](#setup-local-configuration)
+- [Configure the Database](#configure-the-database)
+- [Configure the cache](#configure-the-cache)
+- [Create data directory](#create-data-directory)
+- [Access to AWS](#access-to-aws)
+- [Archive/Zips Directory](#archivezips-directory)
+- [Static Files](#static-files)
+- [User Authentication](#user-authentication)
+- [Runtime environments](#runtime-environments)
+- [Directory structure](#directory-structure)
+- [Running the server](#running-the-server)
+- [Run the server in Docker](#run-the-server-in-docker)
+
 # Additional documentation
 
 - [ngenCERF_Server_Configuration_Reference.md](ngenCERF_Server_Configuration_Reference.md): every environment variable, startup flag, and hardcoded setting, with defaults and where each is read.
-- [Readme_supporting_services.md](Readme_supporting_services.md): what the server requires from PostgreSQL and Redis, and the provisioning files shipped in this repo.
+- [Readme_supporting_services.md](Readme_supporting_services.md): database and cache requirements, including PostgreSQL, SQLite, Redis, and local-memory cache configuration.
 - [Readme_portable_deployment.md](Readme_portable_deployment.md): running without container bind mounts, without Docker, or on a plain Linux host; which paths are configurable.
 - [Readme_active_directory_doc.md](Readme_active_directory_doc.md): Active Directory / LDAP authentication implementation.
 - [Readme_active_directory_flow.md](Readme_active_directory_flow.md): authentication and Active Directory notes for the UI.
@@ -43,22 +61,56 @@ cp $cerfServer/cerfServer/__.env $cerfServer/.env
 This template file is suitable for development and no changes need to be made.
 Note that the .env file is not checked in to Git
 
-# Install Postgres
+# Configure the database
 
-See your administrator for instructions on installing Postgres locally. Connection values are
-set in `.env` (`CERF_SERVER_DATABASE_HOST`, `CERF_SERVER_DATABASE_USER`, and so on; see `settings.py`).
-A local Postgres without TLS needs `CERF_SERVER_DATABASE_SSLMODE=disable`.
+PostgreSQL remains the default, supported, and tested database. 
+See your administrator for instructions on installing it locally. 
+Connection values are set in `.env` (`CERF_SERVER_DATABASE_HOST`, `CERF_SERVER_DATABASE_USER`, and so on; see `settings.py`). 
+A local PostgreSQL server without TLS needs `CERF_SERVER_DATABASE_SSLMODE=disable`.
 
-Postgres is the supported and tested database, with no particular release and no extensions required:
-any recent version works. The engine is set in `settings.py` (`DATABASES`) and could be switched to another
-Django backend such as SQLite, which is untested. Everything the server needs from Postgres is listed in
+The database backend is selected with `CERF_SERVER_DATABASE_ENGINE`. 
+Its default remains:
+
+```text
+CERF_SERVER_DATABASE_ENGINE=django.db.backends.postgresql
+```
+
+PostgreSQL has no required extensions, and any recent version should work. Everything the server needs from PostgreSQL is listed in
 [Readme_supporting_services.md](Readme_supporting_services.md).
 
+For lightweight local development, SQLite can be used without installing or running a database server:
 
-# Install Redis
-Redis is used only as the cache. It is memory-only and non-persistent, and `runCerf.sh` clears it at every start.
-See your administrator for instructions on installing Redis locally. Each instance of the server needs its own Redis
-(or its own database index), so install it for use by a single developer. Point the server at it with `REDIS_URL` in `.env`.
+```text
+CERF_SERVER_DATABASE_ENGINE=django.db.backends.sqlite3
+CERF_SERVER_DATABASE_NAME=/absolute/path/to/ngencerf.sqlite3
+```
+
+If `CERF_SERVER_DATABASE_NAME` is omitted while SQLite is selected, the
+database file defaults to `db.sqlite3` in the repository root. The PostgreSQL
+host, port, user, password, SSL, connection-timeout, and statement-timeout
+settings are ignored in SQLite mode. `runCerf.sh` applies the same Django
+migrations and initialization commands to the selected database.
+
+SQLite is intended for local development and testing. PostgreSQL remains the
+production database. Other Django database backends may be selected through
+`CERF_SERVER_DATABASE_ENGINE`, but they require the appropriate Python driver
+and may require additional backend-specific settings or testing.
+
+# Configure the cache
+
+Redis remains the default cache and is required for production because Gunicorn
+workers must share cached values. Point the server at Redis with `REDIS_URL` in
+`.env`. The cache is non-persistent, and `runCerf.sh` clears it at every start.
+
+For single-process local development without Gunicorn, Redis can be avoided by
+setting this in `.env`:
+
+```text
+CERF_SERVER_CACHE_BACKEND=django.core.cache.backends.locmem.LocMemCache
+```
+
+Django's local-memory cache is private to each process. Do not use it with
+Gunicorn or any deployment that runs more than one server process.
 
 The file `redis/redis.conf.dev` is a ready-made configuration for a local `redis-server`. Everything the server needs
 from Redis is listed in [Readme_supporting_services.md](Readme_supporting_services.md).

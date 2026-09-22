@@ -48,7 +48,7 @@ Prerequisites, derived from what the server image installs (`Dockerfile`).
 Package names are Debian/Ubuntu; map them to your distribution:
 
 - Python 3.12 (the version `cerfserver.env` pins in `REQUIRED_PYTHON`; NumPy 1.x caps it there)
-- PostgreSQL (any recent version) and Redis (see the README sections "Install Postgres" and "Install Redis")
+- PostgreSQL (the default) or SQLite for lightweight local development, plus Redis for multi-process deployments; single-process development may use Django's local-memory cache (see the README sections "Configure the database" and "Configure the cache")
 - `git`, `curl`, `ca-certificates`, `jq`
 - build tools for the Python packages: `gcc`, `g++`, `make`, `pkg-config`, `libpq-dev`
 - GDAL/PROJ for GeoPandas/Fiona: `gdal-bin`, `libgdal-dev`, `libproj-dev`, `proj-data`
@@ -56,7 +56,15 @@ Package names are Debian/Ubuntu; map them to your distribution:
 Setup:
 
 1. Clone this repository and copy `cerfServer/__.env` to `cerfServer/.env`.
-2. Pick a data directory, for example `/srv/ngencerf/data`, and set both roots
+2. Configure PostgreSQL as described in the README, or select a local SQLite
+   file:
+
+   ```text
+   CERF_SERVER_DATABASE_ENGINE=django.db.backends.sqlite3
+   CERF_SERVER_DATABASE_NAME=/srv/ngencerf/ngencerf.sqlite3
+   ```
+
+3. Pick a data directory, for example `/srv/ngencerf/data`, and set both roots
    to it in `cerfServer/.env`:
 
    ```
@@ -67,9 +75,9 @@ Setup:
    No symlink and no mount is needed. (Leaving both unset and creating the
    `/ngencerf/data` symlink from the README is the other way to get the same
    result.)
-3. Populate `<CONTAINER_DATA_ROOT>/ngen-static-files` as described in the
+4. Populate `<CONTAINER_DATA_ROOT>/ngen-static-files` as described in the
    README section "Static Files".
-4. Run `./runCerf.sh`. On a host it creates a virtual environment next to the
+5. Run `./runCerf.sh`. On a host it creates a virtual environment next to the
    repo, installs the requirements and the Git-hosted dependencies, sources
    `cerfserver.env`, `cerfServer/.env` and `cerfServer/.env-override`, runs
    the migrations, loads the gage data, clones `bmi_forcing_templates` into

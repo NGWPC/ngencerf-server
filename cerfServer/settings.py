@@ -241,15 +241,15 @@ AUTHENTICATION_BACKENDS = [
     "calibration.auth.active_directory_backend.LocalUserBackend",
 ]
 
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.getenv('REDIS_URL', "redis://127.0.0.1:6379/1"),
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient"
-        }
-    }
-}
+# Redis provides a shared cache for multi-worker production deployments.
+# LocMemCache may be selected for single-process development without Redis.
+CACHE_BACKEND = os.getenv('CERF_SERVER_CACHE_BACKEND', 'django_redis.cache.RedisCache')
+CACHES = {'default': {'BACKEND': CACHE_BACKEND}}
+if CACHE_BACKEND == 'django_redis.cache.RedisCache':
+    CACHES['default'].update({
+        'LOCATION': os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/1'),
+        'OPTIONS': {'CLIENT_CLASS': 'django_redis.client.DefaultClient'},
+    })
 
 AUTH_USER_MODEL = 'calibration.CustomUser'
 
@@ -1000,29 +1000,78 @@ LOGGING = {
 # Database
 # -----------------------------
 
-DATABASE_OPTIONS = {
-    'connect_timeout': int(os.getenv('CERF_SERVER_DATABASE_CONNECT_TIMEOUT', '10')),
-    'options': os.getenv(
-        'CERF_SERVER_DATABASE_OPTIONS',
-        '-c statement_timeout=10000ms'
+# Select the Django database backend through the environment. PostgreSQL
+# remains the default; SQLite can be selected for lightweight development.
+DATABASE_ENGINE = os.getenv(
+    'CERF_SERVER_DATABASE_ENGINE',
+    'django.db.backends.postgresql',
+)
+
+# These flags determine which backend-specific settings are included below.
+IS_POSTGRESQL_DATABASE = DATABASE_ENGINE.startswith('django.db.backends.postgresql')
+IS_SQLITE_DATABASE = DATABASE_ENGINE == 'django.db.backends.sqlite3'
+
+# NAME is a database name for PostgreSQL but a file path for SQLite.
+# When SQLite is selected without an explicit name, store the database file
+# in the repository root.
+database_name_default = (
+    os.path.join(BASE_DIR, 'db.sqlite3')
+    if IS_SQLITE_DATABASE
+    else 'postgres'
+)
+
+# Settings shared by all supported database backends.
+DATABASE_CONFIG = {
+    'ENGINE': DATABASE_ENGINE,
+    'NAME': os.getenv('CERF_SERVER_DATABASE_NAME', database_name_default),
+    'CONN_MAX_AGE': int(
+        os.getenv('CERF_SERVER_DATABASE_CONN_MAX_AGE', '60')
     ),
-    'sslmode': os.getenv('CERF_SERVER_DATABASE_SSLMODE', 'require'),
 }
 
-sslrootcert = os.getenv('CERF_SERVER_DATABASE_SSLROOTCERT')
+# SQLite is file-based and does not use network connection settings.
+if not IS_SQLITE_DATABASE:
+    database_port_default = '5432' if IS_POSTGRESQL_DATABASE else ''
+    database_port = os.getenv(
+        'CERF_SERVER_DATABASE_PORT',
+        database_port_default,
+    )
 
-if sslrootcert:
-    DATABASE_OPTIONS['sslrootcert'] = sslrootcert
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('CERF_SERVER_DATABASE_NAME', 'postgres'),
+    DATABASE_CONFIG.update({
         'USER': os.getenv('CERF_SERVER_DATABASE_USER', 'postgres'),
         'PASSWORD': os.getenv('CERF_SERVER_DATABASE_PASSWORD', 'postgres'),
         'HOST': os.getenv('CERF_SERVER_DATABASE_HOST', 'localhost'),
-        'PORT': int(os.getenv('CERF_SERVER_DATABASE_PORT', '5432')),
-        'CONN_MAX_AGE': int(os.getenv('CERF_SERVER_DATABASE_CONN_MAX_AGE', '60')),
-        'OPTIONS': DATABASE_OPTIONS,
+        'PORT': (
+            int(database_port)
+            if IS_POSTGRESQL_DATABASE
+            else database_port
+        ),
+    })
+
+# These OPTIONS are specific to PostgreSQL and its libpq driver. Supplying
+# them to SQLite or another backend would cause unsupported-option errors.
+if IS_POSTGRESQL_DATABASE:
+    database_options = {
+        'connect_timeout': int(
+            os.getenv('CERF_SERVER_DATABASE_CONNECT_TIMEOUT', '10')
+        ),
+        'options': os.getenv(
+            'CERF_SERVER_DATABASE_OPTIONS',
+            '-c statement_timeout=10000ms'
+        ),
+        'sslmode': os.getenv(
+            'CERF_SERVER_DATABASE_SSLMODE',
+            'require',
+        ),
     }
+
+    sslrootcert = os.getenv('CERF_SERVER_DATABASE_SSLROOTCERT')
+
+    if sslrootcert:
+        database_options['sslrootcert'] = sslrootcert
+
+    DATABASE_CONFIG['OPTIONS'] = database_options
+
+DATABASES = {
+    'default': DATABASE_CONFIG,
 }
